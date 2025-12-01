@@ -4,11 +4,17 @@ from datetime import date
 from fastapi import APIRouter, Depends, status, HTTPException, UploadFile, File, Form
 from sqlmodel import select, desc
 from sqlmodel.ext.asyncio.session import AsyncSession
+from imagekitio.models.UploadFileRequestOptions import UploadFileRequestOptions
 from typing import List
 
 from app.database.session import get_db
 from app.models.news import News, NewsBase
 from app.schemas.news import NewsCreate, NewsRead
+
+from app.services.imagekit_config import imagekit
+import shutil
+import os
+import tempfile
 
 news_router = APIRouter()
 
@@ -19,18 +25,49 @@ async def create_news(
   published_date: date = Form(...),
   db: AsyncSession = Depends(get_db)
 ):
-  """ Create a news article with an image upload """
-  news_data = NewsCreate(
-    title="Title added manually",
-    image="Image added manually",
-    published_date=date(2025, 11, 27)
-  )
-  # Convert the request schema (Pydantic) into a mapped SQLModel instance
-  db_news = News(**news_data.model_dump())
-  db.add(db_news)
-  await db.commit()
-  await db.refresh(db_news)
-  return db_news
+  temp_file_path = None
+
+  try:
+    # Save the uploaded file to a temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+      temp_file_path = temp_file.name
+      shutil.copyfileobj(file.file, temp_file)
+    
+    # Upload the file to ImageKit
+    upload_result = imagekit.upload_file(
+      file=open(temp_file_path, "rb"),
+      file_name=file.filename,
+      options=UploadFileRequestOptions(
+        use_unique_file_name=True,
+        tags=["backend-upload", "news-thumbnail"]
+      )
+    )
+
+    if upload_result.response_metadata.http_status_code == 200:
+      # Create a news article with the uploaded image URL
+      news_data = NewsCreate(
+        title=title,
+        image=upload_result.url,
+        published_date=published_date
+      )
+      #news_data = NewsCreate(
+      #  title="Title added manually",
+      #  image="Image added manually",
+      #  published_date=date(2025, 11, 27)
+      #)
+      # Convert the request schema (Pydantic) into a mapped SQLModel instance
+      db_news = News(**news_data.model_dump())
+      db.add(db_news)
+      await db.commit()
+      await db.refresh(db_news)
+      return db_news
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=f"Failed to upload image or create news: {str(e)}")
+  finally:
+    # Clean up the temporary file
+    if temp_file_path and os.path.exists(temp_file_path):
+      os.unlink(temp_file_path)
+    file.file.close()
 
 @news_router.get("/", response_model=List[NewsRead], status_code=status.HTTP_200_OK)
 async def get_news(db: AsyncSession = Depends(get_db)):

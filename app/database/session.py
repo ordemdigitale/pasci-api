@@ -1,19 +1,19 @@
-# database.py
+# app/core/database.py | Database session management
 from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from dotenv import load_dotenv
-import os
+from app.core.config import settings
 
-load_dotenv()
+# Create async engine for Neon DB (critical!)
+# Convert postgresql:// to postgresql+asyncpg://
+async_database_url = settings.DATABASE_URL.replace(
+    "postgresql://", "postgresql+asyncpg://"
+) if settings.DATABASE_URL else None
 
-DATABASE_URL = os.getenv("DATABASE_URL")  # Your Neon connection string
-
-# Async engine (critical!)
 engine = create_async_engine(
-    DATABASE_URL,
+    async_database_url,
     echo=False,
     pool_pre_ping=True,
-    pool_recycle=300,  # Prevents connection timeouts with Neon
+    #pool_recycle=300,  # Prevents connection timeouts with Neon
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -24,7 +24,10 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def get_db():
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            await session.close()
 
 # Async table creation
 async def create_db_and_tables():

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from app.core.config import settings
 from app.api.v1.endpoints.items import item_router
 from app.api.v1.endpoints.news import news_router
 from app.database.session import create_db_and_tables
@@ -12,8 +13,8 @@ async def life_span(app: FastAPI):
     yield
 
 app = FastAPI(
-  title="PASCI API",
-  description="API for PASCI application",
+  title=settings.PROJECT_NAME,
+  description=settings.DESCRIPTION,
   version="1.0.0",
   lifespan=life_span
 )
