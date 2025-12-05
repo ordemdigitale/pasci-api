@@ -51,11 +51,6 @@ async def create_news(
         image=upload_result.url,
         published_date=published_date
       )
-      #news_data = NewsCreate(
-      #  title="Title added manually",
-      #  image="Image added manually",
-      #  published_date=date(2025, 11, 27)
-      #)
       # Convert the request schema (Pydantic) into a mapped SQLModel instance
       db_news = News(**news_data.model_dump())
       db.add(db_news)
@@ -90,12 +85,56 @@ async def get_news_by_id(news_id: UUID, db: AsyncSession = Depends(get_db)):
 # Endpoints for NewsArticle model
 # ______________________________________________________
 @news_router.post("/news-article")
-async def create_news_article(news_article: NewsArticleCreate, db: AsyncSession = Depends(get_db)) -> NewsArticle:
-  db_news_article = NewsArticle(**news_article.model_dump())
-  db.add(db_news_article)
-  await db.commit()
-  await db.refresh(db_news_article)
-  return db_news_article
+async def create_news_article(
+  title: str = Form(...),
+  content: str = Form(""),
+  file: UploadFile = File(""),
+  db: AsyncSession = Depends(get_db)
+):
+  temp_file_path = None
+
+  try:
+    # Save the uploaded file to a temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+      temp_file_path = temp_file.name
+      shutil.copyfileobj(file.file, temp_file)
+
+    # Upload the file to ImageKit
+    upload_result = imagekit.upload_file(
+      file=open(temp_file_path, "rb"),
+      file_name=file.filename,
+      options=UploadFileRequestOptions(
+        use_unique_file_name=True,
+        tags=["backend-upload", "news-thumbnail"]
+      )
+    )
+
+    if upload_result.response_metadata.http_status_code == 200:
+      # Create a news article with the uploaded image url
+      news_article_data = NewsArticleCreate(
+        title=title,
+        content=content,
+        image_url=upload_result.url,
+      )
+      # Convert the request schema (Pydantic) into a mapped SQLModel instance
+      db_news_article = NewsArticle(**news_article_data.model_dump())
+      db.add(db_news_article)
+      await db.commit()
+      await db.refresh(db_news_article)
+      return db_news_article
+
+  except Exception as e:
+    raise HTTPException(status_code=500, detail=f"Failed to upload image or create news: {str(e)}")
+  finally:
+    # Clean up the temp file
+    if temp_file_path and os.path.exists(temp_file_path):
+      os.unlink(temp_file_path)
+    file.file.close()
+#  db_news_article = NewsArticle(**news_article.model_dump())
+#  db.add(db_news_article)
+#  await db.commit()
+#  await db.refresh(db_news_article)
+#  return db_news_article
 
 
 @news_router.get("/news-article/", response_model=List[NewsArticleRead], status_code=status.HTTP_200_OK)

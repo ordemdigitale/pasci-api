@@ -37,7 +37,7 @@ class News(NewsBase, table=True):
 class NewsArticle(SQLModel, table=True):
    """ Represents a news article in the database. """
    # Primary Key
-   article_id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, description="Unique news article identifier")
+   id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, description="Unique news article identifier")
    # Core Article Information
    title: str = Field(max_length=250, nullable=False, description="Title of the news article")
    content: str = Field(sa_column=Column(String, nullable=True), description="Content of the news article")
@@ -61,4 +61,4 @@ class NewsArticle(SQLModel, table=True):
    
    # Representation in admin/logs
    def __repr__(self) -> str:
-      return f"<NewsArticle {self.article_id}: {self.title}>"
+      return f"<NewsArticle: {self.title}>"

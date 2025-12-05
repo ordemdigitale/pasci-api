@@ -25,10 +25,10 @@ class NewsArticleCreate(BaseModel):
     title: str
     content: str
     image_url: Optional[str] = None
-#    preview_text: Optional[str] = None
 
 
 class NewsArticleRead(NewsArticleCreate):
-    article_id: UUID
+    id: UUID
+    preview_text: Optional[str]
     created_at: datetime
     updated_at: datetime
