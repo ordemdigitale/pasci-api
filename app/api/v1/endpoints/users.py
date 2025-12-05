@@ -1,7 +1,12 @@
 # app/api/v1/endpoints/users.py
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from sqlmodel import select
+
+from app.database.session import get_db
+from app.models.users import User
+from app.schemas.users import UserCreate, UserUpdate, UserRead
 
 users_router = APIRouter()
 

@@ -6,6 +6,7 @@ from app.api.v1.endpoints.auth import auth_router
 from app.api.v1.endpoints.users import users_router
 from app.api.v1.endpoints.items import item_router
 from app.api.v1.endpoints.news import news_router
+from app.api.v1.endpoints.books import books_router
 from app.database.session import create_db_and_tables
 
 @asynccontextmanager
@@ -34,3 +35,4 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(item_router, prefix="/api/v1/items", tags=["items"])
 app.include_router(news_router, prefix="/api/v1/news", tags=["news"])
+app.include_router(books_router, prefix="/api/v1/books", tags=["books"])

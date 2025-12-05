@@ -1,7 +1,8 @@
-# app/core/database.py | Database session management
+# app/core/database/session.py | Database session management
 from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.core.config import settings
+
 
 # Create async engine for Neon DB (critical!)
 # Convert postgresql:// to postgresql+asyncpg://

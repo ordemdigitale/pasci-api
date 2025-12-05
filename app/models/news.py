@@ -27,3 +27,7 @@ class News(NewsBase, table=True):
       DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()
     ),
   )
+
+  # Optional: Nice representation in admin/logs
+  def __repr__(self) -> str:
+      return f"<News {self.id}: {self.title} ({self.published_date})>"

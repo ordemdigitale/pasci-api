@@ -1,6 +1,9 @@
 # app/core/config.py | Configuration management
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+load_dotenv()
 
 class Settings(BaseSettings):
   # Project
@@ -9,6 +12,12 @@ class Settings(BaseSettings):
   
   # Database
   DATABASE_URL: Optional[str] = None
+
+  # Security
+  SECRET_KEY: Optional[str] = None
+  ALGORITHM: str = "HS256"
+  ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+  REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
   # ImageKit
   IMAGEKIT_PRIVATE_KEY: Optional[str] = None

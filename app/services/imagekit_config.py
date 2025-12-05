@@ -1,7 +1,7 @@
 # app/services/imagekit_service.py
 from imagekitio import ImageKit
 from dotenv import load_dotenv
-import os
+#import os
 from app.core.config import settings
 
 load_dotenv()
