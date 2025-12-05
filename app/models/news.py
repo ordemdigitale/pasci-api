@@ -44,7 +44,7 @@ class NewsArticle(SQLModel, table=True):
    preview_text: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True), description="Preview text of the article")
    author: Optional[str] = Field(default=None, max_length=100)
    publication_date: Optional[datetime] = Field(default_factory=datetime.utcnow)
-   image: Optional[str] = Field(default=None, max_length=2048, description="ImageKit public URL")
+   image_url: Optional[str] = Field(default=None, max_length=2048, description="ImageKit public URL")
    # Status Fields
    is_published: bool = Field(default=False)
    status: str = Field(default="draft", max_length=20) # e.g., 'draft', 'published', 'archived'

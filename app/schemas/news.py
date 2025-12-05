@@ -24,6 +24,7 @@ class NewsUpdate(BaseModel):
 class NewsArticleCreate(BaseModel):
     title: str
     content: str
+    image_url: Optional[str] = None
 #    preview_text: Optional[str] = None
 
 
