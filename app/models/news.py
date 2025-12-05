@@ -36,17 +36,24 @@ class News(NewsBase, table=True):
 
 class NewsArticle(SQLModel, table=True):
    """ Represents a news article in the database. """
+   # Primary Key
    article_id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, description="Unique news article identifier")
+   # Core Article Information
    title: str = Field(max_length=250, nullable=False, description="Title of the news article")
    content: str = Field(sa_column=Column(String, nullable=True), description="Content of the news article")
    preview_text: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True), description="Preview text of the article")
+   author: Optional[str] = Field(default=None, max_length=100)
+   publication_date: Optional[datetime] = Field(default_factory=datetime.utcnow)
+   image: Optional[str] = Field(default=None, max_length=2048, description="ImageKit public URL")
+   # Status Fields
+   is_published: bool = Field(default=False)
+   status: str = Field(default="draft", max_length=20) # e.g., 'draft', 'published', 'archived'
 
-   # Timestamps
+   # Timestamps (auto-managed)
    created_at: datetime = Field(
       default_factory=lambda: datetime.now(timezone.utc),
       sa_column=Column(DateTime(timezone=True), server_default=func.now()),
    )
-
    updated_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
     sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
