@@ -8,8 +8,9 @@ from imagekitio.models.UploadFileRequestOptions import UploadFileRequestOptions
 from typing import List
 
 from app.database.session import get_db
-from app.models.news import News, NewsBase
-from app.schemas.news import NewsCreate, NewsRead
+from app.models.news import News, NewsBase, NewsArticle
+from app.schemas.news import NewsCreate, NewsRead, NewsArticleCreate, NewsArticleRead
+from app.utils.preview_text_generator import generate_excerpt
 
 from app.services.imagekit_config import imagekit
 import shutil
@@ -84,3 +85,25 @@ async def get_news_by_id(news_id: UUID, db: AsyncSession = Depends(get_db)):
   if not news_item:
     raise HTTPException(status_code=404, detail="News not found")
   return news_item
+
+# ______________________________________________________
+# Endpoints for NewsArticle model
+# ______________________________________________________
+@news_router.post("/news-article")
+async def create_news_article(news_article: NewsArticleCreate, db: AsyncSession = Depends(get_db)) -> NewsArticle:
+  db_news_article = NewsArticle(**news_article.model_dump())
+  db.add(db_news_article)
+  await db.commit()
+  await db.refresh(db_news_article)
+  return db_news_article
+
+
+@news_router.get("/news-article/", response_model=List[NewsArticleRead], status_code=status.HTTP_200_OK)
+async def get_news_articles(db: AsyncSession = Depends(get_db)):
+  """ Get all news articles """
+  result = await db.execute(select(NewsArticle).order_by(desc(NewsArticle.created_at)))
+  news_articles = result.scalars().all()
+  for article in news_articles:
+    if not article.preview_text:
+      article.preview_text = generate_excerpt(article.content)
+  return news_articles

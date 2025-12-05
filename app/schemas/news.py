@@ -19,3 +19,15 @@ class NewsRead(NewsCreate):
 class NewsUpdate(BaseModel):
     title: Optional[str] = None
     published_date: Optional[date] = None
+
+# Schemas for NewsArticle
+class NewsArticleCreate(BaseModel):
+    title: str
+    content: str
+#    preview_text: Optional[str] = None
+
+
+class NewsArticleRead(NewsArticleCreate):
+    article_id: UUID
+    created_at: datetime
+    updated_at: datetime
