@@ -36,7 +36,13 @@ async def get_news_by_id(user_id: UUID, db: AsyncSession = Depends(get_db)):
 @users_router.post("/", response_model=UserCreate)
 async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)) -> User:
     """ Create a new user """
-    db_user = User(**user.model_dump())
+    # Check if email already exists
+    result = await db.execute(select(User).where(User.email == user.email))
+    if result.scalar_one_or_none():
+       raise HTTPException(400, "User with this e-mail already registered")
+
+    db_user = User(**user.model_dump(exclude={"password"}))
+    db_user.set_password(user.password)
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
