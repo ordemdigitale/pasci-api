@@ -8,6 +8,7 @@ from sqlmodel import select, desc
 from app.database.session import get_db
 from app.models.users import User
 from app.schemas.users import UserCreate, UserUpdate, UserRead
+from app.services.user_service import UserService
 
 users_router = APIRouter()
 
@@ -19,18 +20,17 @@ async def get_users(db: AsyncSession = Depends(get_db)):
     return all_users
 
 
-@users_router.get("/{user_id}")
-async def get_user(user_id: int):
-    return {"message": f"Get user with ID {user_id}"}
-
-
 @users_router.get("/{user_id}", response_model=UserRead, status_code=status.HTTP_200_OK)
-async def get_news_by_id(user_id: UUID, db: AsyncSession = Depends(get_db)):
-  """ Get a single user by UUID (ID) """
-  user = await db.get(User, user_id)
+async def get_user_by_id(user_id: UUID, db: AsyncSession = Depends(get_db)):
+  """ Get a single user by ID (UUID) """
+  user = await UserService.get_user_by_id(db, user_id)
   if not user:
-    raise HTTPException(status_code=404, detail="User not found")
+     raise HTTPException(status_code=404, detail="User not found") 
   return user
+#  user = await db.get(User, user_id)
+#  if not user:
+#    raise HTTPException(status_code=404, detail="User not found")
+#  return user
 
 
 @users_router.post("/", response_model=UserCreate)

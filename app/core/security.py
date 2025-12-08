@@ -1,4 +1,5 @@
 # app/core/security.py | Security utilities
+from fastapi import HTTPException, status
 from datetime import datetime, timedelta, UTC
 from typing import Optional
 from jose import JWTError, jwt

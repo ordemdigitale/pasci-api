@@ -1,6 +1,7 @@
 # schemas/auth.py
 from pydantic import BaseModel
 from typing import Optional
+from uuid import UUID
 
 class Token(BaseModel):
     access_token: str
@@ -8,8 +9,8 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 class TokenData(BaseModel):
-    user_id: int
+    user_id: UUID
 
 class LoginForm(BaseModel):
-    username: str  # Can be username or email
+    email: str  # Can be username or email
     password: str
