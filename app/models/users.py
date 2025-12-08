@@ -9,7 +9,7 @@ from uuid import uuid4, UUID
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-class UserBase(SQLModel):
+class User(SQLModel, table=True):
   # Core fields
   # Use UUID primary key to avoid integer auto-increment reliance
   id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
@@ -80,7 +80,3 @@ class UserBase(SQLModel):
   # Optional: Nice representation in admin/logs
   def __repr__(self) -> str:
       return f"<User {self.id}: {self.get_username()} ({'active' if self.is_active else 'inactive'})>"
-  
-
-class User(UserBase, table=True):
-    pass

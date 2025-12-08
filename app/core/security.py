@@ -25,7 +25,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
   to_encode = data.copy()
   expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
   to_encode.update({"exp": expire, "type": "access"})
-  return jwt.encode(to_encode, _get_secret_key(), algorithm=settings.ALGORITHM)
+  encode_jwt = jwt.encode(to_encode, _get_secret_key(), algorithm=settings.ALGORITHM)
+  return encode_jwt
 
 def create_refresh_token(data: dict):
   to_encode = data.copy()

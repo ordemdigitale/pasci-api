@@ -2,10 +2,10 @@
 # schemas/user.py
 from typing import Optional
 from datetime import datetime
-from sqlmodel import SQLModel
+from pydantic import BaseModel
 from uuid import UUID
 
-class UserCreate(SQLModel):
+class UserCreate(BaseModel):
   email: str
   username: Optional[str] = None
   password: str
@@ -17,7 +17,7 @@ class UserCreate(SQLModel):
       raise ValueError("Password must be at least 8 characters long")
 
 
-class UserUpdate(SQLModel):
+class UserUpdate(BaseModel):
   email: Optional[str] = None
   username: Optional[str] = None
   first_name: Optional[str] = None
@@ -25,7 +25,8 @@ class UserUpdate(SQLModel):
   avatar: Optional[str] = None
   bio: Optional[str] = None
 
-class UserRead(SQLModel):
+
+class UserRead(BaseModel):
   id: UUID
   email: str
   username: Optional[str]
@@ -38,3 +39,20 @@ class UserRead(SQLModel):
   last_login: Optional[datetime]
   avatar: Optional[str]
   bio: Optional[str]
+
+  class Config:
+        from_attributes = True  # Replaces orm_mode = True
+
+
+class UserLogin(BaseModel):
+   email: str
+   password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
