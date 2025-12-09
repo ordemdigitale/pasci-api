@@ -14,7 +14,7 @@ engine = create_async_engine(
     async_database_url,
     echo=False,
     pool_pre_ping=True,
-    #pool_recycle=300,  # Prevents connection timeouts with Neon
+    pool_recycle=300,  # Prevents connection timeouts with Neon
 )
 
 AsyncSessionLocal = async_sessionmaker(

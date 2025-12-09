@@ -18,7 +18,7 @@ app = FastAPI(
   title=settings.PROJECT_NAME,
   description=settings.DESCRIPTION,
   version="1.0.0",
-  lifespan=life_span
+#  lifespan=life_span
 )
 
 # CORS middleware

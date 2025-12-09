@@ -15,7 +15,6 @@ dependencies = [
     "sqlmodel>=0.0.27",
     "sqlalchemy>=2.0.44",
     "alembic>=1.17.2",
-    "passlib[bcrypt]>=1.7.4",
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.20",
     "psycopg2-binary>=2.9.11",
@@ -25,4 +24,6 @@ dependencies = [
     "asyncpg>=0.31.0",
     "types-passlib>=1.7.7.20250602",
     "types-python-jose>=3.5.0.20250531",
+    "passlib>=1.7.4",
+    "bcrypt>=4.3.0",
 ]

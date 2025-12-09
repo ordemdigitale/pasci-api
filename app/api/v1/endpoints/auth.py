@@ -3,24 +3,22 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
+from datetime import timedelta
 from app.models.users import User
 from app.database.session import get_db
 from app.schemas.users import UserRead, UserCreate
 from app.schemas.auth import Token
-from app.core.security import verify_password, create_access_token, create_refresh_token
+from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
 from app.core.config import settings
+from app.services.user_service import UserService
 
 auth_router = APIRouter()
 
 @auth_router.post("/login", response_model=Token)
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db)
-):
-    # Find user by username OR email
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(User).where(
-            (User.username == form_data.username) | (User.email == form_data.username)
+            (User.email == form_data.username) | (User.username == form_data.username)
         )
     )
     user = result.scalar_one_or_none()
@@ -30,14 +28,10 @@ async def login(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token = create_access_token(data={"sub": str(user.id)})
-    refresh_token = create_refresh_token(data={"sub": str(user.id)})
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
-    }
+    # Convert user.id (which is a UUID object) to a string using str()
+    user_id_str = str(user.id)
+    access_token = create_access_token(data={"sub": user_id_str})
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @auth_router.post("/register", response_model=UserRead)
@@ -47,8 +41,14 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     if result.scalar_one_or_none():
         raise HTTPException(400, "Email already registered")
 
-    user = User(**user_in.dict(exclude={"password"}))
-    user.set_password(user_in.password)
+    hashed_password = get_password_hash(user_in.password)
+    user = User(
+        email=user_in.email,
+        username=user_in.username or user_in.email.split("@")[0],
+        password=hashed_password,
+        first_name=user_in.first_name,
+        last_name=user_in.last_name,
+    )
     db.add(user)
     await db.commit()
     await db.refresh(user)
