@@ -9,9 +9,9 @@ from app.models.news import News
 class CrascRegion(SQLModel, table=True):
   """ Represents a CRASC region in the database. """
   id: int = Field(default=None, primary_key=True)
-  name: str = Field(index=True, nullable=False, max_length=100)
+  name: str = Field(nullable=False, max_length=100, description="Name of the CRASC region")
   description: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True))
-  
+
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
     sa_column=Column(DateTime(timezone=True), server_default=func.now())
