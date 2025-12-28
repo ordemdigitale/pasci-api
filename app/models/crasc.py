@@ -11,8 +11,15 @@ class CrascRegion(SQLModel, table=True):
   id: int = Field(default=None, primary_key=True)
   name: str = Field(index=True, nullable=False, max_length=100)
   description: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True))
-  created_at: DateTime = Field(default_factory=func.now, sa_column=Column(DateTime(timezone=True), server_default=func.now()))
-  updated_at: DateTime = Field(default_factory=func.now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()))
+  
+  created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now())
+  )
+  updated_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
+  )
 
   groups: List["Osc"] = Relationship(back_populates="crasc_region")
 
@@ -50,8 +57,14 @@ class Osc(SQLModel, table=True):
   longitude: Optional[float] = None
   address: Optional[str] = None
 
-  created_at: DateTime = Field(default_factory=func.now, sa_column=Column(DateTime(timezone=True), server_default=func.now()))
-  updated_at: DateTime = Field(default_factory=func.now, sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()))
+  created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now())
+  )
+  updated_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
+  )
 
   # Relationships
   news_articles: List["News"] = Relationship(back_populates="osc")
