@@ -2,12 +2,11 @@ from datetime import date, datetime, timezone
 from typing import Optional
 from uuid import uuid4, UUID
 from sqlalchemy import Column, DateTime, String, func
-from sqlmodel import SQLModel, Field
-  
+from sqlmodel import SQLModel, Field, Relationship
+
 
 class News(SQLModel, table=True):
    """ Represents a news article in the database. """
-   # Primary Key
    id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, description="Unique news article identifier")
    # Core News Information
    title: str = Field(max_length=250, nullable=False, description="Title of the news article")
@@ -16,6 +15,7 @@ class News(SQLModel, table=True):
    author: Optional[str] = Field(default=None, max_length=100)
    publication_date: Optional[datetime] = Field(default_factory=datetime.utcnow)
    image_url: Optional[str] = Field(default=None, max_length=2048, description="ImageKit public URL")
+
    # Status Fields
    is_published: bool = Field(default=False)
    status: str = Field(default="draft", max_length=20) # e.g., 'draft', 'published', 'archived'
