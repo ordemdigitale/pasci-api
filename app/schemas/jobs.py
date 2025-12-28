@@ -10,7 +10,7 @@ class JobsCreate(BaseModel):
     location: str
     type: str
     is_expired: bool = False
-    publication_date: Optional[datetime] = None
+    publication_date: Optional[datetime] = None # Check the None default handling later
 
 
 class JobsRead(JobsCreate):
