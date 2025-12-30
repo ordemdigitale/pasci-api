@@ -9,7 +9,7 @@ from app.models.news import News
 class CrascRegion(SQLModel, table=True):
   """ Represents a CRASC region in the database. """
   id: int = Field(default=None, primary_key=True)
-  name: str = Field(nullable=False, max_length=100, description="Name of the CRASC region")
+  name: str = Field(nullable=False, max_length=100, unique=True, description="Name of the CRASC region")
   description: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True))
 
   created_at: datetime = Field(
@@ -21,7 +21,7 @@ class CrascRegion(SQLModel, table=True):
     sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
   )
 
-  groups: List["Osc"] = Relationship(back_populates="crasc_region")
+  oscs: List["Osc"] = Relationship(back_populates="region_crasc")
 
   # Representation in admin/logs
   def __repr__(self) -> str:
@@ -34,7 +34,7 @@ class OscType(SQLModel, table=True):
   name: str = Field(index=True, unique=True)
   description: Optional[str] = None
 
-  groups: List["Osc"] = Relationship(back_populates="type")
+  oscs: List["Osc"] = Relationship(back_populates="type_osc")
   
   # Representation in admin/logs
   def __repr__(self) -> str:
@@ -48,10 +48,10 @@ class Osc(SQLModel, table=True):
   description: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True))
 
   type_id: int = Field(foreign_key="osctype.id")
-  type_osc: OscType = Relationship(back_populates="groups")
+  type_osc: OscType = Relationship(back_populates="oscs")
 
-  region_id: int = Field(foreign_key="crascregion.id")
-  region_crasc: CrascRegion = Relationship(back_populates="groups")
+  region_id: int = Field(foreign_key="crascregion.id") # To link to CRASC regions. Later change it to crasc_id
+  region_crasc: CrascRegion = Relationship(back_populates="oscs") # Later change it to crasc_region
 
   latitude: Optional[float] = None
   longitude: Optional[float] = None
@@ -67,7 +67,7 @@ class Osc(SQLModel, table=True):
   )
 
   # Relationships
-  news_articles: List["News"] = Relationship(back_populates="osc")
+  news_articles: List["NewsArticles"] = Relationship(back_populates="osc")
 
   # Representation in admin/logs
   def __repr__(self) -> str:
