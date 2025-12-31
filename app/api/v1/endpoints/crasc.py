@@ -112,7 +112,6 @@ async def get_osc_type(osc_type_id: int, db: AsyncSession = Depends(get_db)):
 #    await db.refresh(db_osc)
 #    return db_osc
 
-# Write post endpoint to create CommunityGroup that does not load relationships.
 @crasc_router.post("/osc", response_model=OscRead, status_code=status.HTTP_201_CREATED)
 async def create_osc(osc: OscCreate, db: AsyncSession = Depends(get_db)) -> Osc:
     # Check for duplicate name
