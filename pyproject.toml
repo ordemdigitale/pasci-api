@@ -26,4 +26,5 @@ dependencies = [
     "types-python-jose>=3.5.0.20250531",
     "passlib>=1.7.4",
     "bcrypt>=4.3.0",
+    "python-slugify>=8.0.4",
 ]

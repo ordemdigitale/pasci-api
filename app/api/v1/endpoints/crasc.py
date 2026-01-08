@@ -6,23 +6,64 @@ from typing import Optional, List
 
 from app.database.session import get_db
 from app.schemas.crasc import (
-    OscTypeBase,
-    OscTypeCreate,
-    OscTypeRead,
-    OscTypeReadWithOscs,
-    OscCreate,
-    OscRead,
-    OscReadWithCrascRegionAndOscType,
-    OscReadWithOscType,
-    OscReadWithCrascRegion,
-    CrascRegionBase,
-    CrascRegionCreate,
-    CrascRegionRead,
-    CrascRegionReadWithOscs,
+  RegionCivCreate,
+  RegionCivRead,
+  OscTypeBase,
+  OscTypeCreate,
+  OscTypeRead,
+  OscTypeReadWithOscs,
+  OscCreate,
+  OscRead,
+  OscReadWithCrascRegionAndOscType,
+  OscReadWithOscType,
+  OscReadWithCrascRegion,
+  CrascRegionBase,
+  CrascRegionCreate,
+  CrascRegionRead,
+  CrascRegionReadWithOscs,
+  CrascRegionReadWithOscsAndRegionCivs
 )
-from app.models.crasc import CrascRegion, OscType, Osc
+from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc
 
 crasc_router = APIRouter()
+
+######################
+# RegionCivs Endpoints
+######################
+
+#@crasc_router.post("/region-civ", response_model=RegionCiv, status_code=status.HTTP_201_CREATED)
+#async def create_region_civ(region_civ: RegionCiv, db: AsyncSession = Depends(get_db)) -> RegionCiv:
+#    db_region_civ = RegionCiv(**region_civ.model_dump())
+#    db.add(db_region_civ)
+#    await db.commit()
+#    await db.refresh(db_region_civ)
+#    return db_region_civ
+
+# Create RegionCiv (check for duplicate region civ name) and assign to CrascRegion
+@crasc_router.post("/region-civ-with-crasc", response_model=RegionCivRead, status_code=status.HTTP_201_CREATED)
+async def create_region_civ_with_crasc(region_civ: RegionCivCreate, db: AsyncSession = Depends(get_db)) -> RegionCiv:
+  # Check for duplicate name
+  result = await db.execute(select(RegionCiv).where(RegionCiv.name == region_civ.name))
+  existing_region_civ = result.scalars().first()
+  if existing_region_civ:
+    raise HTTPException(status_code=400, detail="Cette région de la Côte d'Ivoire existe déjà.")
+  # Validate that the crasc_region_id exists
+  result = await db.execute(select(CrascRegion).where(CrascRegion.id == region_civ.crasc_region_id))
+  crasc_region = result.scalar_one_or_none()
+  if not crasc_region:
+    raise HTTPException(status_code=400, detail="La région CRASC spécifiée n'existe pas.")
+  
+  db_region_civ = RegionCiv(**region_civ.model_dump())
+  db.add(db_region_civ)
+  await db.commit()
+  await db.refresh(db_region_civ)
+  return db_region_civ
+
+@crasc_router.get("/region-civ", response_model=list[RegionCiv], status_code=status.HTTP_200_OK)
+async def get_region_civs(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(RegionCiv).order_by(desc(RegionCiv.name)))
+    region_civs = result.scalars().all()
+    return region_civs
 
 ######################
 # CrascRegion Endpoints
@@ -42,21 +83,57 @@ async def create_crasc_region(crasc_region: CrascRegionCreate, db: AsyncSession 
 
 @crasc_router.get("/region-crasc", response_model=list[CrascRegionRead], status_code=status.HTTP_200_OK)
 async def get_crasc_regions(db: AsyncSession = Depends(get_db)):
-    """ Get all CRASC regions with their OSCs. """
+    """ Get all CRASC regions. """
 
     result = await db.execute(select(CrascRegion).order_by(desc(CrascRegion.name)))
     crasc_regions = result.scalars().all()
     return crasc_regions
 
-@crasc_router.get("/region-crasc/{region_id}", response_model=CrascRegionReadWithOscs, status_code=status.HTTP_200_OK)
-async def get_crasc_region_with_oscs(region_id: int, db: AsyncSession = Depends(get_db)):
-  result = await db.execute(
-      select(CrascRegion).options(selectinload(CrascRegion.oscs)).where(CrascRegion.id == region_id)
-  )
-  region = result.scalars().first()
-  if not region:
-    raise HTTPException(status_code=404, detail="Region CRASC non trouvé.")
-  return region
+#@crasc_router.get("/region-crasc/{region_id}", response_model=CrascRegionReadWithOscs, status_code=status.HTTP_200_OK)
+#async def get_crasc_region_with_oscs(region_id: int, db: AsyncSession = Depends(get_db)):
+#  result = await db.execute(
+#      select(CrascRegion).options(selectinload(CrascRegion.oscs)).where(CrascRegion.id == region_id)
+#  )
+#  region = result.scalars().first()
+#  if not region:
+#    raise HTTPException(status_code=404, detail="Region CRASC non trouvé.")
+#  return region
+
+# Get a Crasc Region by slug
+@crasc_router.get("/region-crasc/{crasc_slug}", response_model=CrascRegionRead, status_code=status.HTTP_200_OK)
+async def get_crasc_region_by_slug(crasc_slug: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(CrascRegion).where(CrascRegion.slug == crasc_slug)
+    )
+    region = result.scalars().first()
+    if not region:
+        raise HTTPException(status_code=404, detail="Region CRASC non trouvé.")
+    return region
+
+# Get OSCs for a Crasc Region by slug
+@crasc_router.get("/region-crasc/{crasc_slug}/oscs", response_model=CrascRegionReadWithOscs, status_code=status.HTTP_200_OK)
+async def get_crasc_region_with_oscs_by_slug(crasc_slug: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(CrascRegion).options(selectinload(CrascRegion.oscs)).where(CrascRegion.slug == crasc_slug)
+    )
+    region = result.scalars().first()
+    if not region:
+        raise HTTPException(status_code=404, detail="Region CRASC non trouvé.")
+    return region
+
+# Get OSCs and RegionCivs for a Crasc Region by slug
+@crasc_router.get("/region-crasc/{crasc_slug}/details", response_model=CrascRegionReadWithOscsAndRegionCivs, status_code=status.HTTP_200_OK)
+async def get_crasc_region_with_oscs_and_regioncivs_by_slug(crasc_slug: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(CrascRegion)
+        .options(selectinload(CrascRegion.oscs))
+        .options(selectinload(CrascRegion.regions_civ))
+        .where(CrascRegion.slug == crasc_slug)
+    )
+    region = result.scalars().first()
+    if not region:
+        raise HTTPException(status_code=404, detail="Region CRASC non trouvé.")
+    return region
 
 ######################
 # OscType Endpoints. GET all/single, POST -> OK. Remaining PATCH, DELETE

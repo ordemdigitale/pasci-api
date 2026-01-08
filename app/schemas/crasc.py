@@ -2,22 +2,50 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
+######################
+# Schemas for RegionCiv
+######################
+class RegionCivBase(BaseModel):
+  name: str
+  crasc_region_id: int
+
+class RegionCivCreate(RegionCivBase):
+  pass
+
+class RegionCivRead(RegionCivBase):
+  id: int
+  class Config:
+    from_attributes = True
+
+######################
 # Schemas for CRASC Region
+######################
 class CrascRegionBase(BaseModel):
   name: str
+  slug: Optional[str] = None
   description: Optional[str] = None
+  osc_count: Optional[int] = 0
 
 class CrascRegionCreate(CrascRegionBase):
   pass
 
 class CrascRegionRead(CrascRegionBase):
   id: int
+  order: Optional[int] = None
   class Config:
     from_attributes = True
 
 class CrascRegionReadWithOscs(CrascRegionBase):
   id: int
   oscs: Optional[List["OscRead"]] = []
+  class Config:
+    from_attributes = True
+
+# Crasc region with oscs and region civs
+class CrascRegionReadWithOscsAndRegionCivs(CrascRegionBase):
+  id: int
+  oscs: Optional[List["OscRead"]] = []
+  regions_civ: Optional[List[RegionCivRead]] = []
   class Config:
     from_attributes = True
 
