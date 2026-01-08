@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.api.v1.endpoints.auth import auth_router
 from app.api.v1.endpoints.users import users_router
-from app.api.v1.endpoints.items import item_router
 from app.api.v1.endpoints.news import news_router
 from app.api.v1.endpoints.jobs import jobs_router
 from app.api.v1.endpoints.crasc import crasc_router
@@ -35,6 +34,5 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(crasc_router, prefix="/api/v1/crasc", tags=["crasc"])
-app.include_router(item_router, prefix="/api/v1/items", tags=["items"])
 app.include_router(news_router, prefix="/api/v1/news", tags=["news"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
