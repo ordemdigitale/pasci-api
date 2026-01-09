@@ -21,7 +21,8 @@ from app.schemas.crasc import (
   CrascRegionCreate,
   CrascRegionRead,
   CrascRegionReadWithOscs,
-  CrascRegionReadWithOscsAndRegionCivs
+  CrascRegionReadWithOscsAndRegionCivs,
+  CrascRegionUpdate
 )
 from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc
 
@@ -132,8 +133,26 @@ async def get_crasc_region_with_oscs_and_regioncivs_by_slug(crasc_slug: str, db:
     )
     region = result.scalars().first()
     if not region:
-        raise HTTPException(status_code=404, detail="Region CRASC non trouvé.")
+        raise HTTPException(status_code=404, detail="Region CRASC non trouvée.")
     return region
+
+# CrascRegion update
+@crasc_router.patch("/region-crasc/{crasc_slug}", response_model=CrascRegionRead, status_code=status.HTTP_200_OK)
+async def update_crasc_region_by_slug(crasc_slug: str, crasc_region_update: CrascRegionUpdate, db: AsyncSession = Depends(get_db)) -> CrascRegion:
+   # fetch existing resource by slug
+   result = await db.execute(select(CrascRegion).where(CrascRegion.slug == crasc_slug))
+   db_crasc_region = result.scalars().first()
+   if not db_crasc_region:
+      raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Région CRASC non trouvée.")
+   # extract fields provided in the request (exclude unset ones)
+   update_data = crasc_region_update.model_dump(exclude_unset=True)
+   # update the database object attributes
+   for key, value in update_data.items():
+      setattr(db_crasc_region, key, value)
+   # persist changes
+   await db.commit()
+   await db.refresh(db_crasc_region)
+   return db_crasc_region
 
 ######################
 # OscType Endpoints. GET all/single, POST -> OK. Remaining PATCH, DELETE

@@ -41,6 +41,12 @@ class CrascRegionReadWithOscs(CrascRegionBase):
   class Config:
     from_attributes = True
 
+class CrascRegionUpdate(BaseModel):
+  name: Optional[str] = None
+  description: Optional[str] = None
+  order: Optional[int] = None
+  osc_count: Optional[int] = None
+
 # Crasc region with oscs and region civs
 class CrascRegionReadWithOscsAndRegionCivs(CrascRegionBase):
   id: int
