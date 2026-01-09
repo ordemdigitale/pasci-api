@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Optional, List
@@ -8,6 +8,7 @@ from app.database.session import get_db
 from app.schemas.crasc import (
   RegionCivCreate,
   RegionCivRead,
+  RegionCivReadWithCrascRegion,
   OscTypeBase,
   OscTypeCreate,
   OscTypeRead,
@@ -60,9 +61,12 @@ async def create_region_civ_with_crasc(region_civ: RegionCivCreate, db: AsyncSes
   await db.refresh(db_region_civ)
   return db_region_civ
 
-@crasc_router.get("/region-civ", response_model=list[RegionCiv], status_code=status.HTTP_200_OK)
+@crasc_router.get("/region-civ", response_model=list[RegionCivReadWithCrascRegion], status_code=status.HTTP_200_OK)
 async def get_region_civs(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(RegionCiv).order_by(desc(RegionCiv.name)))
+    #result = await db.execute(select(RegionCiv).order_by(desc(RegionCiv.name)))
+    result = await db.execute(
+        select(RegionCiv).options(joinedload(RegionCiv.crasc_region))
+    )
     region_civs = result.scalars().all()
     return region_civs
 

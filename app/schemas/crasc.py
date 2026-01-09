@@ -12,8 +12,15 @@ class RegionCivBase(BaseModel):
 class RegionCivCreate(RegionCivBase):
   pass
 
+
 class RegionCivRead(RegionCivBase):
   id: int
+  class Config:
+    from_attributes = True
+
+class RegionCivReadWithCrascRegion(RegionCivBase):
+  id: int
+  crasc_region: "CrascRegionRead"
   class Config:
     from_attributes = True
 
