@@ -27,7 +27,7 @@ class CrascRegionBase(BaseModel):
   osc_count: Optional[int] = 0
 
 class CrascRegionCreate(CrascRegionBase):
-  pass
+  order: Optional[int] = None
 
 class CrascRegionRead(CrascRegionBase):
   id: int
