@@ -68,7 +68,6 @@ class OscType(SQLModel, table=True):
   id: int = Field(default=None, primary_key=True)
   name: str = Field(index=True, unique=True)
   description: Optional[str] = None
-
   oscs: List["Osc"] = Relationship(back_populates="type_osc")
   
   # Representation in admin/logs
@@ -117,7 +116,10 @@ class NewsArticles(SQLModel, table=True):
    content: str = Field(sa_column=Column(String, nullable=True), description="Content of the news article")
    preview_text: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True), description="Preview text of the article")
    author: Optional[str] = Field(default=None, max_length=100)
-   publication_date: Optional[datetime] = Field(default_factory=datetime.utcnow)
+   publication_date: Optional[datetime] = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+   )
    image_url: Optional[str] = Field(default=None, max_length=2048, description="ImageKit public URL")
 
    osc_id: int = Field(foreign_key="osc.id")

@@ -126,3 +126,45 @@ class OscReadWithCrascRegionAndOscType(OscBase):
   region: CrascRegionRead
   class Config:
     from_attributes = True
+
+
+#################
+# Schemas for OSC News Article
+#################
+class NewsArticleBase(BaseModel):
+  title: str
+  content: Optional[str] = None
+  preview_text: Optional[str] = None
+  author: Optional[str] = None
+  publication_date: Optional[datetime] = None
+  image_url: Optional[str] = None
+  osc_id: int
+  is_published: bool = False
+
+class NewsArticleCreate(NewsArticleBase):
+  pass
+
+class NewsArticleCreateWithOsc():
+  pass
+class NewsArticleCreateWithCrasc():
+  pass
+
+class NewsArticleUpdate(BaseModel):
+  title: Optional[str] = None
+  content: Optional[str] = None
+  preview_text: Optional[str] = None
+  author: Optional[str] = None
+  publication_date: Optional[datetime] = None
+  image_url: Optional[str] = None
+  osc_id: Optional[int] = None
+  is_published: Optional[bool] = None
+
+class NewsArticleRead(NewsArticleBase):
+  id: int
+  created_at: datetime
+  updated_at: datetime
+  class Config:
+    from_attributes = True
+
+class NewsArticleReadWithOsc(NewsArticleRead):
+    osc: OscRead

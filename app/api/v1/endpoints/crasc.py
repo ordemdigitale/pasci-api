@@ -13,6 +13,7 @@ from app.schemas.crasc import (
   OscTypeCreate,
   OscTypeRead,
   OscTypeReadWithOscs,
+  OscTypeUpdate,
   OscCreate,
   OscRead,
   OscReadWithCrascRegionAndOscType,
@@ -23,9 +24,12 @@ from app.schemas.crasc import (
   CrascRegionRead,
   CrascRegionReadWithOscs,
   CrascRegionReadWithOscsAndRegionCivs,
-  CrascRegionUpdate
+  CrascRegionUpdate,
+  NewsArticleCreate,
+  NewsArticleRead,
+  NewsArticleReadWithOsc
 )
-from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc
+from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc, NewsArticles
 
 crasc_router = APIRouter()
 
@@ -228,7 +232,7 @@ async def create_osc(osc: OscCreate, db: AsyncSession = Depends(get_db)) -> Osc:
     crasc_region_result = await db.execute(select(CrascRegion).where(CrascRegion.id == osc.region_id))
     crasc_region = crasc_region_result.scalar_one_or_none()
     if not crasc_region:
-      raise HTTPException(status_code=400, detail="La région CRASC spécifiée n'existe pas.")
+      raise HTTPException(status_code=400, detail="Le CRASC spécifiée n'existe pas.")
 
     db_osc = Osc(**osc.model_dump())
     db.add(db_osc)
@@ -275,3 +279,25 @@ async def get_osc_with_region_and_type(osc_id: int, db: AsyncSession = Depends(g
     type=OscTypeRead.model_validate(osc.type_osc.model_dump()),
     region=CrascRegionRead.model_validate(osc.region_crasc.model_dump())
   )
+
+###############
+# NewsArticle Enpoints
+###############
+# Create News article (check for duplicate news title) and assign to OSC
+@crasc_router.post("/osc-news", response_model=NewsArticleRead, status_code=status.HTTP_201_CREATED)
+async def create_news_article_with_osc(article: NewsArticleCreate, db: AsyncSession = Depends(get_db)) -> NewsArticles:
+  # Check for duplicate name
+  result = await db.execute(select(NewsArticles).where(NewsArticles.title == article.title))
+  existing_news_article = result.scalars().first()
+  if existing_news_article:
+    raise HTTPException(status_code=404, detail="Cette actualité existe déjà.")
+  # Validate that the osc_id exists
+  result = await db.execute(select(Osc).where(Osc.id == article.osc_id))
+  osc = result.scalar_one_or_none()
+  if not osc:
+    raise HTTPException(status_code=400, detail="L'OSC' spécifiée n'existe pas.")
+  db_article = NewsArticles(**article.model_dump())
+  db.add(db_article)
+  await db.commit()
+  await db.refresh(db_article)
+  return db_article
