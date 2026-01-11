@@ -5,7 +5,7 @@ from sqlalchemy import Column, DateTime, String, func
 from sqlmodel import SQLModel, Field, Relationship
 
 
-class News(SQLModel, table=True):
+class News(SQLModel):
    """ Represents a news article in the database. """
    id: UUID = Field(default_factory=uuid4, primary_key=True, index=True, description="Unique news article identifier")
    # Core News Information

@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from sqlmodel import Field
 
 ######################
 # Schemas for RegionCiv
@@ -11,7 +12,6 @@ class RegionCivBase(BaseModel):
 
 class RegionCivCreate(RegionCivBase):
   pass
-
 
 class RegionCivRead(RegionCivBase):
   id: int
@@ -168,3 +168,35 @@ class NewsArticleRead(NewsArticleBase):
 
 class NewsArticleReadWithOsc(NewsArticleRead):
     osc: OscRead
+
+
+#################
+# Schemas for News
+#################
+class NewsBase(BaseModel):
+  title: str
+  content: Optional[str] = None
+  # IDs are optional in the base so they can be omitted in Create/Read if needed
+  osc_id: Optional[int] = Field(default=None, foreign_key="osc.id")
+  crasc_id: Optional[int] = Field(default=None, foreign_key="crascregion.id")
+
+class NewsCreate(NewsBase):
+    pass
+
+class NewsRead(NewsBase):
+  id: int
+  class Config:
+    from_attributes = True
+
+class NewsReadWithCrascAndOsc(NewsBase):
+  id: int
+  crasc: Optional[CrascRegionRead] = None
+  osc: Optional[OscRead] = None
+  class Config:
+    from_attributes = True
+
+class NewsUpdate(BaseModel):
+  title: Optional[str] = None
+  content: Optional[str] = None
+  osc_id: Optional[int] = None
+  crasc_id: Optional[int] = None

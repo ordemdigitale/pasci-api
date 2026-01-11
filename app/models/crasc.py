@@ -5,7 +5,6 @@ from sqlalchemy import Column, String, DateTime, func
 from sqlalchemy.event import listens_for
 from typing import Optional, List
 import slugify, re
-from app.models.news import News
 
 # Base tables (lookup tables to avoid circular imports)
 class CrascRegion(SQLModel, table=True):
@@ -28,6 +27,7 @@ class CrascRegion(SQLModel, table=True):
   # Relationships
   regions_civ: List["RegionCiv"] = Relationship(back_populates="crasc_region")
   oscs: List["Osc"] = Relationship(back_populates="region_crasc")
+  news_items: List["News"] = Relationship(back_populates="crasc")
 
   # Event listener for before insert to generate slug
   def __init__(self, **kwargs):
@@ -102,6 +102,7 @@ class Osc(SQLModel, table=True):
 
   # Relationships
   news_articles: List["NewsArticles"] = Relationship(back_populates="osc")
+  news_items: List["News"] = Relationship(back_populates="osc")
 
   # Representation in admin/logs
   def __repr__(self) -> str:
@@ -142,3 +143,18 @@ class NewsArticles(SQLModel, table=True):
    # Representation in admin/logs
    def __repr__(self) -> str:
       return f"<NewsArticle: {self.title}>"
+   
+##############
+# News Model #
+class News(SQLModel, table=True):
+  id: int = Field(default=None, primary_key=True, index=True, description="Identifiant unique de l'actualité.")
+  title: str = Field(max_length=250, nullable=False, description="Titre de l'actualité.")
+  
+  # Optional Foreign Keys
+  osc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="osc.id")
+  crasc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="crascregion.id")
+  
+  # Relationships
+  # These allow you to access news.osc or news.crasc directly
+  osc: Optional[Osc] = Relationship(back_populates="news_items")
+  crasc: Optional[CrascRegion] = Relationship(back_populates="news_items")

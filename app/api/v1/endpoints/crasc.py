@@ -27,9 +27,12 @@ from app.schemas.crasc import (
   CrascRegionUpdate,
   NewsArticleCreate,
   NewsArticleRead,
-  NewsArticleReadWithOsc
+  NewsArticleReadWithOsc,
+  NewsCreate,
+  NewsRead,
+  NewsReadWithCrascAndOsc
 )
-from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc, NewsArticles
+from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc, NewsArticles, News
 
 crasc_router = APIRouter()
 
@@ -301,3 +304,43 @@ async def create_news_article_with_osc(article: NewsArticleCreate, db: AsyncSess
   await db.commit()
   await db.refresh(db_article)
   return db_article
+
+###############
+# News Enpoints
+###############
+@crasc_router.post("/news", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
+async def create_news(news: NewsCreate, db: AsyncSession = Depends(get_db)) -> News:
+  # Check for duplicate news title
+  result = await db.execute(select(News).where(News.title == news.title))
+  existing_news = result.scalars().first()
+  if existing_news:
+    raise HTTPException(status_code=404, detail="Cette actualité existe déjà.")
+  
+  db_news = News(**news.model_dump())
+  db.add(db_news)
+  await db.commit()
+  await db.refresh(db_news)
+  return db_news
+
+@crasc_router.get("/news-with-crasc-and-osc", response_model=List[NewsReadWithCrascAndOsc], status_code=status.HTTP_200_OK)
+async def get_news_with_crasc_and_osc(
+  db: AsyncSession = Depends(get_db), skip: int = 0, limit: int = 100,
+  crasc_id: Optional[int] = None, osc_id: Optional[int] = None
+):
+  """ Get all News with their optional crasc region and osc. Optional filtering by crasc_id and osc_id. """
+  statement = select(News).options(selectinload(News.crasc), selectinload(News.osc)).offset(skip).limit(limit).order_by(desc(News.id))
+
+  if crasc_id:
+    statement = statement.where(News.crasc_id == crasc_id)
+  if osc_id:
+    statement = statement.where(News.osc_id == osc_id)
+  result = await db.execute(statement)
+  all_news = result.scalars().all()
+  return all_news
+  #  NewsReadWithCrascAndOsc(
+  #    **news.model_dump(),
+  #    crasc=CrascRegionRead.model_validate(news.crasc.model_dump()),
+  #    osc=OscRead.model_validate(news.osc.model_dump())
+  #  )
+  #  for news in all_news
+  #]
