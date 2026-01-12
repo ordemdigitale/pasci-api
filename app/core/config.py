@@ -18,6 +18,9 @@ class Settings(BaseSettings):
   POSTGRES_HOST: str = "localhost"
   POSTGRES_PORT: str = "5432"
   POSTGRES_DB: str = "pascidb"
+  
+  # Uploads directory
+  UPLOAD_DIR: str = "uploads/images"
 
   # Construct DATABASE_URL
   @property

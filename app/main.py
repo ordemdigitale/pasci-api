@@ -1,6 +1,8 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 import logging
 from app.core.config import settings
@@ -17,6 +19,10 @@ from app.api.v1.endpoints.crasc import crasc_router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create the directory once when the app starts
+if not os.path.exists(settings.UPLOAD_DIR):
+  os.makedirs(settings.UPLOAD_DIR)
+
 # Create FastAPI app with lifespan
 app = FastAPI(
   title=settings.PROJECT_NAME,
@@ -25,6 +31,8 @@ app = FastAPI(
   debug=settings.DEBUG,
   lifespan=app_lifespan,
 )
+
+app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 
 # CORS middleware
 app.add_middleware(
@@ -45,6 +53,6 @@ app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 @app.get("/")
 async def root():
   return {
-    "message": "FastAPI with Modern Lifespan Events",
+    "message": "API pour le projet PASCI",
     "status": "running"
   }

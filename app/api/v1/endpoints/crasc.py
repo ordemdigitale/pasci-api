@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import os, shutil, uuid
+from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import Optional, List
+from typing import Optional, List, Annotated
 
+from app.core.config import settings
 from app.database.session import get_db
 from app.schemas.crasc import (
   RegionCivCreate,
@@ -308,15 +310,64 @@ async def create_news_article_with_osc(article: NewsArticleCreate, db: AsyncSess
 ###############
 # News Enpoints
 ###############
+#@crasc_router.post("/news", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
+#async def create_news(news: NewsCreate, db: AsyncSession = Depends(get_db)) -> News:
+#  # Check for duplicate news title
+#  result = await db.execute(select(News).where(News.title == news.title))
+#  existing_news = result.scalars().first()
+#  if existing_news:
+#    raise HTTPException(status_code=404, detail="Cette actualité existe déjà.")
+#  
+#  db_news = News(**news.model_dump())
+#  db.add(db_news)
+#  await db.commit()
+#  await db.refresh(db_news)
+#  return db_news
+
 @crasc_router.post("/news", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
-async def create_news(news: NewsCreate, db: AsyncSession = Depends(get_db)) -> News:
+async def create_news(
+   title: str = Form(...),
+   thumbnail: Optional[UploadFile] = File(None),
+   crasc_id: str = Form(""),
+   osc_id: str = Form(""),
+   db: AsyncSession = Depends(get_db)
+):
+  # convert empty strings to None
+  crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
+  osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
+  if thumbnail and thumbnail.filename:
+    # User uploaded image: generate unique name and save
+    file_extension = thumbnail.filename.split(".")[-1]
+    # check for the extension to ensure users only upload images
+    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
+    if file_extension.lower() not in allowed_extensions:
+      raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Format d'image invalide. Les formts valides sont: {allowed_extensions}.")
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+
+    with open(file_path, "wb") as buffer:
+      shutil.copyfileobj(thumbnail.file, buffer)
+
+    saved_path = filename
+  else:
+    # No file uploaded, use the default filename defined in your model
+    saved_path = "default.png"
+  
+  # Create the database record
+  news_create = News(
+    title=title,
+    crasc_id=crasc_id_int,
+    osc_id=osc_id_int,
+    thumbnail_path=saved_path
+  )
+    
   # Check for duplicate news title
-  result = await db.execute(select(News).where(News.title == news.title))
+  result = await db.execute(select(News).where(News.title == news_create.title))
   existing_news = result.scalars().first()
   if existing_news:
     raise HTTPException(status_code=404, detail="Cette actualité existe déjà.")
   
-  db_news = News(**news.model_dump())
+  db_news = News(**news_create.model_dump())
   db.add(db_news)
   await db.commit()
   await db.refresh(db_news)
@@ -337,10 +388,3 @@ async def get_news_with_crasc_and_osc(
   result = await db.execute(statement)
   all_news = result.scalars().all()
   return all_news
-  #  NewsReadWithCrascAndOsc(
-  #    **news.model_dump(),
-  #    crasc=CrascRegionRead.model_validate(news.crasc.model_dump()),
-  #    osc=OscRead.model_validate(news.osc.model_dump())
-  #  )
-  #  for news in all_news
-  #]

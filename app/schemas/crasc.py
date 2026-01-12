@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from typing import Optional, List
 from datetime import datetime
 from sqlmodel import Field
@@ -176,9 +176,15 @@ class NewsArticleReadWithOsc(NewsArticleRead):
 class NewsBase(BaseModel):
   title: str
   content: Optional[str] = None
+  thumbnail_path: Optional[str] = None
   # IDs are optional in the base so they can be omitted in Create/Read if needed
   osc_id: Optional[int] = Field(default=None, foreign_key="osc.id")
   crasc_id: Optional[int] = Field(default=None, foreign_key="crascregion.id")
+  @computed_field
+  @property
+  def thumbnail_url(self) -> str:
+    """Constructs the full URL path for the frontend"""
+    return f"/static/{self.thumbnail_path}"
 
 class NewsCreate(NewsBase):
     pass

@@ -149,6 +149,7 @@ class NewsArticles(SQLModel, table=True):
 class News(SQLModel, table=True):
   id: int = Field(default=None, primary_key=True, index=True, description="Identifiant unique de l'actualité.")
   title: str = Field(max_length=250, nullable=False, description="Titre de l'actualité.")
+  thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
   
   # Optional Foreign Keys
   osc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="osc.id")
