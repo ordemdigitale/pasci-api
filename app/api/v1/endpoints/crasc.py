@@ -1,5 +1,5 @@
 import os, shutil, uuid
-from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form
+from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Request
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -388,3 +388,51 @@ async def get_news_with_crasc_and_osc(
   result = await db.execute(statement)
   all_news = result.scalars().all()
   return all_news
+
+# News where crasc data is not null endpoint
+@crasc_router.get("/news-crasc-related", response_model=List[NewsReadWithCrascAndOsc], status_code=status.HTTP_200_OK)
+async def get_crasc_related_news(
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get news articles that are related to CRASC (crasc_id is not null)
+    """
+    query = (
+        select(News)
+        .where(News.crasc_id.is_not(None))  # Filter news with crasc_id
+        .options(
+            joinedload(News.crasc),  # Eager load crasc relationship
+            joinedload(News.osc)     # Eager load osc relationship
+        )
+        .offset(skip)
+        .limit(limit)
+        .order_by(News.id.desc())  # Most recent first
+    )
+    
+    result = await db.execute(query)
+    news_items = result.unique().scalars().all()
+    return news_items
+
+# Spotlight news per crasc: single (lastest) news per crasc
+@crasc_router.get("/news-spotlight-per-crasc", response_model=List[NewsReadWithCrascAndOsc], status_code=status.HTTP_200_OK)
+async def get_spotlight_news_per_crasc(
+  db: AsyncSession = Depends(get_db)
+):
+  """
+  Get spotlight news - one news per CRASC (optimized single query)
+  """
+  # Using DISTINCT ON for PostgreSQL (most efficient)
+  query = (
+    select(News)
+    .distinct(News.crasc_id)  # PostgreSQL specific
+    .where(News.crasc_id.is_not(None))
+    .options(joinedload(News.crasc), joinedload(News.osc))
+    .order_by(News.crasc_id, News.id.desc())  # Important: crasc_id first for DISTINCT ON
+  )
+  
+  result = await db.execute(query)
+  news_items = result.unique().scalars().all()
+
+  return news_items
