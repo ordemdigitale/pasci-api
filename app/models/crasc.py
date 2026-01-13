@@ -1,7 +1,7 @@
 # models/crasc.py (Model name CRASC + related models)
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, String, DateTime, func
+from sqlalchemy import Column, String, DateTime, func, TEXT
 from sqlalchemy.event import listens_for
 from typing import Optional, List
 import slugify, re
@@ -149,7 +149,9 @@ class NewsArticles(SQLModel, table=True):
 class News(SQLModel, table=True):
   id: int = Field(default=None, primary_key=True, index=True, description="Identifiant unique de l'actualité.")
   title: str = Field(max_length=250, nullable=False, description="Titre de l'actualité.")
+  content: Optional[str] = Field(sa_column=Column(TEXT, nullable=True), description="Le corps de l'article.")
   thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
+  slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True, description="URL-friendly version du titre.")
   
   # Optional Foreign Keys
   osc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="osc.id")
@@ -159,3 +161,9 @@ class News(SQLModel, table=True):
   # These allow you to access news.osc or news.crasc directly
   osc: Optional[Osc] = Relationship(back_populates="news_items")
   crasc: Optional[CrascRegion] = Relationship(back_populates="news_items")
+
+  # Event listener for before insert to generate slug
+  def __init__(self, **kwargs):
+    super().__init__(**kwargs)
+    if self.title and not self.slug:
+      self.slug = slugify.slugify(self.title)

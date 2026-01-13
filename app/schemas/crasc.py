@@ -175,6 +175,7 @@ class NewsArticleReadWithOsc(NewsArticleRead):
 #################
 class NewsBase(BaseModel):
   title: str
+  slug: Optional[str] = None
   content: Optional[str] = None
   thumbnail_path: Optional[str] = None
   # IDs are optional in the base so they can be omitted in Create/Read if needed

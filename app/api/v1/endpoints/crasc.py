@@ -327,6 +327,7 @@ async def create_news_article_with_osc(article: NewsArticleCreate, db: AsyncSess
 @crasc_router.post("/news", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
 async def create_news(
    title: str = Form(...),
+   content: Optional[str] = Form(None),
    thumbnail: Optional[UploadFile] = File(None),
    crasc_id: str = Form(""),
    osc_id: str = Form(""),
@@ -341,7 +342,18 @@ async def create_news(
     # check for the extension to ensure users only upload images
     allowed_extensions = ["jpg", "jpeg", "png", "webp"]
     if file_extension.lower() not in allowed_extensions:
-      raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Format d'image invalide. Les formts valides sont: {allowed_extensions}.")
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+          "type": "validation_error",
+          "errors": [
+            {
+              "field": "thumbnail",
+              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+            }
+          ]
+        }
+      )
     filename = f"{uuid.uuid4()}.{file_extension}"
     file_path = os.path.join(settings.UPLOAD_DIR, filename)
 
@@ -356,6 +368,7 @@ async def create_news(
   # Create the database record
   news_create = News(
     title=title,
+    content=content,
     crasc_id=crasc_id_int,
     osc_id=osc_id_int,
     thumbnail_path=saved_path
@@ -365,13 +378,38 @@ async def create_news(
   result = await db.execute(select(News).where(News.title == news_create.title))
   existing_news = result.scalars().first()
   if existing_news:
-    raise HTTPException(status_code=404, detail="Cette actualité existe déjà.")
-  
-  db_news = News(**news_create.model_dump())
-  db.add(db_news)
-  await db.commit()
-  await db.refresh(db_news)
-  return db_news
+    raise HTTPException(
+      status_code=status.HTTP_409_CONFLICT,
+      detail={
+        "type": "duplicate_error",
+        "errors": [
+          {
+            "field": "title",
+            "message": "Une actualité avec ce titre existe déjà. Veuillez choisir un titre différent."
+          }
+        ]
+      }
+    )
+  try:
+    db_news = News(**news_create.model_dump())
+    db.add(db_news)
+    await db.commit()
+    await db.refresh(db_news)
+    return db_news
+  except Exception as e:
+      await db.rollback()
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={
+          "type": "database_error",
+          "errors": [
+            {
+              "field": "database",
+              "message": f"Erreur lors de la création: {str(e)}"
+            }
+          ]
+        }
+      )
 
 @crasc_router.get("/news-with-crasc-and-osc", response_model=List[NewsReadWithCrascAndOsc], status_code=status.HTTP_200_OK)
 async def get_news_with_crasc_and_osc(
