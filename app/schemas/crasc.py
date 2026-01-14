@@ -8,28 +8,33 @@ from sqlmodel import Field
 ######################
 class RegionCivBase(BaseModel):
   name: str
-  crasc_region_id: int
+  crasc_id: Optional[int] = Field(default=None, foreign_key="crascregion.id")
 
 class RegionCivCreate(RegionCivBase):
   pass
 
 class RegionCivRead(RegionCivBase):
   id: int
+  slug: Optional[str] = None
   class Config:
     from_attributes = True
 
 class RegionCivReadWithCrascRegion(RegionCivBase):
   id: int
-  crasc_region: "CrascRegionRead"
+  slug: Optional[str] = None
+  crasc_region: Optional["CrascRegionRead"]
   class Config:
     from_attributes = True
+
+class RegionCivUpdate(BaseModel):
+  name: Optional[str] = None
+  crasc_id: Optional[int] = None
 
 ######################
 # Schemas for CRASC Region
 ######################
 class CrascRegionBase(BaseModel):
   name: str
-  slug: Optional[str] = None
   description: Optional[str] = None
   osc_count: Optional[int] = 0
 
@@ -38,6 +43,7 @@ class CrascRegionCreate(CrascRegionBase):
 
 class CrascRegionRead(CrascRegionBase):
   id: int
+  slug: Optional[str] = None
   order: Optional[int] = None
   class Config:
     from_attributes = True
@@ -93,11 +99,17 @@ class OscTypeUpdate(BaseModel):
 class OscBase(BaseModel):
   name: str
   description: Optional[str] = None
+  thumbnail_path: Optional[str] = None
   type_id: int
   region_id: int
   latitude: Optional[float] = None
   longitude: Optional[float] = None
   address: Optional[str] = None
+  @computed_field
+  @property
+  def thumbnail_url(self) -> str:
+    """Constructs the full URL path for the frontend"""
+    return f"http://localhost:8000/static/{self.thumbnail_path}"
 
 class OscCreate(OscBase):
   """ Input schema for creating a new OSC. """
@@ -105,6 +117,7 @@ class OscCreate(OscBase):
 
 class OscRead(OscBase):
   id: int
+  slug: Optional[str] = None
   class Config:
     from_attributes = True
 
@@ -126,49 +139,6 @@ class OscReadWithCrascRegionAndOscType(OscBase):
   region: CrascRegionRead
   class Config:
     from_attributes = True
-
-
-#################
-# Schemas for OSC News Article
-#################
-class NewsArticleBase(BaseModel):
-  title: str
-  content: Optional[str] = None
-  preview_text: Optional[str] = None
-  author: Optional[str] = None
-  publication_date: Optional[datetime] = None
-  image_url: Optional[str] = None
-  osc_id: int
-  is_published: bool = False
-
-class NewsArticleCreate(NewsArticleBase):
-  pass
-
-class NewsArticleCreateWithOsc():
-  pass
-class NewsArticleCreateWithCrasc():
-  pass
-
-class NewsArticleUpdate(BaseModel):
-  title: Optional[str] = None
-  content: Optional[str] = None
-  preview_text: Optional[str] = None
-  author: Optional[str] = None
-  publication_date: Optional[datetime] = None
-  image_url: Optional[str] = None
-  osc_id: Optional[int] = None
-  is_published: Optional[bool] = None
-
-class NewsArticleRead(NewsArticleBase):
-  id: int
-  created_at: datetime
-  updated_at: datetime
-  class Config:
-    from_attributes = True
-
-class NewsArticleReadWithOsc(NewsArticleRead):
-    osc: OscRead
-
 
 #################
 # Schemas for News

@@ -1,10 +1,18 @@
 # models/crasc.py (Model name CRASC + related models)
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, String, DateTime, func, TEXT
+from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer
 from sqlalchemy.event import listens_for
 from typing import Optional, List
 import slugify, re
+
+class BaseModel(SQLModel):
+  """ Base model that contains basic fields """
+  #int
+  #slug
+  #created_at
+  #updated_at
+  pass
 
 # Base tables (lookup tables to avoid circular imports)
 class CrascRegion(SQLModel, table=True):
@@ -25,7 +33,9 @@ class CrascRegion(SQLModel, table=True):
     sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
   )
   # Relationships
-  regions_civ: List["RegionCiv"] = Relationship(back_populates="crasc_region")
+  regions_civ: List["RegionCiv"] = Relationship(
+    back_populates="crasc_region"
+  )
   oscs: List["Osc"] = Relationship(back_populates="region_crasc")
   news_items: List["News"] = Relationship(back_populates="crasc")
 
@@ -44,10 +54,13 @@ class RegionCiv(SQLModel, table=True):
   """ Représente une région administrative de la Côte d'Ivoire dans la base de données. """
   id: int = Field(default=None, primary_key=True)
   name: str = Field(nullable=False, max_length=100, unique=True, description="Nom d'une région de la Côte d'Ivoire")
-  # Foreign key to CrascRegion
-  crasc_region_id: int = Field(foreign_key="crascregion.id")
-  # Relationship: one RegionCiv belongs to one CrascRegion
-  crasc_region: CrascRegion = Relationship(back_populates="regions_civ")
+  
+  # Optional ForeignKey to CrascRegion with ON DELETE SET NULL
+  crasc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="crascregion.id")
+  # Optional Relationship: one RegionCiv belongs to one or zero CrascRegion
+  crasc_region: Optional[CrascRegion] = Relationship(back_populates="regions_civ")
+
+  slug: Optional[str] = Field(default=None, nullable=True, max_length=40, unique=True)
 
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
@@ -57,6 +70,12 @@ class RegionCiv(SQLModel, table=True):
     default_factory=lambda: datetime.now(timezone.utc),
     sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
   )
+
+  # Event listener for before insert to generate slug
+  def __init__(self, **kwargs):
+    super().__init__(**kwargs)
+    if self.name and not self.slug:
+      self.slug = slugify.slugify(self.name)
 
   # Representation in admin/logs
   def __repr__(self) -> str:
@@ -76,10 +95,13 @@ class OscType(SQLModel, table=True):
   
 
 class Osc(SQLModel, table=True):
-  """ Represents an OSC (Organisation de la Société Civile) in the database. """
+  """ Represente une OSC (Organisation de la Société Civile) dans la base de données. """
   id: int = Field(default=None, primary_key=True)
   name: str = Field(index=True, unique=True)
   description: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True))
+  thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
+
+  slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True, description="Slug de la région CRASC")
 
   type_id: int = Field(foreign_key="osctype.id")
   type_osc: OscType = Relationship(back_populates="oscs")
@@ -101,49 +123,18 @@ class Osc(SQLModel, table=True):
   )
 
   # Relationships
-  news_articles: List["NewsArticles"] = Relationship(back_populates="osc")
   news_items: List["News"] = Relationship(back_populates="osc")
+
+  # Event listener for before insert to generate slug
+  def __init__(self, **kwargs):
+    super().__init__(**kwargs)
+    if self.name and not self.slug:
+      self.slug = slugify.slugify(self.name)
 
   # Representation in admin/logs
   def __repr__(self) -> str:
     return f"<Nome de l'OSC: {self.name}>"
   
-
-class NewsArticles(SQLModel, table=True):
-   """ Represents a news article in the database. """
-   id: int = Field(default=None, primary_key=True, index=True, description="Unique news article identifier")
-   # Core News Information
-   title: str = Field(max_length=250, nullable=False, description="Title of the news article")
-   content: str = Field(sa_column=Column(String, nullable=True), description="Content of the news article")
-   preview_text: Optional[str] = Field(default=None, sa_column=Column(String, nullable=True), description="Preview text of the article")
-   author: Optional[str] = Field(default=None, max_length=100)
-   publication_date: Optional[datetime] = Field(
-    default_factory=lambda: datetime.now(timezone.utc),
-    sa_column=Column(DateTime(timezone=True), server_default=func.now()),
-   )
-   image_url: Optional[str] = Field(default=None, max_length=2048, description="ImageKit public URL")
-
-   osc_id: int = Field(foreign_key="osc.id")
-   osc: Osc = Relationship(back_populates="news_articles")
-
-   # Status Fields
-   is_published: bool = Field(default=False)
-   status: str = Field(default="draft", max_length=20) # e.g., 'draft', 'published', 'archived'
-
-   # Timestamps (auto-managed)
-   created_at: datetime = Field(
-      default_factory=lambda: datetime.now(timezone.utc),
-      sa_column=Column(DateTime(timezone=True), server_default=func.now()),
-   )
-   updated_at: datetime = Field(
-    default_factory=lambda: datetime.now(timezone.utc),
-    sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
-  )
-   
-   # Representation in admin/logs
-   def __repr__(self) -> str:
-      return f"<NewsArticle: {self.title}>"
-   
 ##############
 # News Model #
 class News(SQLModel, table=True):

@@ -1,4 +1,4 @@
-import os, shutil, uuid
+import os, shutil, uuid, slugify
 from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Request
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
@@ -11,6 +11,7 @@ from app.schemas.crasc import (
   RegionCivCreate,
   RegionCivRead,
   RegionCivReadWithCrascRegion,
+  RegionCivUpdate,
   OscTypeBase,
   OscTypeCreate,
   OscTypeRead,
@@ -27,73 +28,185 @@ from app.schemas.crasc import (
   CrascRegionReadWithOscs,
   CrascRegionReadWithOscsAndRegionCivs,
   CrascRegionUpdate,
-  NewsArticleCreate,
-  NewsArticleRead,
-  NewsArticleReadWithOsc,
   NewsCreate,
   NewsRead,
   NewsReadWithCrascAndOsc
 )
-from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc, NewsArticles, News
+from app.models.crasc import RegionCiv, CrascRegion, OscType, Osc, News
 
 crasc_router = APIRouter()
 
 ######################
 # RegionCivs Endpoints
 ######################
-
-#@crasc_router.post("/region-civ", response_model=RegionCiv, status_code=status.HTTP_201_CREATED)
-#async def create_region_civ(region_civ: RegionCiv, db: AsyncSession = Depends(get_db)) -> RegionCiv:
-#    db_region_civ = RegionCiv(**region_civ.model_dump())
-#    db.add(db_region_civ)
-#    await db.commit()
-#    await db.refresh(db_region_civ)
-#    return db_region_civ
-
-# Create RegionCiv (check for duplicate region civ name) and assign to CrascRegion
 @crasc_router.post("/region-civ-with-crasc", response_model=RegionCivRead, status_code=status.HTTP_201_CREATED)
-async def create_region_civ_with_crasc(region_civ: RegionCivCreate, db: AsyncSession = Depends(get_db)) -> RegionCiv:
-  # Check for duplicate name
-  result = await db.execute(select(RegionCiv).where(RegionCiv.name == region_civ.name))
-  existing_region_civ = result.scalars().first()
-  if existing_region_civ:
-    raise HTTPException(status_code=400, detail="Cette région de la Côte d'Ivoire existe déjà.")
-  # Validate that the crasc_region_id exists
-  result = await db.execute(select(CrascRegion).where(CrascRegion.id == region_civ.crasc_region_id))
-  crasc_region = result.scalar_one_or_none()
-  if not crasc_region:
-    raise HTTPException(status_code=400, detail="La région CRASC spécifiée n'existe pas.")
-  
-  db_region_civ = RegionCiv(**region_civ.model_dump())
-  db.add(db_region_civ)
-  await db.commit()
-  await db.refresh(db_region_civ)
-  return db_region_civ
+async def create_region_civ(
+  name: str = Form(...),
+  crasc_id: str = Form(""),
+  db: AsyncSession = Depends(get_db)
+):
+  # convert empty strings to None
+  crasc_region_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
+  # Create the database record
+  regionciv_create = RegionCiv(
+     name=name,
+     crasc_id=crasc_region_id_int
+  )
+  # Check for duplicate region civ name
+  result = await db.execute(select(RegionCiv).where(RegionCiv.name == regionciv_create.name))
+  existing_regionciv = result.scalars().first()
+  if existing_regionciv:
+    raise HTTPException(
+      status_code=status.HTTP_409_CONFLICT,
+      detail={
+        "type": "duplicate_error",
+        "errors": [
+          {
+            "field": "name",
+            "message": "Une région avec ce nom existe déjà. Veuillez choisir un nom différent."
+          }
+        ]
+      }
+    )
+  try:
+    db_regionciv = RegionCiv(**regionciv_create.model_dump())
+    db.add(db_regionciv)
+    await db.commit()
+    await db.refresh(db_regionciv)
+    return db_regionciv
+  except Exception as e:
+      await db.rollback()
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={
+          "type": "database_error",
+          "errors": [
+            {
+              "field": "database",
+              "message": f"Erreur lors de la création: {str(e)}"
+            }
+          ]
+        }
+      )
+
 
 @crasc_router.get("/region-civ", response_model=list[RegionCivReadWithCrascRegion], status_code=status.HTTP_200_OK)
 async def get_region_civs(db: AsyncSession = Depends(get_db)):
-    #result = await db.execute(select(RegionCiv).order_by(desc(RegionCiv.name)))
-    result = await db.execute(
-        select(RegionCiv).options(joinedload(RegionCiv.crasc_region))
-    )
-    region_civs = result.scalars().all()
-    return region_civs
+  #result = await db.execute(select(RegionCiv).order_by(desc(RegionCiv.name)))
+  result = await db.execute(
+      select(RegionCiv).options(joinedload(RegionCiv.crasc_region))
+  )
+  region_civs = result.scalars().all()
+  return region_civs
 
-######################
-# CrascRegion Endpoints
-######################
+
+# get single record by slug
+@crasc_router.get("/region-civ/{regionciv_slug}", response_model=RegionCivReadWithCrascRegion, status_code=status.HTTP_200_OK)
+async def get_region_civ_by_slug(regionciv_slug: str, db: AsyncSession = Depends(get_db)):
+  result = await db.execute(
+    select(RegionCiv).where(RegionCiv.slug == regionciv_slug).options(selectinload(RegionCiv.crasc_region))
+  )
+  region = result.scalars().first()
+  if not region:
+    raise HTTPException(status_code=404, detail="Région non trouvée.")
+  return region
+
+# update record by slug
+@crasc_router.patch("/region-civ/{regionciv_slug}", response_model=RegionCivReadWithCrascRegion, status_code=status.HTTP_200_OK)
+async def update_region_civ_by_slug(regionciv_slug: str, regionciv_update: RegionCivUpdate, db: AsyncSession = Depends(get_db)):
+  # fetch existing resource by slug
+  result = await db.execute(
+    select(RegionCiv).where(RegionCiv.slug == regionciv_slug).options(selectinload(RegionCiv.crasc_region))
+  )
+  region_civ = result.scalars().first()
+  if not region_civ:
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Région non trouvée.")
+  # extract fields provided in the request (exclude unset ones)
+  update_data = regionciv_update.model_dump(exclude_unset=True)
+  # update the database object attributes
+  for key, value in update_data.items():
+    setattr(region_civ, key, value)
+  # update slug if name changed
+  if "name" in update_data:
+     region_civ.slug = slugify.slugify(region_civ.name)
+
+  # persist changes
+  await db.commit()
+  await db.refresh(region_civ)
+  return region_civ
+
+# delete record by slug
+
+#################
+# Crasc Endpoints
+#################
 @crasc_router.post("/region-crasc", response_model=CrascRegionRead, status_code=status.HTTP_201_CREATED)
-async def create_crasc_region(crasc_region: CrascRegionCreate, db: AsyncSession = Depends(get_db)) -> CrascRegion:
-    # Check for duplicate name
-    result = await db.execute(select(CrascRegion).where(CrascRegion.name == crasc_region.name))
-    existing_crasc_region = result.scalars().first()
-    if existing_crasc_region:
-      raise HTTPException(status_code=400, detail="Cette région CRASC existe déjà.")
-    db_crasc_region = CrascRegion(**crasc_region.model_dump())
-    db.add(db_crasc_region)
-    await db.commit()
-    await db.refresh(db_crasc_region)
-    return db_crasc_region
+async def create_crasc(
+   name: str = Form(...),
+   description: Optional[str] = Form(None),
+   osc_count: str = Form(""),
+   db: AsyncSession = Depends(get_db)
+):
+   # convert empty strings to None
+   osc_count_int = int(osc_count) if osc_count and osc_count != "" else None
+   # create the database record
+   crasc_create = CrascRegion(
+      name=name,
+      description=description,
+      osc_count=osc_count_int
+   )
+   # check for duplicate crasc name
+   result = await db.execute(
+      select(CrascRegion).where(CrascRegion.name == crasc_create.name)
+   )
+   existing_crasc = result.scalars().first()
+   if existing_crasc:
+      raise HTTPException(
+         status_code=status.HTTP_409_CONFLICT,
+         detail={
+            "type": "duplicate_error",
+            "errors": [
+              {
+                "field": "name",
+                "message": f"{existing_crasc.name} existe déjà. Veuillez choisir un nom différent."
+              }
+            ]
+         }
+      )
+   try:
+      db_crasc = CrascRegion(**crasc_create.model_dump())
+      db.add(db_crasc)
+      await db.commit()
+      await db.refresh(db_crasc)
+      return db_crasc
+   except Exception as e:
+      await db.rollback()
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail={
+          "type": "database_error",
+          "errors": [
+            {
+              "field": "database",
+              "message": f"Erreur lors de la création: {str(e)}"
+            }
+          ]
+        }
+      )
+
+#@crasc_router.post("/region-crasc", response_model=CrascRegionRead, status_code=status.HTTP_201_CREATED)
+#async def create_crasc_region(crasc_region: CrascRegionCreate, db: AsyncSession = Depends(get_db)) -> CrascRegion:
+#    # Check for duplicate name
+#    result = await db.execute(select(CrascRegion).where(CrascRegion.name == crasc_region.name))
+#    existing_crasc_region = result.scalars().first()
+#    if existing_crasc_region:
+#      raise HTTPException(status_code=400, detail="Cette région CRASC existe déjà.")
+#    db_crasc_region = CrascRegion(**crasc_region.model_dump())
+#    db.add(db_crasc_region)
+#    await db.commit()
+#    await db.refresh(db_crasc_region)
+#    return db_crasc_region
+
 
 @crasc_router.get("/region-crasc", response_model=list[CrascRegionRead], status_code=status.HTTP_200_OK)
 async def get_crasc_regions(db: AsyncSession = Depends(get_db)):
@@ -156,16 +269,36 @@ async def update_crasc_region_by_slug(crasc_slug: str, crasc_region_update: Cras
    result = await db.execute(select(CrascRegion).where(CrascRegion.slug == crasc_slug))
    db_crasc_region = result.scalars().first()
    if not db_crasc_region:
-      raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Région CRASC non trouvée.")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Région CRASC non trouvée.")
    # extract fields provided in the request (exclude unset ones)
    update_data = crasc_region_update.model_dump(exclude_unset=True)
    # update the database object attributes
    for key, value in update_data.items():
-      setattr(db_crasc_region, key, value)
+    setattr(db_crasc_region, key, value)
    # persist changes
    await db.commit()
    await db.refresh(db_crasc_region)
    return db_crasc_region
+
+
+@crasc_router.delete("/region-crasc/{crasc_slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_crasc_region_by_slug(crasc_slug: str, db: AsyncSession = Depends(get_db)):
+  """
+  Delete a CRASC.
+  This will set crasc_regio_id to NULL for related RegionCiv records.
+  """
+  # Find crasc region
+  result = await db.execute(select(CrascRegion).where(CrascRegion.slug == crasc_slug))
+  crasc_region = result.scalar_one_or_none()
+  if not crasc_region:
+    raise HTTPException(
+       status_code=status.HTTP_404_NOT_FOUND,
+       detail="CRASC non trouvé."
+    )
+  #result = await db.execute(select(RegionCiv).where(RegionCiv.crasc_region.slug == crasc_slug))
+  # Delete the crasc
+  await db.delete(crasc_region)
+  await db.commit()
 
 ######################
 # OscType Endpoints. GET all/single, POST -> OK. Remaining PATCH, DELETE
@@ -220,30 +353,117 @@ async def get_osc_type(osc_type_id: int, db: AsyncSession = Depends(get_db)):
 #    await db.commit()
 #    await db.refresh(db_osc)
 #    return db_osc
-
 @crasc_router.post("/osc", response_model=OscRead, status_code=status.HTTP_201_CREATED)
-async def create_osc(osc: OscCreate, db: AsyncSession = Depends(get_db)) -> Osc:
-    # Check for duplicate name
-    osc_name_result = await db.execute(select(Osc).where(Osc.name == osc.name))
-    existing_osc = osc_name_result.scalars().first()
-    if existing_osc:
-      raise HTTPException(status_code=400, detail="Cette OSC existe déjà.")
-    # Validate that the type_id exists
-    osc_type_result = await db.execute(select(OscType).where(OscType.id == osc.type_id))
-    osc_type = osc_type_result.scalar_one_or_none()
-    if not osc_type:  
-      raise HTTPException(status_code=400, detail="Le type de OSC spécifié n'existe pas.")
-    # Validate that the region_id exists
-    crasc_region_result = await db.execute(select(CrascRegion).where(CrascRegion.id == osc.region_id))
-    crasc_region = crasc_region_result.scalar_one_or_none()
-    if not crasc_region:
-      raise HTTPException(status_code=400, detail="Le CRASC spécifiée n'existe pas.")
+async def create_osc(
+  name: str = Form(...),
+  description: Optional[str] = Form(None),
+  thumbnail: Optional[UploadFile] = File(None),
+  type_id: str = Form(""),
+  region_id: str = Form(""),
+  db: AsyncSession = Depends(get_db)
+):
+  # convert empty strings to None
+  type_id_int = int(type_id) if type_id and type_id != "" else None
+  region_id_int = int(region_id) if region_id and region_id != "" else None
+  
+  if thumbnail and thumbnail.filename:
+    # User uploaded image: generate unique name and save
+    file_extension = thumbnail.filename.split(".")[-1]
+    # check for the extension to ensure users only upload images
+    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
+    if file_extension.lower() not in allowed_extensions:
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+          "type": "validation_error",
+          "errors": [
+            {
+              "field": "thumbnail",
+              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+            }
+          ]
+        }
+      )
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(settings.UPLOAD_DIR, filename)
 
-    db_osc = Osc(**osc.model_dump())
-    db.add(db_osc)
+    with open(file_path, "wb") as buffer:
+      shutil.copyfileobj(thumbnail.file, buffer)
+
+    saved_path = filename
+  else:
+    # No file uploaded, use the default filename defined in your model
+    saved_path = "default.png"
+  
+  # Create the database record
+  db_osc = Osc(
+    name=name,
+    description=description,
+    thumbnail_path=saved_path,
+    type_id=type_id_int,
+    region_id=region_id_int,
+  )
+    
+  # Check for duplicate osc name
+  result = await db.execute(select(Osc).where(Osc.name == db_osc.name))
+  existing_news = result.scalars().first()
+  if existing_news:
+    raise HTTPException(
+      status_code=status.HTTP_409_CONFLICT,
+      detail={
+        "type": "duplicate_error",
+        "errors": [
+          {
+            "field": "name",
+            "message": "Une OSC avec ce nom existe déjà. Veuillez choisir un nom différent."
+          }
+        ]
+      }
+    )
+  try:
+    osc_create = Osc(**db_osc.model_dump())
+    db.add(osc_create)
     await db.commit()
-    await db.refresh(db_osc)
-    return db_osc
+    await db.refresh(osc_create)
+    return osc_create
+  except Exception as e:
+    await db.rollback()
+    raise HTTPException(
+      status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+      detail={
+        "type": "database_error",
+        "errors": [
+          {
+            "field": "database",
+            "message": f"Erreur lors de la création: {str(e)}"
+          }
+        ]
+      }
+    )
+
+#@crasc_router.post("/osc", response_model=OscRead, status_code=status.HTTP_201_CREATED)
+#async def create_osc(osc: OscCreate, db: AsyncSession = Depends(get_db)) -> Osc:
+#    # Check for duplicate name
+#    osc_name_result = await db.execute(select(Osc).where(Osc.name == osc.name))
+#    existing_osc = osc_name_result.scalars().first()
+#    if existing_osc:
+#      raise HTTPException(status_code=400, detail="Cette OSC existe déjà.")
+#    # Validate that the type_id exists
+#    osc_type_result = await db.execute(select(OscType).where(OscType.id == osc.type_id))
+#    osc_type = osc_type_result.scalar_one_or_none()
+#    if not osc_type:  
+#      raise HTTPException(status_code=400, detail="Le type de OSC spécifié n'existe pas.")
+#    # Validate that the region_id exists
+#    crasc_region_result = await db.execute(select(CrascRegion).where(CrascRegion.id == osc.region_id))
+#    crasc_region = crasc_region_result.scalar_one_or_none()
+#    if not crasc_region:
+#      raise HTTPException(status_code=400, detail="Le CRASC spécifiée n'existe pas.")
+#
+#    db_osc = Osc(**osc.model_dump())
+#    db.add(db_osc)
+#    await db.commit()
+#    await db.refresh(db_osc)
+#    return db_osc
 
 @crasc_router.get("/osc-with-region-and-type", response_model=List[OscReadWithCrascRegionAndOscType], status_code=status.HTTP_200_OK)
 async def get_oscs_with_region_and_type(
@@ -286,44 +506,8 @@ async def get_osc_with_region_and_type(osc_id: int, db: AsyncSession = Depends(g
   )
 
 ###############
-# NewsArticle Enpoints
-###############
-# Create News article (check for duplicate news title) and assign to OSC
-@crasc_router.post("/osc-news", response_model=NewsArticleRead, status_code=status.HTTP_201_CREATED)
-async def create_news_article_with_osc(article: NewsArticleCreate, db: AsyncSession = Depends(get_db)) -> NewsArticles:
-  # Check for duplicate name
-  result = await db.execute(select(NewsArticles).where(NewsArticles.title == article.title))
-  existing_news_article = result.scalars().first()
-  if existing_news_article:
-    raise HTTPException(status_code=404, detail="Cette actualité existe déjà.")
-  # Validate that the osc_id exists
-  result = await db.execute(select(Osc).where(Osc.id == article.osc_id))
-  osc = result.scalar_one_or_none()
-  if not osc:
-    raise HTTPException(status_code=400, detail="L'OSC' spécifiée n'existe pas.")
-  db_article = NewsArticles(**article.model_dump())
-  db.add(db_article)
-  await db.commit()
-  await db.refresh(db_article)
-  return db_article
-
-###############
 # News Enpoints
 ###############
-#@crasc_router.post("/news", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
-#async def create_news(news: NewsCreate, db: AsyncSession = Depends(get_db)) -> News:
-#  # Check for duplicate news title
-#  result = await db.execute(select(News).where(News.title == news.title))
-#  existing_news = result.scalars().first()
-#  if existing_news:
-#    raise HTTPException(status_code=404, detail="Cette actualité existe déjà.")
-#  
-#  db_news = News(**news.model_dump())
-#  db.add(db_news)
-#  await db.commit()
-#  await db.refresh(db_news)
-#  return db_news
-
 @crasc_router.post("/news", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
 async def create_news(
    title: str = Form(...),
@@ -336,6 +520,7 @@ async def create_news(
   # convert empty strings to None
   crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
   osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
+
   if thumbnail and thumbnail.filename:
     # User uploaded image: generate unique name and save
     file_extension = thumbnail.filename.split(".")[-1]
