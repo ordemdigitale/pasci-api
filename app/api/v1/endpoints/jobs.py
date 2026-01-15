@@ -9,7 +9,7 @@ from app.schemas.jobs import JobsCreate, JobsRead
 
 jobs_router = APIRouter()
 
-@jobs_router.post("/", response_model=JobsRead, status_code=status.HTTP_201_CREATED)
+@jobs_router.post("", response_model=JobsRead, status_code=status.HTTP_201_CREATED)
 async def create_job(job: JobsCreate, db: AsyncSession = Depends(get_db)) -> Jobs:
   db_job = Jobs(**job.model_dump())
   db.add(db_job)
@@ -18,7 +18,7 @@ async def create_job(job: JobsCreate, db: AsyncSession = Depends(get_db)) -> Job
   return db_job
 
 
-@jobs_router.get("/", response_model=List[JobsRead], status_code=status.HTTP_200_OK)
+@jobs_router.get("", response_model=List[JobsRead], status_code=status.HTTP_200_OK)
 async def get_jobs(db: AsyncSession = Depends(get_db)):
   result = await db.execute(select(Jobs).order_by(desc(Jobs.publication_date)))
   jobs = result.scalars().all()

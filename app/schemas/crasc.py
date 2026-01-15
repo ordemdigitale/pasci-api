@@ -3,74 +3,64 @@ from typing import Optional, List
 from datetime import datetime
 from sqlmodel import Field
 
-######################
-# Schemas for RegionCiv
-######################
-class RegionCivBase(BaseModel):
-  name: str
-  crasc_id: Optional[int] = Field(default=None, foreign_key="crascregion.id")
 
-class RegionCivCreate(RegionCivBase):
-  pass
-
-class RegionCivRead(RegionCivBase):
-  id: int
-  slug: Optional[str] = None
-  class Config:
-    from_attributes = True
-
-class RegionCivReadWithCrascRegion(RegionCivBase):
-  id: int
-  slug: Optional[str] = None
-  crasc_region: Optional["CrascRegionRead"]
-  class Config:
-    from_attributes = True
-
-class RegionCivUpdate(BaseModel):
-  name: Optional[str] = None
-  crasc_id: Optional[int] = None
-
-######################
-# Schemas for CRASC Region
-######################
-class CrascRegionBase(BaseModel):
+# CRASC Schemas
+class CrascBase(BaseModel):
   name: str
   description: Optional[str] = None
   osc_count: Optional[int] = 0
 
-class CrascRegionCreate(CrascRegionBase):
-  order: Optional[int] = None
+class CrascCreate(CrascBase):
+  pass
 
-class CrascRegionRead(CrascRegionBase):
+class CrascRead(CrascBase):
   id: int
   slug: Optional[str] = None
-  order: Optional[int] = None
   class Config:
     from_attributes = True
 
-class CrascRegionReadWithOscs(CrascRegionBase):
+class CrascReadDetail(CrascBase):
   id: int
+  slug: Optional[str] = None
   oscs: Optional[List["OscRead"]] = []
+  regions: Optional[List["RegionRead"]] = []
+  news: Optional[List["NewsRead"]] = []
   class Config:
     from_attributes = True
 
-class CrascRegionUpdate(BaseModel):
+class CrascUpdate(BaseModel):
   name: Optional[str] = None
   description: Optional[str] = None
-  order: Optional[int] = None
   osc_count: Optional[int] = None
 
-# Crasc region with oscs and region civs
-class CrascRegionReadWithOscsAndRegionCivs(CrascRegionBase):
+
+#Region Schemas
+class RegionBase(BaseModel):
+  name: str
+  crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id")
+
+class RegionCreate(RegionBase):
+  pass
+
+class RegionRead(RegionBase):
   id: int
-  oscs: Optional[List["OscRead"]] = []
-  regions_civ: Optional[List[RegionCivRead]] = []
+  slug: Optional[str] = None
   class Config:
     from_attributes = True
 
-######################
-# Schemas for OSC Type
-######################
+class RegionReadDetail(RegionBase):
+  id: int
+  slug: Optional[str] = None
+  crasc: Optional["CrascRead"]
+  class Config:
+    from_attributes = True
+
+class RegionUpdate(BaseModel):
+  name: Optional[str] = None
+  crasc_id: Optional[int] = None
+
+
+#OscType Schemas
 class OscTypeBase(BaseModel):
   name: str
   description: Optional[str] = None
@@ -80,11 +70,13 @@ class OscTypeCreate(OscTypeBase):
 
 class OscTypeRead(OscTypeBase):
   id: int
+  slug: Optional[str] = None
   class Config:
     from_attributes = True
 
-class OscTypeReadWithOscs(OscTypeBase):
+class OscTypeReadDetail(OscTypeBase):
   id: int
+  slug: Optional[str] = None
   oscs: Optional[list["OscRead"]] = []
   class Config:
     from_attributes = True
@@ -93,15 +85,14 @@ class OscTypeUpdate(BaseModel):
   name: Optional[str] = None
   description: Optional[str] = None
 
-#################
-# Schemas for OSC
-#################
+
+#Osc Schemas
 class OscBase(BaseModel):
   name: str
   description: Optional[str] = None
   thumbnail_path: Optional[str] = None
-  type_id: int
-  region_id: int
+  type_id: Optional[int] = Field(default=None, foreign_key="osctype.id") 
+  region_id: Optional[int] = Field(default=None, foreign_key="region.id") 
   latitude: Optional[float] = None
   longitude: Optional[float] = None
   address: Optional[str] = None
@@ -112,7 +103,6 @@ class OscBase(BaseModel):
     return f"http://localhost:8000/static/{self.thumbnail_path}"
 
 class OscCreate(OscBase):
-  """ Input schema for creating a new OSC. """
   pass
 
 class OscRead(OscBase):
@@ -121,31 +111,26 @@ class OscRead(OscBase):
   class Config:
     from_attributes = True
 
-class OscReadWithOscType(OscBase):
+class OscReadDetail(OscBase):
   id: int
-  type: OscTypeRead
+  slug: Optional[str] = None
+  type: Optional[OscTypeRead] = None
+  crasc: Optional[CrascRead] = None
+  news_items: Optional[List["NewsRead"]] = []
   class Config:
     from_attributes = True
+    
+class OscUpdate(BaseModel):
+  name: Optional[str] = None
+  description: Optional[str] = None
+  type_id: Optional[int] = None
+  crasc_id: Optional[int] = None
+  address: Optional[str] = None
 
-class OscReadWithCrascRegion(OscBase):
-  id: int
-  region: CrascRegionRead
-  class Config:
-    from_attributes = True
 
-class OscReadWithCrascRegionAndOscType(OscBase):
-  id: int
-  type: OscTypeRead
-  region: CrascRegionRead
-  class Config:
-    from_attributes = True
-
-#################
-# Schemas for News
-#################
+#News Schemas
 class NewsBase(BaseModel):
   title: str
-  slug: Optional[str] = None
   content: Optional[str] = None
   thumbnail_path: Optional[str] = None
   # IDs are optional in the base so they can be omitted in Create/Read if needed
@@ -162,12 +147,14 @@ class NewsCreate(NewsBase):
 
 class NewsRead(NewsBase):
   id: int
+  slug: Optional[str] = None
   class Config:
     from_attributes = True
 
-class NewsReadWithCrascAndOsc(NewsBase):
+class NewsReadDetail(NewsBase):
   id: int
-  crasc: Optional[CrascRegionRead] = None
+  slug: Optional[str] = None
+  crasc: Optional[CrascRead] = None
   osc: Optional[OscRead] = None
   class Config:
     from_attributes = True

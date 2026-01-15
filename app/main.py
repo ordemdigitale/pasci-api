@@ -12,6 +12,7 @@ from app.api.v1.endpoints.auth import auth_router
 from app.api.v1.endpoints.users import users_router
 from app.api.v1.endpoints.jobs import jobs_router
 from app.api.v1.endpoints.crasc import crasc_router
+from app.api.v1.endpoints.hero import hero_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,6 +47,7 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(crasc_router, prefix="/api/v1/crasc", tags=["crasc"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(hero_router, prefix="/api/v1/super-hero", tags=["heroes"])
 
 @app.get("/")
 async def root():
