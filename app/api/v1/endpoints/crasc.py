@@ -774,24 +774,25 @@ async def delete_team(news_slug: str, db: AsyncSession = Depends(get_db)):
   await db.delete(news)
   await db.commit()
   return None
+
 ## Special GET: Spotlight news per crasc: single (lastest) news per crasc
-#@crasc_router.get("/news-spotlight-crasc", response_model=List[NewsReadDetail], status_code=status.HTTP_200_OK)
-#async def get_spotlight_news_per_crasc(
-#  db: AsyncSession = Depends(get_db)
-#):
-#  """
-#  Get spotlight news - one news per CRASC (optimized single query)
-#  """
-#  # Using DISTINCT ON for PostgreSQL (most efficient)
-#  query = (
-#    select(News)
-#    .distinct(News.crasc_id)  # PostgreSQL specific
-#    .where(News.crasc_id.is_not(None))
-#    .options(joinedload(News.crasc), joinedload(News.osc))
-#    .order_by(News.crasc_id, News.id.desc())  # Important: crasc_id first for DISTINCT ON
-#  )
-#  
-#  result = await db.execute(query)
-#  news_items = result.unique().scalars().all()
-#
-#  return news_items
+@crasc_router.get("/news-spotlight-crasc", response_model=List[NewsReadDetail], status_code=status.HTTP_200_OK)
+async def get_spotlight_news_per_crasc(
+  db: AsyncSession = Depends(get_db)
+):
+  """
+  Get spotlight news - one news per CRASC (optimized single query)
+  """
+  # Using DISTINCT ON for PostgreSQL (most efficient)
+  query = (
+    select(News)
+    .distinct(News.crasc_id)  # PostgreSQL specific
+    .where(News.crasc_id.is_not(None))
+    .options(joinedload(News.crasc), joinedload(News.osc))
+    .order_by(News.crasc_id, News.id.desc())  # Important: crasc_id first for DISTINCT ON
+  )
+  
+  result = await db.execute(query)
+  news_items = result.unique().scalars().all()
+
+  return news_items
