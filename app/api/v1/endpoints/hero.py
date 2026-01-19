@@ -1,7 +1,3 @@
-# create: POST
-# read: GET
-# update: PATCH
-# delete: DELETE
 import slugify
 from fastapi import APIRouter, HTTPException, status, Depends, Form
 from sqlalchemy.orm import selectinload, joinedload

@@ -747,21 +747,33 @@ async def get_all_news(
   return all_news
 
 
-@crasc_router.get("/news/{news_slug}", response_model=list[NewsReadDetail], status_code=status.HTTP_200_OK)
+@crasc_router.get("/news/{news_slug}", response_model=NewsReadDetail, status_code=status.HTTP_200_OK)
 async def get_single_news_item(
    news_slug: str,
    db: AsyncSession = Depends(get_db)
 ):
-   result = await db.execute(
-      select(News).options(selectinload(News.crasc), selectinload(News.osc)).where(News.slug == news_slug)
+   query = select(News).where(News.slug == news_slug).options(
+      selectinload(News.crasc),
+      selectinload(News.osc)
    )
-   news = result.scalars().all()
+   result = await db.execute(query)
+   news = result.scalar_one_or_none()
+   if not news:
+      raise HTTPException(
+         status_code=status.HTTP_404_NOT_FOUND,
+         detail="Actualité non trouvée."
+      )
    return news
+#   result = await db.execute(
+#      select(News).options(selectinload(News.crasc), selectinload(News.osc)).where(News.slug == news_slug)
+#   )
+#   news = result.scalars().all()
+#   return news
 
 # update
 
 @crasc_router.delete("/news/{news_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_team(news_slug: str, db: AsyncSession = Depends(get_db)):
+async def delete_news(news_slug: str, db: AsyncSession = Depends(get_db)):
   # find news item by slug
   result = await db.execute(select(News).where(News.slug == news_slug))
   news = result.scalar_one_or_none()
@@ -769,7 +781,7 @@ async def delete_team(news_slug: str, db: AsyncSession = Depends(get_db)):
   if not news:
     raise HTTPException(
       status_code=status.HTTP_404_NOT_FOUND,
-      detail=f"Team {news_slug} not found."
+      detail=f"Article {news_slug} non trouvé."
     )
   await db.delete(news)
   await db.commit()
