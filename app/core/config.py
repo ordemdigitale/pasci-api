@@ -9,9 +9,27 @@ class Settings(BaseSettings):
   # Project
   PROJECT_NAME: str = "PASCI API"
   DESCRIPTION: str = "API REST pour la plateforme des CRASC"
+  DEBUG: bool = True
   
   # Database
-  DATABASE_URL: Optional[str] = None
+  #DATABASE_URL: Optional[str] = None
+  POSTGRES_USER: str = "postgres"
+  POSTGRES_PASSWORD: str = "admin123"
+  POSTGRES_HOST: str = "localhost"
+  POSTGRES_PORT: str = "5432"
+  POSTGRES_DB: str = "pascidb"
+  
+  # Uploads directory
+  UPLOAD_DIR: str = "uploads/images"
+
+  # Construct DATABASE_URL
+  @property
+  def DATABASE_URL(self) -> str:
+    return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+  
+  @property
+  def ASYNC_DATABASE_URL(self) -> str:
+    return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
   # Security
   SECRET_KEY: Optional[str] = None

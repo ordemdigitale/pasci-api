@@ -1,8 +1,8 @@
-"""Updated Osc.news_articles relationship
+"""added employer to Jobs model updated
 
-Revision ID: 7a02bc97aaec
-Revises: 4c74f30560c0
-Create Date: 2025-12-28 16:17:02.562145
+Revision ID: 375fd6b35d31
+Revises: 7d530ab089ea
+Create Date: 2026-01-20 15:19:21.968845
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '7a02bc97aaec'
-down_revision: Union[str, Sequence[str], None] = '4c74f30560c0'
+revision: str = '375fd6b35d31'
+down_revision: Union[str, Sequence[str], None] = '7d530ab089ea'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

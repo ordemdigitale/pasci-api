@@ -1,36 +1,52 @@
 # app/core/database/session.py | Database session management
-from sqlmodel import SQLModel
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 from app.core.config import settings
+import logging
 
+from sqlmodel import SQLModel
 
-# Create async engine for Neon DB (critical!)
-# Convert postgresql:// to postgresql+asyncpg://
-async_database_url = settings.DATABASE_URL.replace(
-    "postgresql://", "postgresql+asyncpg://"
-) if settings.DATABASE_URL else None
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-engine = create_async_engine(
-    async_database_url,
-    echo=False,
-    pool_pre_ping=True,
-    pool_recycle=300,  # Prevents connection timeouts with Neon
-)
+# Create Base class for models
+Base = declarative_base()
 
+try:
+    # Create async engine using the ASYNC_DATABASE_URL from settings
+    async_engine = create_async_engine(
+        settings.ASYNC_DATABASE_URL,
+        echo=settings.DEBUG,
+        future=True,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=20,
+        max_overflow=40,
+		)
+    logger.info("✅ Database engine created successfully")
+    logger.info(f"Database URL: {settings.DATABASE_URL}")
+except Exception as e:
+    logger.error(f"❌ Failed to create database engine: {e}")
+    raise
+
+# Create async session factory
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
+    bind=async_engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False,
+    autoflush=False,
 )
 
+# Dependency to get database session
 async def get_db():
     async with AsyncSessionLocal() as session:
         try:
             yield session
+        except Exception as e:
+            logger.error(f"Database session error: {e}")
+            await session.rollback()
+            raise
         finally:
             await session.close()
-
-# Async table creation
-async def create_db_and_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
