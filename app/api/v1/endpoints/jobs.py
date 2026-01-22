@@ -5,7 +5,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List
 from app.database.session import get_db
 from app.models.jobs import Jobs
-from app.schemas.jobs import JobsCreate, JobsRead
+from app.schemas.jobs import JobsCreate, JobsRead, JobsUpdate
+import slugify
 
 jobs_router = APIRouter()
 
@@ -33,3 +34,51 @@ async def get_active_jobs(db: AsyncSession = Depends(get_db)):
   )
   jobs = result.scalars().all()
   return jobs
+
+
+@jobs_router.get("/{job_slug}", response_model=JobsRead, status_code=status.HTTP_200_OK)
+async def get_single_job(job_slug: str, db: AsyncSession = Depends(get_db)):
+  result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
+  job = result.scalars().first()
+  if not job:
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvé.")
+
+  return job
+
+#update
+@jobs_router.patch("/{job_slug}", response_model=JobsRead, status_code=status.HTTP_200_OK)
+async def update_job(job_slug: str, job_update: JobsUpdate, db: AsyncSession = Depends(get_db)):
+  # fetch existing resource by slug
+  result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
+  job = result.scalars().first()
+  if not job:
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvée.")
+  # extract fields provided in the request (exclude unset ones)
+  update_data = job_update.model_dump(exclude_unset=True)
+  # update the database object attributes
+  for key, value in update_data.items():
+    setattr(job, key, value)
+  # update slug if name changed
+  if "title" in update_data:
+     job.slug = slugify.slugify(job.title)
+
+  # persist changes
+  await db.commit()
+  await db.refresh(job)
+  return job
+
+
+#delete
+@jobs_router.delete("/{job_slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(job_slug: str, db: AsyncSession = Depends(get_db)):
+  result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
+  job = result.scalar_one_or_none()
+  # raise 404 if not exist
+  if not job:
+    raise HTTPException(
+      status_code=status.HTTP_404_NOT_FOUND,
+      detail=f"Offre d'emploi non trouvé."
+    )
+  await db.delete(job)
+  await db.commit()
+  return None

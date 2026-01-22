@@ -14,6 +14,7 @@ from app.api.v1.endpoints.jobs import jobs_router
 from app.api.v1.endpoints.crasc import crasc_router
 from app.api.v1.endpoints.hero import hero_router
 from app.api.v1.endpoints.key_stats import key_stats_router
+from app.api.v1.endpoints.ptf import ptf_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +50,7 @@ app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(crasc_router, prefix="/api/v1/crasc", tags=["crasc"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(key_stats_router, prefix="/api/v1/key-stats", tags=["key-stats"])
+app.include_router(ptf_router, prefix="/api/v1/ptf", tags=["ptf"])
 app.include_router(hero_router, prefix="/api/v1/super-hero", tags=["heroes"])
 
 @app.get("/")
