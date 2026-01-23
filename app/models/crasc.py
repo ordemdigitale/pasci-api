@@ -160,6 +160,10 @@ class News(SQLModel, table=True):
   
   crasc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="crasc.id", ondelete="SET NULL")
   crasc: Optional[Crasc] = Relationship(back_populates="news_items")
+
+  # Many-to-Many relationship with Tags
+  tags: List["Tag"] = Relationship(back_populates="news_items", link_model="NewsTag")
+
   id: Optional[int] = Field(default=None, primary_key=True)
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
   created_at: datetime = Field(
