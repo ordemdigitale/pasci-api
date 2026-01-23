@@ -90,12 +90,20 @@ async def create_crasc(
 
 
 @crasc_router.get("/crasc", response_model=List[CrascReadDetail], status_code=status.HTTP_200_OK)
-async def get_crascs(db: AsyncSession = Depends(get_db)):
+async def get_crascs(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all CRASC with pagination"""
     result = await db.execute(
        select(Crasc)
        .options(selectinload(Crasc.regions))
        .options(selectinload(Crasc.oscs))
        .options(selectinload(Crasc.news_items))
+       .offset(skip)
+       .limit(limit)
+       .order_by(Crasc.name)
     )
     crasc = result.scalars().all()
     return crasc
@@ -211,12 +219,21 @@ async def create_region(
 
 
 @crasc_router.get("/region", response_model=list[RegionReadDetail], status_code=status.HTTP_200_OK)
-async def get_regions(db: AsyncSession = Depends(get_db)):
-  result = await db.execute(
-      select(Region).options(joinedload(Region.crasc))
-  )
-  region = result.scalars().all()
-  return region
+async def get_regions(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all regions with pagination"""
+    result = await db.execute(
+        select(Region)
+        .options(joinedload(Region.crasc))
+        .offset(skip)
+        .limit(limit)
+        .order_by(Region.name)
+    )
+    region = result.scalars().all()
+    return region
 
 
 @crasc_router.get("/region/{region_slug}", response_model=RegionReadDetail, status_code=status.HTTP_200_OK)
@@ -320,9 +337,18 @@ async def create_osc_type(
       )
 
 @crasc_router.get("/osc-type", response_model=List[OscTypeReadDetail], status_code=status.HTTP_200_OK)
-async def get_all_osc_type(db: AsyncSession = Depends(get_db)):
+async def get_all_osc_type(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all OSC types with pagination"""
     query = await db.execute(
-       select(OscType).options(selectinload(OscType.oscs))
+       select(OscType)
+       .options(selectinload(OscType.oscs))
+       .offset(skip)
+       .limit(limit)
+       .order_by(OscType.name)
     )
     osc_types = query.scalars().all()
     return osc_types

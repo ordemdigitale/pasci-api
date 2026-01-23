@@ -29,4 +29,5 @@ dependencies = [
     "python-slugify>=8.0.4",
     "sqladmin>=0.22.0",
     "itsdangerous>=2.2.0",
+    "pillow>=11.1.0",
 ]

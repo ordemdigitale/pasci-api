@@ -16,6 +16,9 @@ from app.api.v1.endpoints.crasc import crasc_router
 from app.api.v1.endpoints.hero import hero_router
 from app.api.v1.endpoints.key_stats import key_stats_router
 from app.api.v1.endpoints.ptf import ptf_router
+from app.api.v1.endpoints.news import news_router
+from app.api.v1.endpoints.stats import stats_router
+from app.api.v1.endpoints.search import search_router
 from app.admin.config import create_admin_panel
 
 # Configure logging
@@ -63,6 +66,9 @@ app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(key_stats_router, prefix="/api/v1/key-stats", tags=["key-stats"])
 app.include_router(ptf_router, prefix="/api/v1/ptf", tags=["ptf"])
 app.include_router(hero_router, prefix="/api/v1/super-hero", tags=["heroes"])
+app.include_router(news_router, prefix="/api/v1/news", tags=["news"])
+app.include_router(stats_router, prefix="/api/v1/stats", tags=["statistics"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 
 @app.get("/")
 async def root():

@@ -1,5 +1,5 @@
 import os, shutil, uuid, slugify
-from fastapi import APIRouter, HTTPException, UploadFile, status,  Depends, Form, File
+from fastapi import APIRouter, HTTPException, UploadFile, status,  Depends, Form, File, Query
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -109,12 +109,21 @@ async def create_ptf(
 # read: GET
 ## read all
 @ptf_router.get("", response_model=List[PtfReadWithProjets], status_code=status.HTTP_200_OK)
-async def get_ptfs(db: AsyncSession = Depends(get_db)):
-  result = await db.execute(
-    select(Ptf).options(selectinload(Ptf.projets))
-  )
-  ptfs = result.scalars().all()
-  return ptfs
+async def get_ptfs(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all PTF with pagination"""
+    result = await db.execute(
+        select(Ptf)
+        .options(selectinload(Ptf.projets))
+        .offset(skip)
+        .limit(limit)
+        .order_by(Ptf.name)
+    )
+    ptfs = result.scalars().all()
+    return ptfs
 ### read single
 @ptf_router.get("/{ptf_slug}", response_model=PtfReadWithProjets, status_code=status.HTTP_200_OK)
 async def get_ptf(ptf_slug: str, db: AsyncSession = Depends(get_db)):

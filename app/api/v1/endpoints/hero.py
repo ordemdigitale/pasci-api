@@ -1,5 +1,5 @@
 import slugify
-from fastapi import APIRouter, HTTPException, status, Depends, Form
+from fastapi import APIRouter, HTTPException, status, Depends, Form, Query
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -75,12 +75,21 @@ async def create_team(
 # read: GET
 ## read all
 @hero_router.get("/teams", response_model=list[TeamReadWithHeroes], status_code=status.HTTP_200_OK)
-async def get_teams(db: AsyncSession = Depends(get_db)):
-  result = await db.execute(
-    select(Team).options(selectinload(Team.heroes))
-  )
-  teams = result.scalars().all()
-  return teams
+async def get_teams(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all teams with pagination"""
+    result = await db.execute(
+        select(Team)
+        .options(selectinload(Team.heroes))
+        .offset(skip)
+        .limit(limit)
+        .order_by(Team.name)
+    )
+    teams = result.scalars().all()
+    return teams
 ## read single
 @hero_router.get("/teams/{team_slug}", response_model=list[TeamReadWithHeroes], status_code=status.HTTP_200_OK)
 async def get_team(team_slug: str, db: AsyncSession = Depends(get_db)):
@@ -189,12 +198,21 @@ async def create_hero(
 # read: GET
 ## read all
 @hero_router.get("/heroes", response_model=list[HeroReadWithTeam], status_code=status.HTTP_200_OK)
-async def get_heroes(db: AsyncSession = Depends(get_db)):
-  result = await db.execute(
-    select(Hero).options(joinedload(Hero.team))
-  )
-  heroes = result.scalars().all()
-  return heroes
+async def get_heroes(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all heroes with pagination"""
+    result = await db.execute(
+        select(Hero)
+        .options(joinedload(Hero.team))
+        .offset(skip)
+        .limit(limit)
+        .order_by(Hero.name)
+    )
+    heroes = result.scalars().all()
+    return heroes
 
 ## read single
 @hero_router.get("/heroes/{team_slug}", response_model=list[TeamReadWithHeroes], status_code=status.HTTP_200_OK)

@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, Query
 from sqlmodel import select, desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List
@@ -20,20 +20,39 @@ async def create_job(job: JobsCreate, db: AsyncSession = Depends(get_db)) -> Job
 
 
 @jobs_router.get("", response_model=List[JobsRead], status_code=status.HTTP_200_OK)
-async def get_jobs(db: AsyncSession = Depends(get_db)):
-  result = await db.execute(select(Jobs).order_by(desc(Jobs.publication_date)))
-  jobs = result.scalars().all()
-  return jobs
+async def get_jobs(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all jobs with pagination"""
+    result = await db.execute(
+        select(Jobs)
+        .order_by(desc(Jobs.publication_date))
+        .offset(skip)
+        .limit(limit)
+    )
+    jobs = result.scalars().all()
+    return jobs
 
 
 # Get jobs where is_expired is false
 @jobs_router.get("/active", response_model=List[JobsRead], status_code=status.HTTP_200_OK)
-async def get_active_jobs(db: AsyncSession = Depends(get_db)):
-  result = await db.execute(
-    select(Jobs).where(Jobs.is_expired == False).order_by(desc(Jobs.publication_date))
-  )
-  jobs = result.scalars().all()
-  return jobs
+async def get_active_jobs(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all active (non-expired) jobs with pagination"""
+    result = await db.execute(
+        select(Jobs)
+        .where(Jobs.is_expired == False)
+        .order_by(desc(Jobs.publication_date))
+        .offset(skip)
+        .limit(limit)
+    )
+    jobs = result.scalars().all()
+    return jobs
 
 
 @jobs_router.get("/{job_slug}", response_model=JobsRead, status_code=status.HTTP_200_OK)

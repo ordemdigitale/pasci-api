@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Form
+from fastapi import APIRouter, HTTPException, status, Depends, Form, Query
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import asc, desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -28,10 +28,20 @@ async def create_key_stat(stats: KeyStatsCreate, db: AsyncSession = Depends(get_
 # read: GET
 ## read all
 @key_stats_router.get("", response_model=List[KeyStatsRead], status_code=status.HTTP_200_OK)
-async def get_key_stats(db: AsyncSession = Depends(get_db)):
-  result = await db.execute(select(KeyStats).order_by(asc(KeyStats.id)))
-  key_stats = result.scalars().all()
-  return key_stats
+async def get_key_stats(
+    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all key statistics with pagination"""
+    result = await db.execute(
+        select(KeyStats)
+        .order_by(asc(KeyStats.id))
+        .offset(skip)
+        .limit(limit)
+    )
+    key_stats = result.scalars().all()
+    return key_stats
 
 ### read single
 @key_stats_router.get("/{key_stats_id}", response_model=KeyStatsRead, status_code=status.HTTP_200_OK)

@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/users.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -31,11 +31,18 @@ async def update_current_user_profile(
 
 @users_router.get("/", response_model=List[UserRead], status_code=status.HTTP_200_OK)
 async def get_users(
+   skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
+   limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
    current_user: User = Depends(get_current_superuser),
    db: AsyncSession = Depends(get_db)
 ):
-    """ Gett all users """
-    result = await db.execute(select(User).order_by(desc(User.date_joined)))
+    """Get all users with pagination"""
+    result = await db.execute(
+        select(User)
+        .order_by(desc(User.date_joined))
+        .offset(skip)
+        .limit(limit)
+    )
     all_users = result.scalars().all()
     return all_users
 
