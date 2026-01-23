@@ -52,3 +52,25 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class ChangePassword(BaseModel):
+  old_password: str
+  new_password: str
+
+  def validate_password(self) -> None:
+    if len(self.new_password) < 8:
+      raise ValueError("Password must be at least 8 characters long")
+
+
+class UserUpdateAdmin(BaseModel):
+  """Schema for admin to update any user"""
+  email: Optional[str] = None
+  username: Optional[str] = None
+  first_name: Optional[str] = None
+  last_name: Optional[str] = None
+  is_active: Optional[bool] = None
+  is_staff: Optional[bool] = None
+  is_superuser: Optional[bool] = None
+  avatar: Optional[str] = None
+  bio: Optional[str] = None

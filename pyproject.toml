@@ -27,4 +27,6 @@ dependencies = [
     "passlib>=1.7.4",
     "bcrypt>=4.3.0",
     "python-slugify>=8.0.4",
+    "sqladmin>=0.22.0",
+    "itsdangerous>=2.2.0",
 ]

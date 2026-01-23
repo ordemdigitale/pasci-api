@@ -5,10 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from sqlmodel import select, desc
 
-from app.core.auth import get_current_user, get_current_superuser
+from app.core.auth import get_current_user, get_current_superuser, get_current_staff_user
 from app.database.session import get_db
 from app.models.users import User
-from app.schemas.users import UserCreate, UserUpdate, UserRead
+from app.schemas.users import UserCreate, UserUpdate, UserRead, UserUpdateAdmin, ChangePassword
 from app.services.user_service import UserService
 
 users_router = APIRouter()
@@ -53,39 +53,59 @@ async def get_user_by_id(
   return user
 
 
-@users_router.post("/", response_model=UserCreate)
-async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)) -> User:
-    """ Create a new user """
-    # Check if email already exists
-    result = await db.execute(select(User).where(User.email == user.email))
-    if result.scalar_one_or_none():
-       raise HTTPException(400, "User with this e-mail already registered")
+@users_router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+async def create_user(
+   user: UserCreate,
+   db: AsyncSession = Depends(get_db),
+   current_user: User = Depends(get_current_staff_user)
+) -> User:
+    """Create a new user (staff only)"""
+    return await UserService.create_user(db, user)
 
-    db_user = User(**user.model_dump(exclude={"password"}))
-    db_user.set_password(user.password)
-    db.add(db_user)
-    await db.commit()
-    await db.refresh(db_user)
-    return db_user
+
+@users_router.put("/{user_id}", response_model=UserRead)
+async def update_user_by_admin(
+   user_id: UUID,
+   user_update: UserUpdateAdmin,
+   db: AsyncSession = Depends(get_db),
+   current_user: User = Depends(get_current_staff_user)
+):
+    """Update any user (staff only, can update permissions)"""
+    return await UserService.update_user_admin(db, user_id, user_update)
+
+
+@users_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+   user_id: UUID,
+   db: AsyncSession = Depends(get_db),
+   current_user: User = Depends(get_current_superuser)
+):
+    """Delete a user (superuser only)"""
+    await UserService.delete_user(db, user_id)
+    return None
+
+
+@users_router.post("/me/change-password")
+async def change_my_password(
+   password_data: ChangePassword,
+   current_user: User = Depends(get_current_user),
+   db: AsyncSession = Depends(get_db)
+):
+   """Change current user's password"""
+   await UserService.change_password(db, current_user, password_data)
+   return {"message": "Password changed successfully"}
 
 
 @users_router.get("/verify-token")
 def verify_token_endpoint(current_user: User = Depends(get_current_user)):
+   """Verify if token is valid"""
    return {
       "valid": True,
       "user": {
          "id": current_user.id,
-         "email": current_user.email
+         "email": current_user.email,
+         "username": current_user.username,
+         "is_staff": current_user.is_staff,
+         "is_superuser": current_user.is_superuser
       }
    }
-   
-
-
-@users_router.put("/{user_id}")
-async def update_user(user_id: int):
-    return {"message": f"Update user {user_id}"}
-
-
-@users_router.delete("/{user_id}")
-async def delete_user(user_id: int):
-    return {"message": f"Delete user {user_id}"}

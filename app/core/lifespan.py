@@ -3,8 +3,9 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from sqlalchemy import text
 import logging
-from app.database.session import async_engine, Base
+from app.database.session import async_engine, Base, get_db
 from app.database.test_connection import test_database_connection
+from app.core.init_db import create_default_superuser
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,17 @@ async def startup():
     except Exception as e:
         logger.error(f"❌ Failed to create tables: {e}")
         raise
-    
+
+    # Create default superuser
+    try:
+        logger.info("👤 Initializing default superuser...")
+        async for db in get_db():
+            await create_default_superuser(db)
+            break
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize default superuser: {e}")
+        # Don't raise - app can still run without default user
+
     logger.info("✅ Startup complete!")
 
 

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import text
 import logging
 from app.core.config import settings
@@ -15,6 +16,7 @@ from app.api.v1.endpoints.crasc import crasc_router
 from app.api.v1.endpoints.hero import hero_router
 from app.api.v1.endpoints.key_stats import key_stats_router
 from app.api.v1.endpoints.ptf import ptf_router
+from app.admin.config import create_admin_panel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,6 +37,12 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 
+# Session middleware for admin authentication
+app.add_middleware(
+  SessionMiddleware,
+  secret_key=settings.SECRET_KEY or "your-secret-key-change-in-production"
+)
+
 # CORS middleware
 app.add_middleware(
   CORSMiddleware,
@@ -43,6 +51,9 @@ app.add_middleware(
   allow_methods=["*"],
   allow_headers=["*"],
 )
+
+# Create admin panel
+admin = create_admin_panel(app)
 
 # Include routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])

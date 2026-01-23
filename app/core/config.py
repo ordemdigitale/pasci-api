@@ -13,8 +13,8 @@ class Settings(BaseSettings):
   
   # Database
   #DATABASE_URL: Optional[str] = None
-  POSTGRES_USER: str = "postgres"
-  POSTGRES_PASSWORD: str = "admin123"
+  POSTGRES_USER: str = "admin"
+  POSTGRES_PASSWORD: str = "admin"
   POSTGRES_HOST: str = "localhost"
   POSTGRES_PORT: str = "5432"
   POSTGRES_DB: str = "pascidb"
