@@ -133,6 +133,8 @@ class NewsBase(BaseModel):
   title: str
   content: Optional[str] = None
   thumbnail_path: Optional[str] = None
+  created_at: Optional[datetime] = None
+  updated_at: Optional[datetime] = None
   # IDs are optional in the base so they can be omitted in Create/Read if needed
   osc_id: Optional[int] = Field(default=None, foreign_key="osc.id")
   crasc_id: Optional[int] = Field(default=None, foreign_key="crascregion.id")
