@@ -5,6 +5,7 @@ from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer
 from sqlalchemy.event import listens_for
 from typing import Optional, List
 import slugify, re
+from app.models.tags import NewsTag
 
 
 class Crasc(SQLModel, table=True):
@@ -170,7 +171,7 @@ class News(SQLModel, table=True):
   crasc: Optional[Crasc] = Relationship(back_populates="news_items")
 
   # Many-to-Many relationship with Tags
-  tags: List["Tag"] = Relationship(back_populates="news_items", link_model="NewsTag")
+  tags: List["Tag"] = Relationship(back_populates="news_items", link_model=NewsTag)
 
   id: Optional[int] = Field(default=None, primary_key=True)
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)

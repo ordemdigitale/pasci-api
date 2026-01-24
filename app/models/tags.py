@@ -8,6 +8,17 @@ from sqlmodel import Field, SQLModel, Relationship
 import slugify
 
 
+class NewsTag(SQLModel, table=True):
+    """
+    Association table for Many-to-Many relationship between News and Tags
+    """
+    __tablename__ = "news_tags"
+
+    news_id: int = Field(foreign_key="news.id", primary_key=True)
+    tag_id: int = Field(foreign_key="tags.id", primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class Tag(SQLModel, table=True):
     """
     Tag/Category model for categorizing news articles
@@ -22,20 +33,9 @@ class Tag(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
     # Relationship to News through association table
-    news_items: List["News"] = Relationship(back_populates="tags", link_model="NewsTag")
+    news_items: List["News"] = Relationship(back_populates="tags", link_model=NewsTag)
 
     def __init__(self, **data):
         super().__init__(**data)
         if not self.slug and self.name:
             self.slug = slugify.slugify(self.name)
-
-
-class NewsTag(SQLModel, table=True):
-    """
-    Association table for Many-to-Many relationship between News and Tags
-    """
-    __tablename__ = "news_tags"
-
-    news_id: int = Field(foreign_key="news.id", primary_key=True)
-    tag_id: int = Field(foreign_key="tags.id", primary_key=True)
-    created_at: datetime = Field(default_factory=datetime.now)
