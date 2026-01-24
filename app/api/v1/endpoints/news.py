@@ -114,7 +114,7 @@ def validate_and_process_image(file: UploadFile) -> str:
 
 @news_router.post("", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
 async def create_news(
-    title: str = Form(...),
+    title: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
     thumbnail: Optional[UploadFile] = File(None),
     crasc_id: str = Form(""),
@@ -130,6 +130,19 @@ async def create_news(
     - **crasc_id**: Associated CRASC ID
     - **osc_id**: Associated OSC ID
     """
+    # Validate title
+    if not title or not title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "type": "validation_error",
+                "errors": [{
+                    "field": "title",
+                    "message": "Le titre est requis et ne peut pas être vide."
+                }]
+            }
+        )
+    
     # Parse IDs
     crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
     osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
@@ -142,7 +155,7 @@ async def create_news(
 
     # Create database record
     news_create = News(
-        title=title,
+        title=title.strip(),
         content=content,
         crasc_id=crasc_id_int,
         osc_id=osc_id_int,
@@ -320,15 +333,23 @@ async def get_news_update_form(
     osc_id: str = Form("")
 ) -> NewsUpdate:
     """Parse form data into NewsUpdate"""
-    parsed_crasc_id = int(crasc_id) if crasc_id and crasc_id != "" else None
-    parsed_osc_id = int(osc_id) if osc_id and osc_id != "" else None
-
-    return NewsUpdate(
-        title=title,
-        content=content,
-        crasc_id=parsed_crasc_id,
-        osc_id=parsed_osc_id
-    )
+    # Only include fields that are actually provided
+    update_dict = {}
+    
+    if title is not None:
+        update_dict["title"] = title
+    
+    if content is not None:
+        update_dict["content"] = content
+    
+    # Parse IDs - only include if provided
+    if crasc_id and crasc_id != "":
+        update_dict["crasc_id"] = int(crasc_id)
+    
+    if osc_id and osc_id != "":
+        update_dict["osc_id"] = int(osc_id)
+    
+    return NewsUpdate(**update_dict)
 
 
 @news_router.patch("/{news_slug}", response_model=NewsReadDetail, status_code=status.HTTP_200_OK)
@@ -367,7 +388,7 @@ async def update_news(
         saved_path = validate_and_process_image(thumbnail)
         news.thumbnail_path = saved_path
 
-    # Update other fields
+    # Update other fields (only fields that were provided in the form)
     update_data = news_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(news, key, value)
