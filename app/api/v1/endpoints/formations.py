@@ -23,7 +23,7 @@ formations_router = APIRouter()
 
 @formations_router.post("", response_model=FormationRead, status_code=status.HTTP_201_CREATED)
 async def create_formation(
-    title: str = Form(...),
+    title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     trainer: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
@@ -54,6 +54,19 @@ async def create_formation(
     - **crasc_id**: Associated CRASC
     - **osc_id**: Associated OSC
     """
+    # Validate title
+    if not title or not title.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "type": "validation_error",
+                "errors": [{
+                    "field": "title",
+                    "message": "Le titre est requis et ne peut pas être vide."
+                }]
+            }
+        )
+    
     # Parse IDs
     crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
     osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
@@ -86,7 +99,7 @@ async def create_formation(
         saved_path = filename
 
     # Check for duplicate title
-    result = await db.execute(select(Formation).where(Formation.title == title))
+    result = await db.execute(select(Formation).where(Formation.title == title.strip()))
     existing_formation = result.scalars().first()
     if existing_formation:
         raise HTTPException(
@@ -95,14 +108,14 @@ async def create_formation(
                 "type": "duplicate_error",
                 "errors": [{
                     "field": "title",
-                    "message": f"Une formation avec le titre '{title}' existe déjà."
+                    "message": f"Une formation avec le titre '{title.strip()}' existe déjà."
                 }]
             }
         )
 
     try:
         formation = Formation(
-            title=title,
+            title=title.strip(),
             description=description,
             trainer=trainer,
             location=location,
@@ -261,32 +274,60 @@ async def get_formation_update_form(
     osc_id: str = Form("")
 ) -> FormationUpdate:
     """Parse form data into FormationUpdate"""
-    parsed_crasc_id = int(crasc_id) if crasc_id and crasc_id != "" else None
-    parsed_osc_id = int(osc_id) if osc_id and osc_id != "" else None
-
-    # Parse dates
-    start_date_parsed = datetime.fromisoformat(start_date) if start_date else None
-    end_date_parsed = datetime.fromisoformat(end_date) if end_date else None
-    registration_deadline_parsed = datetime.fromisoformat(registration_deadline) if registration_deadline else None
-
-    return FormationUpdate(
-        title=title,
-        description=description,
-        trainer=trainer,
-        location=location,
-        start_date=start_date_parsed,
-        end_date=end_date_parsed,
-        registration_deadline=registration_deadline_parsed,
-        max_participants=max_participants,
-        current_participants=current_participants,
-        registration_link=registration_link,
-        materials_link=materials_link,
-        is_published=is_published,
-        is_full=is_full,
-        is_completed=is_completed,
-        crasc_id=parsed_crasc_id,
-        osc_id=parsed_osc_id
-    )
+    # Only include fields that are actually provided
+    update_dict = {}
+    
+    if title is not None:
+        update_dict["title"] = title
+    
+    if description is not None:
+        update_dict["description"] = description
+    
+    if trainer is not None:
+        update_dict["trainer"] = trainer
+    
+    if location is not None:
+        update_dict["location"] = location
+    
+    # Parse dates only if provided
+    if start_date:
+        update_dict["start_date"] = datetime.fromisoformat(start_date)
+    
+    if end_date:
+        update_dict["end_date"] = datetime.fromisoformat(end_date)
+    
+    if registration_deadline:
+        update_dict["registration_deadline"] = datetime.fromisoformat(registration_deadline)
+    
+    if max_participants is not None:
+        update_dict["max_participants"] = max_participants
+    
+    if current_participants is not None:
+        update_dict["current_participants"] = current_participants
+    
+    if registration_link is not None:
+        update_dict["registration_link"] = registration_link
+    
+    if materials_link is not None:
+        update_dict["materials_link"] = materials_link
+    
+    if is_published is not None:
+        update_dict["is_published"] = is_published
+    
+    if is_full is not None:
+        update_dict["is_full"] = is_full
+    
+    if is_completed is not None:
+        update_dict["is_completed"] = is_completed
+    
+    # Parse IDs - only include if provided
+    if crasc_id and crasc_id != "":
+        update_dict["crasc_id"] = int(crasc_id)
+    
+    if osc_id and osc_id != "":
+        update_dict["osc_id"] = int(osc_id)
+    
+    return FormationUpdate(**update_dict)
 
 
 @formations_router.patch("/{formation_slug}", response_model=FormationReadWithRelations, status_code=status.HTTP_200_OK)
