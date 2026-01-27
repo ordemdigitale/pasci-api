@@ -26,11 +26,13 @@ Avant de commencer, assurez-vous d'avoir installé les outils suivants sur votre
 
 3. **Activer l'environnement virtuel**
 
-   ```bash windows
+   ```bash
+   windows
    source .venv/Scripts/activate
    ```
 
-   ```bash linux
+   ```bash
+   linux
    source .venv/bin/activate
    ```
 
