@@ -27,11 +27,22 @@ ptf_router = APIRouter()
 @ptf_router.post("", response_model=PtfRead, status_code=status.HTTP_201_CREATED)
 async def create_ptf(
   name: str = Form(...),
-  description: Optional[str] = Form(None),  
+  description: Optional[str] = Form(None),
+  mission: Optional[str] = Form(None),
+  vision: Optional[str] = Form(None),
+  website: Optional[str] = Form(None),
+  email: Optional[str] = Form(None),
+  phone: Optional[str] = Form(None),
+  address: Optional[str] = Form(None),
+  pays: Optional[str] = Form(None),
+  date_creation: Optional[str] = Form(None),
+  domaines: Optional[str] = Form(None),
   thumbnail: Optional[UploadFile] = File(None),
+  cover: Optional[UploadFile] = File(None),
   db: AsyncSession = Depends(get_db)
 ) -> Ptf:
   
+  # Handle thumbnail upload
   if thumbnail and thumbnail.filename:
     # User uploaded image: generate unique name and save
     file_extension = thumbnail.filename.split(".")[-1]
@@ -56,16 +67,52 @@ async def create_ptf(
     with open(file_path, "wb") as buffer:
       shutil.copyfileobj(thumbnail.file, buffer)
 
-    saved_path = filename
+    thumbnail_saved_path = filename
   else:
     # No file uploaded, use the default filename defined in your model
-    saved_path = "default.png"
+    thumbnail_saved_path = "default.png"
+
+  # Handle cover image upload
+  cover_saved_path = None
+  if cover and cover.filename:
+    file_extension = cover.filename.split(".")[-1]
+    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
+    if file_extension.lower() not in allowed_extensions:
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+          "type": "validation_error",
+          "errors": [
+            {
+              "field": "cover",
+              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+            }
+          ]
+        }
+      )
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+
+    with open(file_path, "wb") as buffer:
+      shutil.copyfileobj(cover.file, buffer)
+
+    cover_saved_path = filename
 
   # create the db record
   ptf_create = Ptf(
     name=name,
     description=description,
-    thumbnail_path=saved_path,
+    mission=mission,
+    vision=vision,
+    thumbnail_path=thumbnail_saved_path,
+    cover_path=cover_saved_path,
+    website=website,
+    email=email,
+    phone=phone,
+    address=address,
+    pays=pays,
+    date_creation=date_creation,
+    domaines=domaines,
   )
 
   # Check for duplicate PTF name
@@ -134,46 +181,161 @@ async def get_ptf(ptf_slug: str, db: AsyncSession = Depends(get_db)):
   return ptf
 
 ## update: PATCH
-#@ptf_router.patch("/teams/{team_slug}", response_model=TeamReadWithHeroes, status_code=status.HTTP_200_OK)
-#async def update_team(team_slug: str, team_update: TeamUpdate, db: AsyncSession = Depends(get_db)):
-#  # fetch existing resource by slug
-#  result = await db.execute(
-#    select(Team).where(Team.slug == team_slug).options(selectinload(Team.heroes))
-#  )
-#  team = result.scalars().first()
-#  if not team:
-#    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team non trouvée.")
-#  # extract fields provided in the request (exclude unset ones)
-#  update_data = team_update.model_dump(exclude_unset=True)
-#  # update the database object attributes
-#  for key, value in update_data.items():
-#    setattr(team, key, value)
-#  # update slug if name changed
-#  if "name" in update_data:
-#     team.slug = slugify.slugify(team.name)
-#
-#  # persist changes
-#  await db.commit()
-#  await db.refresh(team)
-#  return team
-#
+@ptf_router.patch("/{ptf_slug}", response_model=PtfReadWithProjets, status_code=status.HTTP_200_OK)
+async def update_ptf(
+  ptf_slug: str,
+  name: Optional[str] = Form(None),
+  description: Optional[str] = Form(None),
+  mission: Optional[str] = Form(None),
+  vision: Optional[str] = Form(None),
+  website: Optional[str] = Form(None),
+  email: Optional[str] = Form(None),
+  phone: Optional[str] = Form(None),
+  address: Optional[str] = Form(None),
+  pays: Optional[str] = Form(None),
+  date_creation: Optional[str] = Form(None),
+  domaines: Optional[str] = Form(None),
+  thumbnail: Optional[UploadFile] = File(None),
+  cover: Optional[UploadFile] = File(None),
+  db: AsyncSession = Depends(get_db)
+):
+  """Update a PTF by slug"""
+  # Fetch existing PTF
+  result = await db.execute(
+    select(Ptf).where(Ptf.slug == ptf_slug).options(selectinload(Ptf.projets))
+  )
+  ptf = result.scalars().first()
+  if not ptf:
+    raise HTTPException(
+      status_code=status.HTTP_404_NOT_FOUND,
+      detail="PTF non trouvé."
+    )
+
+  # Handle thumbnail upload if provided
+  if thumbnail and thumbnail.filename:
+    file_extension = thumbnail.filename.split(".")[-1]
+    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
+    if file_extension.lower() not in allowed_extensions:
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+          "type": "validation_error",
+          "errors": [
+            {
+              "field": "thumbnail",
+              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+            }
+          ]
+        }
+      )
+
+    # Delete old thumbnail if it exists and is not default
+    if ptf.thumbnail_path and ptf.thumbnail_path != "default.png":
+      old_file_path = os.path.join(settings.UPLOAD_DIR, ptf.thumbnail_path)
+      if os.path.exists(old_file_path):
+        os.remove(old_file_path)
+
+    # Save new thumbnail
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+    with open(file_path, "wb") as buffer:
+      shutil.copyfileobj(thumbnail.file, buffer)
+
+    ptf.thumbnail_path = filename
+
+  # Handle cover upload if provided
+  if cover and cover.filename:
+    file_extension = cover.filename.split(".")[-1]
+    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
+    if file_extension.lower() not in allowed_extensions:
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+          "type": "validation_error",
+          "errors": [
+            {
+              "field": "cover",
+              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+            }
+          ]
+        }
+      )
+
+    # Delete old cover if it exists
+    if ptf.cover_path:
+      old_file_path = os.path.join(settings.UPLOAD_DIR, ptf.cover_path)
+      if os.path.exists(old_file_path):
+        os.remove(old_file_path)
+
+    # Save new cover
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+    with open(file_path, "wb") as buffer:
+      shutil.copyfileobj(cover.file, buffer)
+
+    ptf.cover_path = filename
+
+  # Update text fields only if provided
+  if name is not None:
+    ptf.name = name
+    ptf.slug = slugify.slugify(name)
+  if description is not None:
+    ptf.description = description
+  if mission is not None:
+    ptf.mission = mission
+  if vision is not None:
+    ptf.vision = vision
+  if website is not None:
+    ptf.website = website
+  if email is not None:
+    ptf.email = email
+  if phone is not None:
+    ptf.phone = phone
+  if address is not None:
+    ptf.address = address
+  if pays is not None:
+    ptf.pays = pays
+  if date_creation is not None:
+    ptf.date_creation = date_creation
+  if domaines is not None:
+    ptf.domaines = domaines
+
+  # Persist changes
+  await db.commit()
+  await db.refresh(ptf)
+  return ptf
+
 ## delete: DELETE
-#@ptf_router.delete("/teams/{team_slug}", status_code=status.HTTP_204_NO_CONTENT)
-#async def delete_team(team_slug: str, db: AsyncSession = Depends(get_db)):
-#  """ Delete a Team """
-#  # find team by slug
-#  result = await db.execute(select(Team).where(Team.slug == team_slug))
-#  team = result.scalar_one_or_none()
-#  # raise 404 if team does not exist
-#  if not team:
-#    raise HTTPException(
-#      status_code=status.HTTP_404_NOT_FOUND,
-#      detail=f"Team {team_slug} not found."
-#    )
-#  await db.delete(team)
-#  await db.commit()
-#  return None
-#
+@ptf_router.delete("/{ptf_slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ptf(ptf_slug: str, db: AsyncSession = Depends(get_db)):
+  """Delete a PTF by slug"""
+  # Find PTF by slug
+  result = await db.execute(select(Ptf).where(Ptf.slug == ptf_slug))
+  ptf = result.scalar_one_or_none()
+
+  # Raise 404 if PTF does not exist
+  if not ptf:
+    raise HTTPException(
+      status_code=status.HTTP_404_NOT_FOUND,
+      detail=f"PTF {ptf_slug} non trouvé."
+    )
+
+  # Delete associated files if they exist
+  if ptf.thumbnail_path and ptf.thumbnail_path != "default.png":
+    thumbnail_file_path = os.path.join(settings.UPLOAD_DIR, ptf.thumbnail_path)
+    if os.path.exists(thumbnail_file_path):
+      os.remove(thumbnail_file_path)
+
+  if ptf.cover_path:
+    cover_file_path = os.path.join(settings.UPLOAD_DIR, ptf.cover_path)
+    if os.path.exists(cover_file_path):
+      os.remove(cover_file_path)
+
+  # Delete the PTF from database
+  await db.delete(ptf)
+  await db.commit()
+  return None
+
 #######################
 ## Hero Endpoints
 #######################

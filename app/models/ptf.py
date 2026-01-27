@@ -14,9 +14,29 @@ class Ptf(SQLModel, table=True):
   """
   id: Optional[int] = Field(default=None, primary_key=True)
   name: str = Field(index=True, unique=True)
-  description: Optional[str] = Field(default=None, nullable=True, max_length=250)
-  thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
+
+  # Descriptions
+  description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+  mission: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+  vision: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+
+  # Images
+  thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
+  cover_path: Optional[str] = Field(default=None, nullable=True, max_length=2048)
+
+  # Informations de contact
+  website: Optional[str] = Field(default=None, nullable=True, max_length=255)
+  email: Optional[str] = Field(default=None, nullable=True, max_length=255)
+  phone: Optional[str] = Field(default=None, nullable=True, max_length=50)
+  address: Optional[str] = Field(default=None, nullable=True, max_length=500)
+
+  # Informations générales
+  pays: Optional[str] = Field(default=None, nullable=True, max_length=100)
+  date_creation: Optional[str] = Field(default=None, nullable=True, max_length=50)
+
+  # Domaines d'intervention (stocké en JSON)
+  domaines: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
 
   # define the relatioship from the parent side
   projets: List["Projet"] = Relationship(
