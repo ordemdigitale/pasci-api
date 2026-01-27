@@ -31,6 +31,10 @@ class Crasc(SQLModel, table=True):
     back_populates="crasc",
     sa_relationship_kwargs={"passive_deletes": True}
   )
+  documents: List["Documentation"] = Relationship(
+    back_populates="crasc",
+    sa_relationship_kwargs={"passive_deletes": True}
+  )
   id: Optional[int] = Field(default=None, primary_key=True)
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
@@ -134,6 +138,10 @@ class Osc(SQLModel, table=True):
     sa_relationship_kwargs={"passive_deletes": True}
   )
   formations: List["Formation"] = Relationship(
+    back_populates="osc",
+    sa_relationship_kwargs={"passive_deletes": True}
+  )
+  documents: List["Documentation"] = Relationship(
     back_populates="osc",
     sa_relationship_kwargs={"passive_deletes": True}
   )

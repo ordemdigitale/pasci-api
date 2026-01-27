@@ -6,6 +6,7 @@ from app.models.jobs import Jobs
 from app.models.key_stats import KeyStats
 from app.models.ptf import Ptf, Projet
 from app.models.hero import Hero, Team
+from app.models.documentation import Documentation
 
 
 class UserAdmin(ModelView, model=User):
@@ -195,3 +196,25 @@ class HeroAdmin(ModelView, model=Hero):
     column_list = [Hero.id, Hero.name, Hero.slug, Hero.team_id]
     column_searchable_list = [Hero.name]
     column_sortable_list = [Hero.name]
+
+
+class DocumentationAdmin(ModelView, model=Documentation):
+    """Admin view for Documentation model"""
+    name = "Document"
+    name_plural = "Documents"
+    icon = "fa-solid fa-file"
+
+    column_list = [
+        Documentation.id,
+        Documentation.title,
+        Documentation.slug,
+        Documentation.category,
+        Documentation.file_type,
+        Documentation.crasc_id,
+        Documentation.osc_id,
+        Documentation.created_at,
+    ]
+
+    column_searchable_list = [Documentation.title, Documentation.description]
+    column_sortable_list = [Documentation.title, Documentation.created_at]
+    column_default_sort = [(Documentation.created_at, True)]

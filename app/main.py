@@ -21,6 +21,7 @@ from app.api.v1.endpoints.stats import stats_router
 from app.api.v1.endpoints.search import search_router
 from app.api.v1.endpoints.tags import tags_router
 from app.api.v1.endpoints.formations import formations_router
+from app.api.v1.endpoints.documentation import documentation_router
 from app.admin.config import create_admin_panel
 
 # Configure logging
@@ -71,6 +72,7 @@ app.include_router(hero_router, prefix="/api/v1/super-hero", tags=["heroes"])
 app.include_router(news_router, prefix="/api/v1/news", tags=["news"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(formations_router, prefix="/api/v1/formations", tags=["formations"])
+app.include_router(documentation_router, prefix="/api/v1/documentation", tags=["documentation"])
 app.include_router(stats_router, prefix="/api/v1/stats", tags=["statistics"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 
