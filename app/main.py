@@ -22,6 +22,7 @@ from app.api.v1.endpoints.search import search_router
 from app.api.v1.endpoints.tags import tags_router
 from app.api.v1.endpoints.formations import formations_router
 from app.api.v1.endpoints.documentation import documentation_router
+from app.api.v1.endpoints.offre_projet import offre_projet_router
 from app.admin.config import create_admin_panel
 
 # Configure logging
@@ -68,6 +69,7 @@ app.include_router(crasc_router, prefix="/api/v1/crasc", tags=["crasc"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(key_stats_router, prefix="/api/v1/key-stats", tags=["key-stats"])
 app.include_router(ptf_router, prefix="/api/v1/ptf", tags=["ptf"])
+app.include_router(offre_projet_router, prefix="/api/v1/offre-projets", tags=["offre-projets"])
 app.include_router(hero_router, prefix="/api/v1/super-hero", tags=["heroes"])
 app.include_router(news_router, prefix="/api/v1/news", tags=["news"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["tags"])

@@ -1,7 +1,7 @@
 # models/jobs.py
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, String, DateTime, func
+from sqlalchemy import Column, String, DateTime, func, TEXT
 from typing import Optional
 from uuid import uuid4, UUID
 import slugify
@@ -15,6 +15,11 @@ class Jobs(SQLModel, table=True):
     type: str = Field(max_length=200, nullable=False, description="Job type")
     is_expired: bool = Field(default=False, description="Indicates if the job posting is expired")
     slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
+
+    # Nouveaux champs pour le détail de l'offre (stockés en JSON)
+    missions: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Missions et responsabilités (JSON)")
+    requirements: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Exigences du profil recherché (JSON)")
+    benefits: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Avantages et culture (JSON)")
     # Publication date that defaults to now if not provided
     publication_date: Optional[datetime] = Field(
        default_factory=lambda: datetime.now(timezone.utc),
