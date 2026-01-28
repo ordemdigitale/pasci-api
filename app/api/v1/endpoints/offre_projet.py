@@ -42,7 +42,7 @@ async def get_all_projets(
     return projets
 
 
-@offre_projet_router.get("/actifs", response_model=List[OffreProjetRead])
+@offre_projet_router.get("/active", response_model=List[OffreProjetRead])
 async def get_active_projets(
     skip: int = 0,
     limit: int = 100,
