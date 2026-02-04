@@ -4,9 +4,9 @@
 Script pour initialiser les CRASC dans la base de données
 """
 import asyncio
-from sqlalchemy.orm import Session
-from app.database.session import SessionLocal
+from app.database.session import get_db
 from app.models.crasc import Crasc
+from sqlmodel import select
 
 # Données des CRASC (basé sur les 5 régions de la Côte d'Ivoire)
 CRASC_DATA = [
@@ -43,56 +43,58 @@ CRASC_DATA = [
 ]
 
 
-def init_crasc():
+async def init_crasc():
     """Initialise les CRASC dans la base de données"""
-    db: Session = SessionLocal()
+    async for db in get_db():
+        try:
+            print("🚀 Initialisation des CRASC...")
 
-    try:
-        print("🚀 Initialisation des CRASC...")
+            # Vérifier si des CRASC existent déjà
+            result = await db.execute(select(Crasc))
+            existing_crasc = result.scalars().all()
 
-        # Vérifier si des CRASC existent déjà
-        existing_crasc = db.query(Crasc).all()
-        if existing_crasc:
-            print(f"ℹ️  {len(existing_crasc)} CRASC trouvés dans la base de données.")
-            response = input("Voulez-vous les supprimer et réinitialiser ? (o/n): ")
-            if response.lower() == 'o':
-                for crasc in existing_crasc:
-                    db.delete(crasc)
-                db.commit()
-                print("✅ CRASC existants supprimés")
-            else:
-                print("❌ Initialisation annulée")
+            if existing_crasc:
+                print(f"ℹ️  {len(existing_crasc)} CRASC trouvés dans la base de données.")
+                print("⚠️  Les CRASC existent déjà. Arrêt du script.")
+                print("💡 Si vous souhaitez réinitialiser, supprimez d'abord les CRASC existants.")
                 return
 
-        # Créer les nouveaux CRASC
-        created_count = 0
-        for crasc_data in CRASC_DATA:
-            # Vérifier si le CRASC existe déjà par slug
-            existing = db.query(Crasc).filter(Crasc.slug == crasc_data["slug"]).first()
+            # Créer les nouveaux CRASC
+            created_count = 0
+            for crasc_data in CRASC_DATA:
+                # Vérifier si le CRASC existe déjà par slug
+                result = await db.execute(
+                    select(Crasc).where(Crasc.slug == crasc_data["slug"])
+                )
+                existing = result.scalar_one_or_none()
 
-            if not existing:
-                crasc = Crasc(**crasc_data)
-                db.add(crasc)
-                created_count += 1
-                print(f"✅ CRASC créé: {crasc_data['name']}")
-            else:
-                print(f"ℹ️  CRASC déjà existant: {crasc_data['name']}")
+                if not existing:
+                    crasc = Crasc(**crasc_data)
+                    db.add(crasc)
+                    created_count += 1
+                    print(f"✅ CRASC créé: {crasc_data['name']}")
+                else:
+                    print(f"ℹ️  CRASC déjà existant: {crasc_data['name']}")
 
-        db.commit()
-        print(f"\n🎉 Initialisation terminée ! {created_count} CRASC créés.")
+            await db.commit()
 
-        # Afficher tous les CRASC
-        all_crasc = db.query(Crasc).all()
-        print(f"\n📋 Liste des CRASC ({len(all_crasc)}) :")
-        for crasc in all_crasc:
-            print(f"   - {crasc.name} (slug: {crasc.slug})")
+            print("=" * 60)
+            print(f"🎉 Initialisation terminée ! {created_count} CRASC créés.")
+            print("=" * 60)
 
-    except Exception as e:
-        print(f"❌ Erreur lors de l'initialisation: {str(e)}")
-        db.rollback()
-    finally:
-        db.close()
+            # Afficher tous les CRASC
+            result = await db.execute(select(Crasc))
+            all_crasc = result.scalars().all()
+            print(f"\n📋 Liste des CRASC ({len(all_crasc)}) :")
+            for crasc in all_crasc:
+                print(f"   - {crasc.name} (slug: {crasc.slug})")
+            print("=" * 60)
+
+        except Exception as e:
+            print(f"❌ Erreur lors de l'initialisation: {str(e)}")
+            await db.rollback()
+            raise
 
 
 if __name__ == "__main__":
-    init_crasc()
+    asyncio.run(init_crasc())
