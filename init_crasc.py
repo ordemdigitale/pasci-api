@@ -6,6 +6,8 @@ Script pour initialiser les CRASC dans la base de données
 import asyncio
 from app.database.session import get_db
 from app.models.crasc import Crasc
+from app.models.formation import Formation
+from app.models.documentation import Documentation
 from sqlmodel import select
 
 # Données des CRASC (basé sur les 5 régions de la Côte d'Ivoire)
