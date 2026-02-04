@@ -412,6 +412,12 @@ async def create_osc(
   thumbnail: Optional[UploadFile] = File(None),
   type_id: str = Form(""),
   crasc_id: str = Form(""),
+  email: Optional[str] = Form(None),
+  phone: Optional[str] = Form(None),
+  ville: Optional[str] = Form(None),
+  address: Optional[str] = Form(None),
+  latitude: Optional[float] = Form(None),
+  longitude: Optional[float] = Form(None),
   db: AsyncSession = Depends(get_db)
 ):
   # convert empty strings to None
@@ -454,6 +460,12 @@ async def create_osc(
     thumbnail_path=saved_path,
     type_id=type_id_int,
     crasc_id=crasc_id_int,
+    email=email,
+    phone=phone,
+    ville=ville,
+    address=address,
+    latitude=latitude,
+    longitude=longitude,
   )
     
   # Check for duplicate osc name
@@ -566,19 +578,29 @@ async def get_osc_update_form(
     description: Optional[str] = Form(""),
     type_id: str = Form(""),
     crasc_id: str = Form(""),
-    address: Optional[str] = Form("")
+    address: Optional[str] = Form(""),
+    email: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    ville: Optional[str] = Form(None),
+    latitude: Optional[float] = Form(None),
+    longitude: Optional[float] = Form(None)
 ) -> OscUpdate:
     """Parse form data into OscUpdate"""
     # Parse numeric fields
     parsed_type_id = int(type_id) if type_id and type_id != "" else None
     parsed_crasc_id = int(crasc_id) if crasc_id and crasc_id != "" else None
-    
+
     return OscUpdate(
         name=name,
         description=description,
         type_id=parsed_type_id,
         crasc_id=parsed_crasc_id,
-        address=address
+        address=address,
+        email=email,
+        phone=phone,
+        ville=ville,
+        latitude=latitude,
+        longitude=longitude
     )
 
 @crasc_router.patch("/osc/{osc_slug}", response_model=OscRead)

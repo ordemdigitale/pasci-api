@@ -91,11 +91,15 @@ class OscBase(BaseModel):
   name: str
   description: Optional[str] = None
   thumbnail_path: Optional[str] = None
-  type_id: Optional[int] = Field(default=None, foreign_key="osctype.id") 
-  region_id: Optional[int] = Field(default=None, foreign_key="region.id") 
+  type_id: Optional[int] = Field(default=None, foreign_key="osctype.id")
+  crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id")
   latitude: Optional[float] = None
   longitude: Optional[float] = None
   address: Optional[str] = None
+  # Informations de contact pour l'annuaire
+  email: Optional[str] = None
+  phone: Optional[str] = None
+  ville: Optional[str] = None
   @computed_field
   @property
   def thumbnail_url(self) -> str:
@@ -126,6 +130,11 @@ class OscUpdate(BaseModel):
   type_id: Optional[int] = None
   crasc_id: Optional[int] = None
   address: Optional[str] = None
+  latitude: Optional[float] = None
+  longitude: Optional[float] = None
+  email: Optional[str] = None
+  phone: Optional[str] = None
+  ville: Optional[str] = None
 
 
 #News Schemas

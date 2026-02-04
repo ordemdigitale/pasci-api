@@ -120,18 +120,24 @@ class Osc(SQLModel, table=True):
     Represente une OSC (Organisation de la Société Civile) dans la base de données.
   """
   name: str = Field(index=True, unique=True)
-  description: Optional[str] = Field(default=None, nullable=True, max_length=100)
+  description: Optional[str] = Field(default=None, nullable=True, max_length=500)
   thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
-  
+
   type_id: Optional[int] = Field(default=None, foreign_key="osctype.id", ondelete="SET NULL")
   type: Optional[OscType] = Relationship(back_populates="oscs")
 
   crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id", ondelete="SET NULL")
   crasc: Optional[Crasc] = Relationship(back_populates="oscs")
 
+  # Coordonnées géographiques
   latitude: Optional[float] = None
   longitude: Optional[float] = None
   address: Optional[str] = None
+
+  # Informations de contact pour l'annuaire
+  email: Optional[str] = Field(default=None, nullable=True, max_length=255, description="Email de contact")
+  phone: Optional[str] = Field(default=None, nullable=True, max_length=50, description="Numéro de téléphone")
+  ville: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Ville de l'OSC")
 
   news_items: List["News"] = Relationship(
     back_populates="osc",

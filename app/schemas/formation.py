@@ -4,7 +4,8 @@ Pydantic schemas for Formation model
 """
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, computed_field
+from app.core.config import settings
 
 
 class FormationBase(BaseModel):
@@ -61,11 +62,39 @@ class FormationRead(FormationBase):
     created_at: datetime
     updated_at: datetime
 
+    @computed_field
+    @property
+    def thumbnail_url(self) -> str:
+        """Generate full URL for thumbnail image"""
+        if self.thumbnail_path and self.thumbnail_path != "default.png":
+            return f"http://localhost:8000/static/{self.thumbnail_path}"
+        return "http://localhost:8000/static/default.png"
+
+    class Config:
+        from_attributes = True
+
+
+class CrascSimple(BaseModel):
+    """Simple CRASC schema for relations"""
+    id: int
+    name: str
+    slug: str
+
+    class Config:
+        from_attributes = True
+
+
+class OscSimple(BaseModel):
+    """Simple OSC schema for relations"""
+    id: int
+    name: str
+    slug: str
+
     class Config:
         from_attributes = True
 
 
 class FormationReadWithRelations(FormationRead):
     """Formation with CRASC and OSC details"""
-    crasc: Optional[dict] = None
-    osc: Optional[dict] = None
+    crasc: Optional[CrascSimple] = None
+    osc: Optional[OscSimple] = None
