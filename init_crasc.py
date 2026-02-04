@@ -1,93 +1,94 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Script pour initialiser les CRASC dans la base de donnÈes
+Script pour initialiser les CRASC dans la base de donn√©es
 """
 import asyncio
 from sqlalchemy.orm import Session
 from app.database.session import SessionLocal
 from app.models.crasc import Crasc
 
-# DonnÈes des CRASC (basÈ sur les 5 rÈgions de la CÙte d'Ivoire)
+# Donn√©es des CRASC (bas√© sur les 5 r√©gions de la C√¥te d'Ivoire)
 CRASC_DATA = [
     {
         "name": "CRASC SUD",
         "slug": "crasc-sud",
-        "description": "Coordination RÈgionale des Acteurs de la SociÈtÈ Civile du Sud de la CÙte d'Ivoire. Cette coordination regroupe les OSC des rÈgions du Sud ComoÈ, AgnÈby-Tiassa, Grands-Ponts, Lagunes, et Me.",
+        "description": "Coordination R√©gionale des Acteurs de la Soci√©t√© Civile du Sud de la C√¥te d'Ivoire. Cette coordination regroupe les OSC des r√©gions du Sud Como√©, Agn√©by-Tiassa, Grands-Ponts, Lagunes, et Me.",
         "osc_count": 0
     },
     {
         "name": "CRASC CENTRE",
         "slug": "crasc-centre",
-        "description": "Coordination RÈgionale des Acteurs de la SociÈtÈ Civile du Centre de la CÙte d'Ivoire. Cette coordination couvre les rÈgions du BÈlier, Iffou, Moronou, N'Zi, et Lacs.",
+        "description": "Coordination R√©gionale des Acteurs de la Soci√©t√© Civile du Centre de la C√¥te d'Ivoire. Cette coordination couvre les r√©gions du B√©lier, Iffou, Moronou, N'Zi, et Lacs.",
         "osc_count": 0
     },
     {
         "name": "CRASC NORD",
         "slug": "crasc-nord",
-        "description": "Coordination RÈgionale des Acteurs de la SociÈtÈ Civile du Nord de la CÙte d'Ivoire. Cette coordination regroupe les OSC des rÈgions de Bounkani, Poro, Tchologo, BagouÈ, et Hambol.",
+        "description": "Coordination R√©gionale des Acteurs de la Soci√©t√© Civile du Nord de la C√¥te d'Ivoire. Cette coordination regroupe les OSC des r√©gions de Bounkani, Poro, Tchologo, Bagou√©, et Hambol.",
         "osc_count": 0
     },
     {
         "name": "CRASC EST",
         "slug": "crasc-est",
-        "description": "Coordination RÈgionale des Acteurs de la SociÈtÈ Civile de l'Est de la CÙte d'Ivoire. Cette coordination couvre les rÈgions de l'IndÈniÈ-Djuablin, Gontougo, et Bounkani.",
+        "description": "Coordination R√©gionale des Acteurs de la Soci√©t√© Civile de l'Est de la C√¥te d'Ivoire. Cette coordination couvre les r√©gions de l'Ind√©ni√©-Djuablin, Gontougo, et Bounkani.",
         "osc_count": 0
     },
     {
         "name": "CRASC OUEST",
         "slug": "crasc-ouest",
-        "description": "Coordination RÈgionale des Acteurs de la SociÈtÈ Civile de l'Ouest de la CÙte d'Ivoire. Cette coordination regroupe les OSC des rÈgions du GuÈmon, Cavally, Tonkpi, Bafing, et Montagnes.",
+        "description": "Coordination R√©gionale des Acteurs de la Soci√©t√© Civile de l'Ouest de la C√¥te d'Ivoire. Cette coordination regroupe les OSC des r√©gions du Gu√©mon, Cavally, Tonkpi, Bafing, et Montagnes.",
         "osc_count": 0
     }
 ]
 
 
 def init_crasc():
-    """Initialise les CRASC dans la base de donnÈes"""
+    """Initialise les CRASC dans la base de donn√©es"""
     db: Session = SessionLocal()
 
     try:
-        print("=Ä Initialisation des CRASC...")
+        print("üöÄ Initialisation des CRASC...")
 
-        # VÈrifier si des CRASC existent dÈj‡
+        # V√©rifier si des CRASC existent d√©j√†
         existing_crasc = db.query(Crasc).all()
         if existing_crasc:
-            print(f"†  {len(existing_crasc)} CRASC trouvÈs dans la base de donnÈes.")
-            response = input("Voulez-vous les supprimer et rÈinitialiser ? (o/n): ")
+            print(f"‚ÑπÔ∏è  {len(existing_crasc)} CRASC trouv√©s dans la base de donn√©es.")
+            response = input("Voulez-vous les supprimer et r√©initialiser ? (o/n): ")
             if response.lower() == 'o':
                 for crasc in existing_crasc:
                     db.delete(crasc)
                 db.commit()
-                print(" CRASC existants supprimÈs")
+                print("‚úÖ CRASC existants supprim√©s")
             else:
-                print("L Initialisation annulÈe")
+                print("‚ùå Initialisation annul√©e")
                 return
 
-        # CrÈer les nouveaux CRASC
+        # Cr√©er les nouveaux CRASC
         created_count = 0
         for crasc_data in CRASC_DATA:
-            # VÈrifier si le CRASC existe dÈj‡ par slug
+            # V√©rifier si le CRASC existe d√©j√† par slug
             existing = db.query(Crasc).filter(Crasc.slug == crasc_data["slug"]).first()
 
             if not existing:
                 crasc = Crasc(**crasc_data)
                 db.add(crasc)
                 created_count += 1
-                print(f" CRASC crÈÈ: {crasc_data['name']}")
+                print(f"‚úÖ CRASC cr√©√©: {crasc_data['name']}")
             else:
-                print(f"Ì  CRASC dÈj‡ existant: {crasc_data['name']}")
+                print(f"‚ÑπÔ∏è  CRASC d√©j√† existant: {crasc_data['name']}")
 
         db.commit()
-        print(f"\n<â Initialisation terminÈe ! {created_count} CRASC crÈÈs.")
+        print(f"\nüéâ Initialisation termin√©e ! {created_count} CRASC cr√©√©s.")
 
         # Afficher tous les CRASC
         all_crasc = db.query(Crasc).all()
-        print(f"\n=À Liste des CRASC ({len(all_crasc)}) :")
+        print(f"\nüìã Liste des CRASC ({len(all_crasc)}) :")
         for crasc in all_crasc:
             print(f"   - {crasc.name} (slug: {crasc.slug})")
 
     except Exception as e:
-        print(f"L Erreur lors de l'initialisation: {str(e)}")
+        print(f"‚ùå Erreur lors de l'initialisation: {str(e)}")
         db.rollback()
     finally:
         db.close()
