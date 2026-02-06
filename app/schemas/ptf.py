@@ -25,7 +25,7 @@ class PtfBase(BaseModel):
   def thumbnail_url(self) -> Optional[str]:
     """Constructs the full URL path for the thumbnail"""
     if self.thumbnail_path and self.thumbnail_path != "default.png":
-      return f"http://localhost:8000/static/{self.thumbnail_path}"
+      return f"https://api.plateforme-osci.org/static/{self.thumbnail_path}"
     return None
 
   @computed_field
