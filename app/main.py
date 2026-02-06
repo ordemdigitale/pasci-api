@@ -13,7 +13,6 @@ from app.api.v1.endpoints.auth import auth_router
 from app.api.v1.endpoints.users import users_router
 from app.api.v1.endpoints.jobs import jobs_router
 from app.api.v1.endpoints.crasc import crasc_router
-from app.api.v1.endpoints.hero import hero_router
 from app.api.v1.endpoints.key_stats import key_stats_router
 from app.api.v1.endpoints.ptf import ptf_router
 from app.api.v1.endpoints.news import news_router
@@ -55,11 +54,18 @@ app.add_middleware(
   CORSMiddleware,
   allow_origins=[
     "http://localhost:3000",
+<<<<<<< HEAD
     "http://plateforme-osci.org",
     "https://plateforme-osci.org",
     "http://www.plateforme-osci.org",
     "https://www.plateforme-osci.org",
 ],
+=======
+    "http://127.0.0.1:3000",
+    "https://plateforme-osci.org",
+    "https://www.plateforme-osci.org"
+  ],
+>>>>>>> ef44c175d30ff55480c773686cf507ce89de4542
   allow_credentials=True,
   allow_methods=["*"],
   allow_headers=["*"],
@@ -76,7 +82,6 @@ app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(key_stats_router, prefix="/api/v1/key-stats", tags=["key-stats"])
 app.include_router(ptf_router, prefix="/api/v1/ptf", tags=["ptf"])
 app.include_router(offre_projet_router, prefix="/api/v1/offre-projets", tags=["offre-projets"])
-app.include_router(hero_router, prefix="/api/v1/super-hero", tags=["heroes"])
 app.include_router(news_router, prefix="/api/v1/news", tags=["news"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(formations_router, prefix="/api/v1/formations", tags=["formations"])
