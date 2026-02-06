@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status,  Depends, Form
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import Optional, List
+from typing import Optional, List, Union
 from app.core.config import settings
 from app.database.session import get_db
 from app.schemas.ptf import(
@@ -195,8 +195,8 @@ async def update_ptf(
   pays: Optional[str] = Form(None),
   date_creation: Optional[str] = Form(None),
   domaines: Optional[str] = Form(None),
-  thumbnail: Optional[UploadFile] = File(None),
-  cover: Optional[UploadFile] = File(None),
+  thumbnail: Union[UploadFile, str, None] = File(None),
+  cover: Union[UploadFile, str, None] = File(None),
   db: AsyncSession = Depends(get_db)
 ):
   """Update a PTF by slug"""
@@ -212,22 +212,22 @@ async def update_ptf(
     )
 
   # Handle thumbnail upload if provided
-  if thumbnail and thumbnail.filename:
-    file_extension = thumbnail.filename.split(".")[-1]
+  if isinstance(thumbnail, UploadFile) and thumbnail.filename:  # ← Core guard: Check type and non-empty filename
+    file_extension = thumbnail.filename.split(".")[-1].lower()
     allowed_extensions = ["jpg", "jpeg", "png", "webp"]
-    if file_extension.lower() not in allowed_extensions:
-      raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={
-          "type": "validation_error",
-          "errors": [
-            {
-              "field": "thumbnail",
-              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "validation_error",
+                "errors": [
+                    {
+                        "field": "thumbnail",
+                        "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+                    }
+                ]
             }
-          ]
-        }
-      )
+        )
 
     # Delete old thumbnail if it exists and is not default
     if ptf.thumbnail_path and ptf.thumbnail_path != "default.png":
@@ -244,22 +244,22 @@ async def update_ptf(
     ptf.thumbnail_path = filename
 
   # Handle cover upload if provided
-  if cover and cover.filename:
-    file_extension = cover.filename.split(".")[-1]
+  if isinstance(cover, UploadFile) and cover.filename:  # ← Core guard: Check type and non-empty filename
+    file_extension = cover.filename.split(".")[-1].lower()
     allowed_extensions = ["jpg", "jpeg", "png", "webp"]
-    if file_extension.lower() not in allowed_extensions:
-      raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={
-          "type": "validation_error",
-          "errors": [
-            {
-              "field": "cover",
-              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "validation_error",
+                "errors": [
+                    {
+                        "field": "thumbnail",
+                        "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
+                    }
+                ]
             }
-          ]
-        }
-      )
+        )
 
     # Delete old cover if it exists
     if ptf.cover_path:
