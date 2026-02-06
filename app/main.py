@@ -53,7 +53,13 @@ app.add_middleware(
 # CORS middleware
 app.add_middleware(
   CORSMiddleware,
-  allow_origins=["http://localhost:3000"],
+  allow_origins=[
+    "http://localhost:3000",
+    "http://plateforme-osci.org",
+    "https://plateforme-osci.org",
+    "http://www.plateforme-osci.org",
+    "https://www.plateforme-osci.org",
+],
   allow_credentials=True,
   allow_methods=["*"],
   allow_headers=["*"],

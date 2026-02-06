@@ -74,8 +74,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 def get_url():
     # Use the same logic as your app for async DB URL
     url = settings.DATABASE_URL
+    print(f"DEBUG - Original URL: {url}")
     if url and url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://")
+    url = url + "?ssl=disable"  # Ajoutez cette ligne
+    print(f"DEBUG - Final URL: {url}")
     return url
 
 async def run_async_migrations():
