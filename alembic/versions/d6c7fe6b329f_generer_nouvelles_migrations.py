@@ -1,8 +1,8 @@
-"""add email and phone to osc
+"""generer nouvelles migrations
 
-Revision ID: 6028e8c15772
-Revises: 4ce88be8194d
-Create Date: 2026-02-05 15:35:46.643158
+Revision ID: d6c7fe6b329f
+Revises: 
+Create Date: 2026-02-06 12:35:00.064697
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '6028e8c15772'
-down_revision: Union[str, Sequence[str], None] = '4ce88be8194d'
+revision: str = 'd6c7fe6b329f'
+down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -60,6 +60,24 @@ def upgrade() -> None:
         batch_op.create_index(batch_op.f('ix_tags_name'), ['name'], unique=True)
         batch_op.create_index(batch_op.f('ix_tags_slug'), ['slug'], unique=True)
 
+    op.create_table('team',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('name', sqlmodel.sql.sqltypes.AutoString(length=50), nullable=False),
+    sa.Column('slug', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=True),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('name'),
+    sa.UniqueConstraint('slug')
+    )
+    op.create_table('hero',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('name', sqlmodel.sql.sqltypes.AutoString(length=50), nullable=False),
+    sa.Column('slug', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=True),
+    sa.Column('team_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['team_id'], ['team.id'], ondelete='SET NULL'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('name'),
+    sa.UniqueConstraint('slug')
+    )
     op.create_table('formations',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(length=200), nullable=False),
@@ -148,6 +166,8 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_formations_slug'))
 
     op.drop_table('formations')
+    op.drop_table('hero')
+    op.drop_table('team')
     with op.batch_alter_table('tags', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_tags_slug'))
         batch_op.drop_index(batch_op.f('ix_tags_name'))

@@ -13,11 +13,11 @@ class Settings(BaseSettings):
   
   # Database
   #DATABASE_URL: Optional[str] = None
-  POSTGRES_USER: str = "admin"
-  POSTGRES_PASSWORD: str = "admin"
+  POSTGRES_USER: str = "pasci_user"
+  POSTGRES_PASSWORD: str = "Pasci#12345"
   POSTGRES_HOST: str = "localhost"
   POSTGRES_PORT: str = "5432"
-  POSTGRES_DB: str = "pascidb"
+  POSTGRES_DB: str = "pasci_db"
   
   # Uploads directory
   UPLOAD_DIR: str = "uploads/images"
