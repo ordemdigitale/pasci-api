@@ -33,7 +33,7 @@ class PtfBase(BaseModel):
   def cover_url(self) -> Optional[str]:
     """Constructs the full URL path for the cover image"""
     if self.cover_path:
-      return f"http://localhost:8000/static/{self.cover_path}"
+      return f"https://api.plateforme-osci.org/static/{self.cover_path}"
     return None
 
   @computed_field
