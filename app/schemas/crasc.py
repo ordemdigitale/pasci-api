@@ -104,7 +104,7 @@ class OscBase(BaseModel):
   @property
   def thumbnail_url(self) -> str:
     """Constructs the full URL path for the frontend"""
-    return f"http://localhost:8000/static/{self.thumbnail_path}"
+    return f"https://api.plateforme-osci.org/static/{self.thumbnail_path}"
 
 class OscCreate(OscBase):
   pass
@@ -151,7 +151,7 @@ class NewsBase(BaseModel):
   @property
   def thumbnail_url(self) -> str:
     """Constructs the full URL path for the frontend"""
-    return f"http://localhost:8000/static/{self.thumbnail_path}"
+    return f"https://api.plateforme-osci.org/static/{self.thumbnail_path}"
 
 class NewsCreate(NewsBase):
     pass
