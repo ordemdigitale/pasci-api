@@ -13,6 +13,7 @@ from app.schemas.crasc import CrascRead, OscRead
 class DocumentationBase(BaseModel):
     title: str
     description: Optional[str] = None
+    type: str = "documentation"  # 'documentation' ou 'fiche'
     category: Optional[str] = None
     file_path: Optional[str] = None
     file_type: Optional[str] = None
@@ -64,6 +65,7 @@ class DocumentationReadDetail(DocumentationBase):
 class DocumentationUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    type: Optional[str] = None
     category: Optional[str] = None
     crasc_id: Optional[int] = None
     osc_id: Optional[int] = None

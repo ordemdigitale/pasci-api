@@ -9,15 +9,22 @@ import slugify
 class Documentation(SQLModel, table=True):
     """
     Représente un document dans la base de données.
+    Peut être de type 'documentation' ou 'fiche'.
     """
     title: str = Field(index=True, unique=True, description="Titre du document.")
     description: Optional[str] = Field(
-        sa_column=Column(TEXT, nullable=True), 
+        sa_column=Column(TEXT, nullable=True),
         description="Description du document."
     )
+    type: str = Field(
+        default="documentation",
+        nullable=False,
+        max_length=50,
+        description="Type de ressource: 'documentation' ou 'fiche'."
+    )
     category: Optional[str] = Field(
-        default=None, 
-        nullable=True, 
+        default=None,
+        nullable=True,
         max_length=100,
         description="Catégorie du document (Rapport, Guide, Étude, Manuel, PV, Infographie, Politique, Récit, Plan)."
     )

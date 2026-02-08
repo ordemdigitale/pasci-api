@@ -193,6 +193,7 @@ def validate_and_process_image(file: UploadFile) -> str:
 async def create_documentation(
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
+    type: str = Form("documentation"),
     category: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     thumbnail: Optional[UploadFile] = File(None),
@@ -205,6 +206,7 @@ async def create_documentation(
 
     - **title**: Title of the document (required)
     - **description**: Description of the document
+    - **type**: Type of resource ('documentation' or 'fiche')
     - **category**: Category (Rapport, Guide, Étude, Manuel, PV, Infographie, Politique, Récit, Plan)
     - **file**: Document file (PDF, DOCX, etc., optional, max 50MB)
     - **thumbnail**: Cover image (optional, max 5MB)
@@ -249,6 +251,7 @@ async def create_documentation(
     doc_create = Documentation(
         title=title.strip(),
         description=description,
+        type=type,
         category=category,
         file_path=file_path,
         file_type=file_type,
@@ -296,6 +299,7 @@ async def create_documentation(
 async def get_all_documentation(
     skip: int = Query(0, ge=0, description="Nombre de documents à ignorer"),
     limit: int = Query(20, ge=1, le=100, description="Nombre de documents à retourner"),
+    type: Optional[str] = Query(None, description="Filtrer par type ('documentation' ou 'fiche')"),
     category: Optional[str] = Query(None, description="Filtrer par catégorie"),
     crasc_id: Optional[int] = Query(None, description="Filtrer par CRASC ID"),
     osc_id: Optional[int] = Query(None, description="Filtrer par OSC ID"),
@@ -309,6 +313,7 @@ async def get_all_documentation(
 
     - **skip**: Number of records to skip (pagination)
     - **limit**: Maximum number of records to return (max 100)
+    - **type**: Filter by type ('documentation' or 'fiche')
     - **category**: Filter by category
     - **crasc_id**: Filter by CRASC
     - **osc_id**: Filter by OSC
@@ -323,6 +328,9 @@ async def get_all_documentation(
     )
 
     # Apply filters
+    if type:
+        query = query.where(Documentation.type == type)
+
     if category:
         query = query.where(Documentation.category == category)
 
@@ -400,29 +408,33 @@ async def get_single_documentation(
 async def get_documentation_update_form(
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
+    type: Optional[str] = Form(None),
     category: Optional[str] = Form(None),
     crasc_id: str = Form(""),
     osc_id: str = Form("")
 ) -> DocumentationUpdate:
     """Parse form data into DocumentationUpdate"""
     update_dict = {}
-    
+
     if title is not None:
         update_dict["title"] = title
-    
+
     if description is not None:
         update_dict["description"] = description
-    
+
+    if type is not None:
+        update_dict["type"] = type
+
     if category is not None:
         update_dict["category"] = category
-    
+
     # Parse IDs - only include if provided
     if crasc_id and crasc_id != "":
         update_dict["crasc_id"] = int(crasc_id)
-    
+
     if osc_id and osc_id != "":
         update_dict["osc_id"] = int(osc_id)
-    
+
     return DocumentationUpdate(**update_dict)
 
 
