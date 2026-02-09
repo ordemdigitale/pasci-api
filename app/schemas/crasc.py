@@ -100,11 +100,14 @@ class OscBase(BaseModel):
   email: Optional[str] = None
   phone: Optional[str] = None
   ville: Optional[str] = None
+  
   @computed_field
   @property
-  def thumbnail_url(self) -> str:
-    """Constructs the full URL path for the frontend"""
-    return f"https://api.plateforme-osci.org/static/{self.thumbnail_path}"
+  def thumbnail_url(self) -> Optional[str]:
+    """Constructs the full URL path for the thumbnail"""
+    if self.thumbnail_path and self.thumbnail_path != "default.png":
+      return f"https://api.plateforme-osci.org/static/{self.thumbnail_path}"
+    return None
 
 class OscCreate(OscBase):
   pass
