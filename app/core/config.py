@@ -22,6 +22,9 @@ class Settings(BaseSettings):
   # Uploads directory
   UPLOAD_DIR: str = "uploads/images"
 
+  # API Base URL (for constructing static file URLs)
+  API_BASE_URL: str = "http://localhost:8000"
+
   # Construct DATABASE_URL
   @property
   def DATABASE_URL(self) -> str:
