@@ -6,6 +6,7 @@ from typing import Optional, List
 
 import slugify
 from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Query
+from fastapi.responses import FileResponse
 from PIL import Image
 from sqlalchemy.orm import selectinload
 from sqlmodel import desc, select, or_
@@ -530,6 +531,58 @@ async def update_documentation(
                 }]
             }
         )
+
+
+@documentation_router.get("/{doc_slug}/download")
+async def download_documentation(
+    doc_slug: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Download a documentation file
+
+    Returns the file as a downloadable attachment
+    """
+    # Fetch the documentation
+    result = await db.execute(
+        select(Documentation).where(Documentation.slug == doc_slug)
+    )
+    doc = result.scalar_one_or_none()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document non trouvé."
+        )
+
+    if not doc.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ce document n'a pas de fichier associé."
+        )
+
+    # Construct the full file path
+    file_path = os.path.join(settings.UPLOAD_DIR, doc.file_path)
+
+    # Check if file exists
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le fichier n'existe pas sur le serveur. Chemin: {doc.file_path}"
+        )
+
+    # Get the original filename from the title and extension
+    filename = f"{doc.title}.{doc.file_type}" if doc.file_type else doc.title
+
+    # Return the file as a download
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
 
 
 @documentation_router.delete("/{doc_slug}", status_code=status.HTTP_204_NO_CONTENT)

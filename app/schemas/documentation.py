@@ -49,6 +49,14 @@ class DocumentationRead(DocumentationBase):
     id: int
     slug: Optional[str] = None
 
+    @computed_field
+    @property
+    def download_url(self) -> Optional[str]:
+        """Construit l'URL de téléchargement du fichier"""
+        if self.slug:
+            return f"{settings.API_BASE_URL}/api/v1/documentation/{self.slug}/download"
+        return None
+
     class Config:
         from_attributes = True
 
@@ -58,6 +66,14 @@ class DocumentationReadDetail(DocumentationBase):
     slug: Optional[str] = None
     crasc: Optional[CrascRead] = None
     osc: Optional[OscRead] = None
+
+    @computed_field
+    @property
+    def download_url(self) -> Optional[str]:
+        """Construit l'URL de téléchargement du fichier"""
+        if self.slug:
+            return f"{settings.API_BASE_URL}/api/v1/documentation/{self.slug}/download"
+        return None
 
     class Config:
         from_attributes = True
