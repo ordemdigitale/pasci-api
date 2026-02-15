@@ -23,7 +23,7 @@ class Settings(BaseSettings):
   UPLOAD_DIR: str = "uploads/images"
 
   # API Base URL (for constructing static file URLs)
-  API_BASE_URL: str = "http://localhost:8000"
+  API_BASE_URL: str = "https://api.plateforme-osci.org"
 
   # Construct DATABASE_URL
   @property
