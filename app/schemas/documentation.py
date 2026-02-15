@@ -8,6 +8,7 @@ from sqlmodel import Field
 
 # Import at runtime for Pydantic model validation
 from app.schemas.crasc import CrascRead, OscRead
+from app.core.config import settings
 
 
 class DocumentationBase(BaseModel):
@@ -30,14 +31,14 @@ class DocumentationBase(BaseModel):
         """Construit l'URL complète du fichier pour le frontend"""
         if self.file_path:
             # file_path already includes "documents/" prefix
-            return f"http://localhost:8000/static/{self.file_path}"
+            return f"{settings.API_BASE_URL}/static/{self.file_path}"
         return None
 
     @computed_field
     @property
     def thumbnail_url(self) -> str:
         """Construit l'URL complète de l'image de couverture pour le frontend"""
-        return f"http://localhost:8000/static/{self.thumbnail_path or 'default.png'}"
+        return f"{settings.API_BASE_URL}/static/{self.thumbnail_path or 'default.png'}"
 
 
 class DocumentationCreate(DocumentationBase):
@@ -48,6 +49,14 @@ class DocumentationRead(DocumentationBase):
     id: int
     slug: Optional[str] = None
 
+    @computed_field
+    @property
+    def download_url(self) -> Optional[str]:
+        """Construit l'URL de téléchargement du fichier"""
+        if self.slug:
+            return f"{settings.API_BASE_URL}/api/v1/documentation/{self.slug}/download"
+        return None
+
     class Config:
         from_attributes = True
 
@@ -57,6 +66,14 @@ class DocumentationReadDetail(DocumentationBase):
     slug: Optional[str] = None
     crasc: Optional[CrascRead] = None
     osc: Optional[OscRead] = None
+
+    @computed_field
+    @property
+    def download_url(self) -> Optional[str]:
+        """Construit l'URL de téléchargement du fichier"""
+        if self.slug:
+            return f"{settings.API_BASE_URL}/api/v1/documentation/{self.slug}/download"
+        return None
 
     class Config:
         from_attributes = True
