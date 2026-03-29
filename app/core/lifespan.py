@@ -3,9 +3,23 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from sqlalchemy import text
 import logging
+from sqlmodel import SQLModel
 from app.database.session import async_engine, Base, get_db
 from app.database.test_connection import test_database_connection
 from app.core.init_db import create_default_superuser
+
+# Import all models so SQLModel.metadata is populated before create_all
+import app.models.users
+import app.models.crasc
+import app.models.jobs
+import app.models.key_stats
+import app.models.ptf
+import app.models.hero
+import app.models.tags
+import app.models.formation
+import app.models.documentation
+import app.models.offre_projet
+import app.models.forum
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +55,7 @@ async def startup():
     try:
         logger.info("🗄️ Creating database tables...")
         async with async_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(SQLModel.metadata.create_all)
         logger.info("✅ Database tables created successfully!")
     except Exception as e:
         logger.error(f"❌ Failed to create tables: {e}")

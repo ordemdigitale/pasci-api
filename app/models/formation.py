@@ -6,7 +6,37 @@ from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, String, DateTime, func, TEXT
 from typing import Optional, List
+from uuid import UUID, uuid4
 import slugify
+
+
+class FormationRubrique(SQLModel, table=True):
+    """Rubrique/catégorie de formation"""
+    __tablename__ = "formation_rubrique"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=150, unique=True, index=True)
+    slug: Optional[str] = Field(default=None, max_length=150, unique=True)
+    description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    color: Optional[str] = Field(default="#E05017", max_length=20)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+    formations: List["Formation"] = Relationship(
+        back_populates="rubrique",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.name and not self.slug:
+            self.slug = slugify.slugify(self.name)
+
+    def __repr__(self) -> str:
+        return f"<FormationRubrique: {self.name}>"
 
 
 class Formation(SQLModel, table=True):
