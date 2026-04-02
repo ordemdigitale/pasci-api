@@ -6,7 +6,7 @@ import os
 import shutil
 import uuid
 import slugify
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Query
 from sqlmodel import select, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -15,10 +15,139 @@ from typing import Optional, List
 
 from app.core.config import settings
 from app.database.session import get_db
-from app.models.formation import Formation
-from app.schemas.formation import FormationCreate, FormationRead, FormationUpdate, FormationReadWithRelations
+from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat
+from app.models.users import User
+from app.schemas.formation import (
+    FormationCreate, FormationRead, FormationUpdate, FormationReadWithRelations,
+    FormationRubriqueCreate, FormationRubriqueRead, FormationRubriqueUpdate,
+    FormationInscriptionCreate, FormationInscriptionRead, CertificatRead,
+    PaiementInitierResponse, PaiementWebhookPayload,
+)
+from app.core.auth import get_current_user, get_current_staff_user
+from app.services.cinetpay import cinetpay_service
+from app.core.config import settings
 
 formations_router = APIRouter()
+
+
+# ─────────────────────────────────────────────────────────────
+# RUBRIQUES  (doit être AVANT les routes /{formation_slug})
+# ─────────────────────────────────────────────────────────────
+
+@formations_router.get("/rubriques", response_model=List[FormationRubriqueRead])
+async def list_rubriques(
+    active_only: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste toutes les rubriques (filtre optionnel actives seulement)"""
+    query = select(FormationRubrique).order_by(FormationRubrique.name)
+    if active_only:
+        query = query.where(FormationRubrique.is_active == True)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@formations_router.post("/rubriques", response_model=FormationRubriqueRead, status_code=status.HTTP_201_CREATED)
+async def create_rubrique(
+    rubrique: FormationRubriqueCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    db_r = FormationRubrique(**rubrique.model_dump())
+    db.add(db_r)
+    await db.commit()
+    await db.refresh(db_r)
+    return db_r
+
+
+@formations_router.patch("/rubriques/{rubrique_id}", response_model=FormationRubriqueRead)
+async def update_rubrique(
+    rubrique_id: int,
+    rubrique_update: FormationRubriqueUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    result = await db.execute(select(FormationRubrique).where(FormationRubrique.id == rubrique_id))
+    rubrique = result.scalar_one_or_none()
+    if not rubrique:
+        raise HTTPException(status_code=404, detail="Rubrique non trouvée.")
+    for key, value in rubrique_update.model_dump(exclude_unset=True).items():
+        setattr(rubrique, key, value)
+    await db.commit()
+    await db.refresh(rubrique)
+    return rubrique
+
+
+@formations_router.delete("/rubriques/{rubrique_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_rubrique(
+    rubrique_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    result = await db.execute(select(FormationRubrique).where(FormationRubrique.id == rubrique_id))
+    rubrique = result.scalar_one_or_none()
+    if not rubrique:
+        raise HTTPException(status_code=404, detail="Rubrique non trouvée.")
+    await db.delete(rubrique)
+    await db.commit()
+    return None
+
+
+# ─────────────────────────────────────────────────────────────
+# VÉRIFICATION CERTIFICAT (doit être AVANT /{formation_slug})
+# ─────────────────────────────────────────────────────────────
+
+@formations_router.get("/certificats/verifier/{code}", response_model=CertificatRead)
+async def verifier_certificat(code: str, db: AsyncSession = Depends(get_db)):
+    """Vérifier l'authenticité d'un certificat via son code unique (public)"""
+    result = await db.execute(select(Certificat).where(Certificat.code == code.upper()))
+    certificat = result.scalar_one_or_none()
+    if not certificat:
+        raise HTTPException(status_code=404, detail="Certificat introuvable ou invalide.")
+    return certificat
+
+
+# ─────────────────────────────────────────────────────────────
+# ÉMETTRE CERTIFICAT (doit être AVANT /{formation_slug})
+# ─────────────────────────────────────────────────────────────
+
+@formations_router.post("/inscriptions/{inscription_id}/certifier", response_model=CertificatRead, status_code=status.HTTP_201_CREATED)
+async def emettre_certificat(
+    inscription_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Émettre un certificat numérique pour une inscription (staff only)"""
+    result = await db.execute(
+        select(FormationInscription).where(FormationInscription.id == inscription_id)
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription non trouvée.")
+    if inscription.certificate_issued:
+        cert_result = await db.execute(
+            select(Certificat).where(Certificat.inscription_id == inscription_id)
+        )
+        return cert_result.scalar_one()
+
+    form_result = await db.execute(select(Formation).where(Formation.id == inscription.formation_id))
+    formation = form_result.scalar_one()
+
+    if not inscription.is_completed:
+        inscription.is_completed = True
+        inscription.completed_at = datetime.now(timezone.utc)
+
+    certificat = Certificat(
+        inscription_id=inscription.id,
+        formation_title=formation.title,
+        participant_name=inscription.participant_name,
+        participant_email=inscription.participant_email,
+    )
+    db.add(certificat)
+    inscription.certificate_issued = True
+    await db.commit()
+    await db.refresh(certificat)
+    return certificat
 
 
 @formations_router.post("", response_model=FormationRead, status_code=status.HTTP_201_CREATED)
@@ -34,6 +163,9 @@ async def create_formation(
     registration_link: Optional[str] = Form(None),
     materials_link: Optional[str] = Form(None),
     is_published: bool = Form(False),
+    type: str = Form("gratuite"),
+    price: Optional[float] = Form(None),
+    rubrique_id: str = Form(""),
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
     thumbnail: Optional[UploadFile] = File(None),
@@ -70,6 +202,7 @@ async def create_formation(
     # Parse IDs
     crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
     osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
+    rubrique_id_int = int(rubrique_id) if rubrique_id and rubrique_id != "" else None
 
     # Parse dates
     start_date_parsed = datetime.fromisoformat(start_date) if start_date else None
@@ -126,6 +259,9 @@ async def create_formation(
             registration_link=registration_link,
             materials_link=materials_link,
             is_published=is_published,
+            type=type,
+            price=price,
+            rubrique_id=rubrique_id_int,
             crasc_id=crasc_id_int,
             osc_id=osc_id_int,
             thumbnail_path=saved_path
@@ -157,6 +293,7 @@ async def get_formations(
     search: Optional[str] = Query(None, description="Rechercher dans titre/description"),
     crasc_id: Optional[int] = Query(None, description="Filtrer par CRASC"),
     osc_id: Optional[int] = Query(None, description="Filtrer par OSC"),
+    rubrique_id: Optional[int] = Query(None, description="Filtrer par rubrique"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -172,7 +309,8 @@ async def get_formations(
     """
     query = select(Formation).options(
         selectinload(Formation.crasc),
-        selectinload(Formation.osc)
+        selectinload(Formation.osc),
+        selectinload(Formation.rubrique),
     )
 
     # Apply filters
@@ -197,6 +335,9 @@ async def get_formations(
 
     if osc_id:
         query = query.where(Formation.osc_id == osc_id)
+
+    if rubrique_id:
+        query = query.where(Formation.rubrique_id == rubrique_id)
 
     # Apply pagination and ordering
     query = query.offset(skip).limit(limit).order_by(Formation.start_date.desc())
@@ -240,7 +381,8 @@ async def get_formation(
     """
     query = select(Formation).where(Formation.slug == formation_slug).options(
         selectinload(Formation.crasc),
-        selectinload(Formation.osc)
+        selectinload(Formation.osc),
+        selectinload(Formation.rubrique),
     )
 
     result = await db.execute(query)
@@ -270,6 +412,9 @@ async def get_formation_update_form(
     is_published: Optional[bool] = Form(None),
     is_full: Optional[bool] = Form(None),
     is_completed: Optional[bool] = Form(None),
+    type: Optional[str] = Form(None),
+    price: Optional[float] = Form(None),
+    rubrique_id: str = Form(""),
     crasc_id: str = Form(""),
     osc_id: str = Form("")
 ) -> FormationUpdate:
@@ -320,13 +465,22 @@ async def get_formation_update_form(
     if is_completed is not None:
         update_dict["is_completed"] = is_completed
     
+    if type is not None:
+        update_dict["type"] = type
+
+    if price is not None:
+        update_dict["price"] = price
+
     # Parse IDs - only include if provided
+    if rubrique_id and rubrique_id != "":
+        update_dict["rubrique_id"] = int(rubrique_id)
+
     if crasc_id and crasc_id != "":
         update_dict["crasc_id"] = int(crasc_id)
-    
+
     if osc_id and osc_id != "":
         update_dict["osc_id"] = int(osc_id)
-    
+
     return FormationUpdate(**update_dict)
 
 
@@ -346,7 +500,8 @@ async def update_formation(
     result = await db.execute(
         select(Formation).where(Formation.slug == formation_slug).options(
             selectinload(Formation.crasc),
-            selectinload(Formation.osc)
+            selectinload(Formation.osc),
+            selectinload(Formation.rubrique),
         )
     )
     formation = result.scalars().first()
@@ -430,51 +585,223 @@ async def delete_formation(
     return None
 
 
-@formations_router.post("/{formation_slug}/register", status_code=status.HTTP_200_OK)
-async def register_to_formation(
+# ─────────────────────────────────────────────────────────────
+# INSCRIPTIONS  (/{formation_slug}/...)
+# ─────────────────────────────────────────────────────────────
+
+@formations_router.post("/{formation_slug}/inscrire", response_model=FormationInscriptionRead, status_code=status.HTTP_201_CREATED)
+async def inscrire_participant(
     formation_slug: str,
-    db: AsyncSession = Depends(get_db)
+    data: FormationInscriptionCreate,
+    db: AsyncSession = Depends(get_db),
 ):
     """
-    Register a participant to a formation (increments current_participants)
-
-    This is a simple counter increment. For full registration management,
-    you would need a separate Participants/Registrations table.
+    Inscrire un participant à une formation.
+    - Si gratuite  → inscription directe, payment_status='gratuite'
+    - Si payante   → inscription créée avec payment_status='pending',
+                     l'utilisateur doit ensuite appeler /{slug}/paiement/initier
     """
     result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
-    formation = result.scalars().first()
-
+    formation = result.scalar_one_or_none()
     if not formation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Formation non trouvée."
-        )
-
+        raise HTTPException(status_code=404, detail="Formation non trouvée.")
     if formation.is_full:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Formation complète. Aucune place disponible."
-        )
-
+        raise HTTPException(status_code=400, detail="Formation complète.")
     if formation.is_completed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Formation déjà terminée."
+        raise HTTPException(status_code=400, detail="Formation déjà terminée.")
+    existing = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.formation_id == formation.id,
+            FormationInscription.participant_email == data.participant_email,
         )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Cet email est déjà inscrit à cette formation.")
 
-    # Increment participant count
-    formation.current_participants += 1
+    payment_status = "gratuite" if formation.type == "gratuite" else "pending"
 
-    # Check if now full
-    if formation.max_participants and formation.current_participants >= formation.max_participants:
-        formation.is_full = True
+    inscription = FormationInscription(
+        formation_id=formation.id,
+        participant_name=data.participant_name,
+        participant_email=data.participant_email,
+        payment_status=payment_status,
+        payment_amount=formation.price if formation.type == "payante" else None,
+    )
+    db.add(inscription)
+
+    # On incrémente le compteur seulement pour les formations gratuites
+    # Pour les payantes, on attend la confirmation du paiement
+    if formation.type == "gratuite":
+        formation.current_participants += 1
+        if formation.max_participants and formation.current_participants >= formation.max_participants:
+            formation.is_full = True
 
     await db.commit()
-    await db.refresh(formation)
+    await db.refresh(inscription)
+    return inscription
 
-    return {
-        "message": "Inscription réussie",
-        "formation": formation.title,
-        "current_participants": formation.current_participants,
-        "is_full": formation.is_full
-    }
+
+@formations_router.post("/{formation_slug}/paiement/initier", response_model=PaiementInitierResponse)
+async def initier_paiement(
+    formation_slug: str,
+    data: FormationInscriptionCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Initie le paiement CinetPay pour une formation payante.
+    Crée ou retrouve l'inscription pending, puis retourne l'URL de paiement.
+    """
+    result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
+    formation = result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation non trouvée.")
+    if formation.type != "payante":
+        raise HTTPException(status_code=400, detail="Cette formation est gratuite.")
+    if formation.is_full:
+        raise HTTPException(status_code=400, detail="Formation complète.")
+    if not formation.price:
+        raise HTTPException(status_code=400, detail="Prix non défini pour cette formation.")
+
+    # Retrouver ou créer l'inscription pending
+    existing_result = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.formation_id == formation.id,
+            FormationInscription.participant_email == data.participant_email,
+        )
+    )
+    inscription = existing_result.scalar_one_or_none()
+
+    if not inscription:
+        inscription = FormationInscription(
+            formation_id=formation.id,
+            participant_name=data.participant_name,
+            participant_email=data.participant_email,
+            payment_status="pending",
+            payment_amount=formation.price,
+        )
+        db.add(inscription)
+        await db.commit()
+        await db.refresh(inscription)
+    elif inscription.payment_status == "paid":
+        raise HTTPException(status_code=409, detail="Cet email a déjà payé cette formation.")
+
+    # Initier le paiement via CinetPay
+    try:
+        paiement = await cinetpay_service.initier_paiement(
+            amount=formation.price,
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            description=f"Inscription : {formation.title}",
+            formation_slug=formation_slug,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur CinetPay : {str(e)}")
+
+    # Sauvegarder le transaction_id
+    inscription.payment_transaction_id = paiement["transaction_id"]
+    await db.commit()
+
+    return PaiementInitierResponse(
+        inscription_id=inscription.id,
+        payment_url=paiement["payment_url"],
+        transaction_id=paiement["transaction_id"],
+        amount=formation.price,
+        currency=settings.CINETPAY_CURRENCY,
+        cinetpay_configured=settings.cinetpay_configured,
+    )
+
+
+@formations_router.post("/paiement/webhook")
+async def cinetpay_webhook(
+    payload: PaiementWebhookPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Webhook appelé automatiquement par CinetPay après chaque paiement.
+    Met à jour le statut de l'inscription selon le résultat.
+    """
+    result = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.payment_transaction_id == payload.cpm_trans_id
+        )
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        # CinetPay réessaie → on retourne 200 pour éviter les retry infinis
+        return {"status": "not_found"}
+
+    if payload.cpm_trans_status == "ACCEPTED" and payload.cpm_result == "00":
+        inscription.payment_status = "paid"
+        inscription.payment_date = datetime.now(timezone.utc)
+        inscription.payment_operator = payload.payment_method
+
+        # Confirmer l'inscription maintenant que le paiement est validé
+        form_result = await db.execute(
+            select(Formation).where(Formation.id == inscription.formation_id)
+        )
+        formation = form_result.scalar_one_or_none()
+        if formation:
+            formation.current_participants += 1
+            if formation.max_participants and formation.current_participants >= formation.max_participants:
+                formation.is_full = True
+    else:
+        inscription.payment_status = "failed"
+
+    await db.commit()
+    return {"status": "ok"}
+
+
+@formations_router.post("/paiement/simulation/confirmer/{inscription_id}", response_model=FormationInscriptionRead)
+async def simuler_paiement_confirme(
+    inscription_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint de simulation uniquement (désactivé automatiquement en production).
+    Permet de simuler un paiement accepté sans CinetPay.
+    """
+    if settings.cinetpay_configured:
+        raise HTTPException(status_code=403, detail="Simulation désactivée en production.")
+
+    result = await db.execute(
+        select(FormationInscription).where(FormationInscription.id == inscription_id)
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription non trouvée.")
+
+    inscription.payment_status = "paid"
+    inscription.payment_date = datetime.now(timezone.utc)
+    inscription.payment_operator = "SIMULATION"
+
+    form_result = await db.execute(
+        select(Formation).where(Formation.id == inscription.formation_id)
+    )
+    formation = form_result.scalar_one_or_none()
+    if formation:
+        formation.current_participants += 1
+        if formation.max_participants and formation.current_participants >= formation.max_participants:
+            formation.is_full = True
+
+    await db.commit()
+    await db.refresh(inscription)
+    return inscription
+
+
+@formations_router.get("/{formation_slug}/inscriptions", response_model=List[FormationInscriptionRead])
+async def list_inscriptions(
+    formation_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Liste des inscriptions (staff only)"""
+    result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
+    formation = result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation non trouvée.")
+    insc_result = await db.execute(
+        select(FormationInscription)
+        .where(FormationInscription.formation_id == formation.id)
+        .order_by(FormationInscription.created_at.desc())
+    )
+    return insc_result.scalars().all()

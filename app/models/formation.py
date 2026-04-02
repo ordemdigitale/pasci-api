@@ -63,6 +63,10 @@ class Formation(SQLModel, table=True):
     max_participants: Optional[int] = Field(None, ge=1, description="Nombre maximum de participants")
     current_participants: int = Field(default=0, ge=0, description="Nombre actuel de participants")
 
+    # Type et prix
+    type: str = Field(default="gratuite", max_length=20)  # "gratuite" ou "payante"
+    price: Optional[float] = Field(default=None, description="Prix en FCFA si payante")
+
     # Status
     is_published: bool = Field(default=False, description="Formation publiée et visible")
     is_full: bool = Field(default=False, description="Formation complète")
@@ -76,11 +80,19 @@ class Formation(SQLModel, table=True):
     materials_link: Optional[str] = Field(None, max_length=500, description="Lien vers les supports de formation")
 
     # Relations
+    rubrique_id: Optional[int] = Field(default=None, foreign_key="formation_rubrique.id", ondelete="SET NULL")
+    rubrique: Optional["FormationRubrique"] = Relationship(back_populates="formations")
+
     crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id", ondelete="SET NULL")
     crasc: Optional["Crasc"] = Relationship(back_populates="formations")
 
     osc_id: Optional[int] = Field(default=None, foreign_key="osc.id", ondelete="SET NULL")
     osc: Optional["Osc"] = Relationship(back_populates="formations")
+
+    inscriptions: List["FormationInscription"] = Relationship(
+        back_populates="formation",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
 
     # Timestamps
     created_at: datetime = Field(
@@ -102,3 +114,65 @@ class Formation(SQLModel, table=True):
 
     def __repr__(self) -> str:
         return f"<Formation: {self.title}>"
+
+
+class FormationInscription(SQLModel, table=True):
+    """Inscription d'un participant à une formation"""
+    __tablename__ = "formation_inscription"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    formation_id: int = Field(foreign_key="formations.id", ondelete="CASCADE")
+    user_id: Optional[UUID] = Field(default=None, foreign_key="user.id", ondelete="SET NULL")
+    participant_name: str = Field(max_length=200)
+    participant_email: str = Field(max_length=255)
+    is_completed: bool = Field(default=False)
+    completed_at: Optional[datetime] = Field(default=None)
+    certificate_issued: bool = Field(default=False)
+
+    # ── Paiement CinetPay ──────────────────────────────────────
+    # payment_status : "gratuite" | "pending" | "paid" | "failed"
+    payment_status: str = Field(default="gratuite", max_length=20)
+    payment_transaction_id: Optional[str] = Field(default=None, max_length=100, unique=True)
+    payment_amount: Optional[float] = Field(default=None)
+    payment_date: Optional[datetime] = Field(default=None)
+    payment_operator: Optional[str] = Field(default=None, max_length=100)  # ex: "ORANGE_CI"
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+    formation: Optional["Formation"] = Relationship(back_populates="inscriptions")
+    certificat: Optional["Certificat"] = Relationship(
+        back_populates="inscription",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+
+    def __repr__(self) -> str:
+        return f"<Inscription: {self.participant_name} → {self.formation_id}>"
+
+
+class Certificat(SQLModel, table=True):
+    """Certificat numérique délivré après complétion d'une formation"""
+    __tablename__ = "certificat"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    code: str = Field(
+        default_factory=lambda: str(uuid4()).replace("-", "").upper()[:16],
+        max_length=20,
+        unique=True,
+        index=True,
+    )
+    inscription_id: int = Field(foreign_key="formation_inscription.id", ondelete="CASCADE")
+    formation_title: str = Field(max_length=250)
+    participant_name: str = Field(max_length=200)
+    participant_email: str = Field(max_length=255)
+    issued_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+    inscription: Optional["FormationInscription"] = Relationship(back_populates="certificat")
+
+    def __repr__(self) -> str:
+        return f"<Certificat: {self.code} — {self.participant_name}>"

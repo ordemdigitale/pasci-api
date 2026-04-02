@@ -45,6 +45,19 @@ class Settings(BaseSettings):
   IMAGEKIT_PUBLIC_KEY: Optional[str] = None
   IMAGEKIT_URL: Optional[str] = None
 
+  # CinetPay — renseigner ces valeurs dans .env une fois l'API acquise
+  CINETPAY_API_KEY: Optional[str] = None        # ex: "123456789"
+  CINETPAY_SITE_ID: Optional[str] = None        # ex: "987654321"
+  CINETPAY_API_URL: str = "https://api-checkout.cinetpay.com/v2/payment"
+  CINETPAY_CURRENCY: str = "XOF"                # XOF pour FCFA (UEMOA) / XAF pour FCFA (CEMAC)
+  CINETPAY_RETURN_URL: str = "http://localhost:3000/formations/paiement/retour"
+  CINETPAY_NOTIFY_URL: str = "http://localhost:8000/api/v1/formations/paiement/webhook"
+
+  @property
+  def cinetpay_configured(self) -> bool:
+    """Retourne True si CinetPay est configuré (clés renseignées)"""
+    return bool(self.CINETPAY_API_KEY and self.CINETPAY_SITE_ID)
+
   class Config:
     case_sensitive = True
     env_file = ".env"

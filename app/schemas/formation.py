@@ -3,9 +3,107 @@
 Pydantic schemas for Formation model
 """
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, Field, HttpUrl, computed_field
+from typing import Optional, List
+from uuid import UUID
+from pydantic import BaseModel, Field, computed_field
 from app.core.config import settings
+
+
+# ── Rubrique ──────────────────────────────────────────────────
+
+class FormationRubriqueCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    color: Optional[str] = "#E05017"
+    is_active: bool = True
+
+
+class FormationRubriqueRead(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    color: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FormationRubriqueUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+# ── Inscription ────────────────────────────────────────────────
+
+class FormationInscriptionCreate(BaseModel):
+    participant_name: str
+    participant_email: str
+
+
+class FormationInscriptionRead(BaseModel):
+    id: int
+    formation_id: int
+    user_id: Optional[UUID] = None
+    participant_name: str
+    participant_email: str
+    is_completed: bool
+    completed_at: Optional[datetime] = None
+    certificate_issued: bool
+    # Paiement
+    payment_status: str
+    payment_transaction_id: Optional[str] = None
+    payment_amount: Optional[float] = None
+    payment_date: Optional[datetime] = None
+    payment_operator: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PaiementInitierResponse(BaseModel):
+    """Réponse lors de l'initiation d'un paiement CinetPay"""
+    inscription_id: int
+    payment_url: str
+    transaction_id: str
+    amount: float
+    currency: str
+    cinetpay_configured: bool  # False = mode simulation (pas encore d'API)
+
+
+class PaiementWebhookPayload(BaseModel):
+    """Payload reçu par CinetPay après paiement"""
+    cpm_trans_id: str
+    cpm_site_id: str
+    cpm_amount: str
+    cpm_currency: str
+    cpm_payid: str
+    cpm_payment_date: Optional[str] = None
+    cpm_payment_time: Optional[str] = None
+    cpm_error_message: Optional[str] = None
+    cpm_result: str        # "00" = succès
+    cpm_trans_status: str  # "ACCEPTED" | "REFUSED" | "PENDING"
+    payment_method: Optional[str] = None
+
+
+# ── Certificat ─────────────────────────────────────────────────
+
+class CertificatRead(BaseModel):
+    id: int
+    code: str
+    inscription_id: int
+    formation_title: str
+    participant_name: str
+    participant_email: str
+    issued_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class FormationBase(BaseModel):
@@ -21,6 +119,9 @@ class FormationBase(BaseModel):
     registration_link: Optional[str] = Field(None, max_length=500)
     materials_link: Optional[str] = Field(None, max_length=500)
     is_published: bool = False
+    type: str = Field(default="gratuite")  # "gratuite" ou "payante"
+    price: Optional[float] = None
+    rubrique_id: Optional[int] = None
 
 
 class FormationCreate(FormationBase):
@@ -45,6 +146,9 @@ class FormationUpdate(BaseModel):
     is_published: Optional[bool] = None
     is_full: Optional[bool] = None
     is_completed: Optional[bool] = None
+    type: Optional[str] = None
+    price: Optional[float] = None
+    rubrique_id: Optional[int] = None
     crasc_id: Optional[int] = None
     osc_id: Optional[int] = None
 
@@ -57,6 +161,7 @@ class FormationRead(FormationBase):
     is_full: bool
     is_completed: bool
     thumbnail_path: str
+    rubrique_id: Optional[int] = None
     crasc_id: Optional[int] = None
     osc_id: Optional[int] = None
     created_at: datetime
@@ -95,6 +200,7 @@ class OscSimple(BaseModel):
 
 
 class FormationReadWithRelations(FormationRead):
-    """Formation with CRASC and OSC details"""
+    """Formation with CRASC, OSC and Rubrique details"""
+    rubrique: Optional[FormationRubriqueRead] = None
     crasc: Optional[CrascSimple] = None
     osc: Optional[OscSimple] = None
