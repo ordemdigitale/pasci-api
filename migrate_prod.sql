@@ -1,0 +1,82 @@
+-- ============================================================
+-- Migration production PASCI
+-- À exécuter via : psql -U pasci_user -d pasci_db -f migrate_prod.sql
+-- ============================================================
+
+-- 1. Colonnes manquantes sur la table formations
+ALTER TABLE formations ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'gratuite';
+ALTER TABLE formations ADD COLUMN IF NOT EXISTS price FLOAT;
+
+-- 2. Colonnes manquantes sur formation_inscription (paiement)
+ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'gratuite';
+ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS payment_transaction_id VARCHAR(100);
+ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS payment_amount FLOAT;
+ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS payment_date TIMESTAMP WITH TIME ZONE;
+ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS payment_operator VARCHAR(100);
+
+-- Contrainte unique sur transaction_id (si pas déjà présente)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'formation_inscription_payment_transaction_id_key'
+  ) THEN
+    ALTER TABLE formation_inscription
+      ADD CONSTRAINT formation_inscription_payment_transaction_id_key
+      UNIQUE (payment_transaction_id);
+  END IF;
+END $$;
+
+-- 3. Table formation_rubrique
+CREATE TABLE IF NOT EXISTS formation_rubrique (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL UNIQUE,
+    slug VARCHAR(150) UNIQUE,
+    description TEXT,
+    color VARCHAR(20) DEFAULT '#E05017',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Colonne rubrique_id sur formations
+ALTER TABLE formations ADD COLUMN IF NOT EXISTS rubrique_id INTEGER REFERENCES formation_rubrique(id) ON DELETE SET NULL;
+
+-- 4. Table formation_module
+CREATE TABLE IF NOT EXISTS formation_module (
+    id SERIAL PRIMARY KEY,
+    formation_id INTEGER NOT NULL REFERENCES formations(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    "order" INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 5. Table formation_lecon
+CREATE TABLE IF NOT EXISTS formation_lecon (
+    id SERIAL PRIMARY KEY,
+    module_id INTEGER NOT NULL REFERENCES formation_module(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    type VARCHAR(20) DEFAULT 'text',
+    content TEXT,
+    file_path VARCHAR(500),
+    duration_minutes INTEGER,
+    is_preview BOOLEAN DEFAULT FALSE,
+    "order" INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 6. Table certificat
+CREATE TABLE IF NOT EXISTS certificat (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(20) NOT NULL UNIQUE,
+    inscription_id INTEGER NOT NULL REFERENCES formation_inscription(id) ON DELETE CASCADE,
+    formation_title VARCHAR(250) NOT NULL,
+    participant_name VARCHAR(200) NOT NULL,
+    participant_email VARCHAR(255) NOT NULL,
+    issued_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_certificat_code ON certificat(code);
+
+-- ============================================================
+SELECT 'Migration terminée avec succès' AS status;
+-- ============================================================
