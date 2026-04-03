@@ -45,6 +45,18 @@ class Settings(BaseSettings):
   IMAGEKIT_PUBLIC_KEY: Optional[str] = None
   IMAGEKIT_URL: Optional[str] = None
 
+  # Frontend URL (pour les liens dans les emails)
+  FRONTEND_URL: str = "http://localhost:3000"
+
+  # Email / SMTP
+  SMTP_HOST: Optional[str] = None          # ex: "localhost" pour Mailpit
+  SMTP_PORT: int = 1025                     # 1025 Mailpit dev | 587 prod
+  SMTP_USER: Optional[str] = None
+  SMTP_PASSWORD: Optional[str] = None
+  SMTP_FROM: str = "noreply@plateforme-osci.org"
+  SMTP_TLS: bool = False                    # True si port 465
+  SMTP_STARTTLS: bool = False               # True si port 587
+
   # CinetPay — renseigner ces valeurs dans .env une fois l'API acquise
   CINETPAY_API_KEY: Optional[str] = None        # ex: "123456789"
   CINETPAY_SITE_ID: Optional[str] = None        # ex: "987654321"

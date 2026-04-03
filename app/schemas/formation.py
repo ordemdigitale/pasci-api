@@ -199,6 +199,74 @@ class OscSimple(BaseModel):
         from_attributes = True
 
 
+# ── Modules & Leçons ───────────────────────────────────────────
+
+class FormationLeconCreate(BaseModel):
+    title: str
+    type: str = "text"  # "video" | "pdf" | "text"
+    content: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    is_preview: bool = False
+    order: int = 0
+
+
+class FormationLeconUpdate(BaseModel):
+    title: Optional[str] = None
+    type: Optional[str] = None
+    content: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    is_preview: Optional[bool] = None
+    order: Optional[int] = None
+
+
+class FormationLeconRead(BaseModel):
+    id: int
+    module_id: int
+    title: str
+    type: str
+    content: Optional[str] = None
+    file_path: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    is_preview: bool
+    order: int
+    created_at: datetime
+
+    @computed_field
+    @property
+    def file_url(self) -> Optional[str]:
+        if self.file_path:
+            return f"{settings.API_BASE_URL}/static/{self.file_path}"
+        return None
+
+    class Config:
+        from_attributes = True
+
+
+class FormationModuleCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    order: int = 0
+
+
+class FormationModuleUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    order: Optional[int] = None
+
+
+class FormationModuleRead(BaseModel):
+    id: int
+    formation_id: int
+    title: str
+    description: Optional[str] = None
+    order: int
+    lecons: List[FormationLeconRead] = []
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class FormationReadWithRelations(FormationRead):
     """Formation with CRASC, OSC and Rubrique details"""
     rubrique: Optional[FormationRubriqueRead] = None

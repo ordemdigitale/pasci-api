@@ -116,6 +116,57 @@ class Formation(SQLModel, table=True):
         return f"<Formation: {self.title}>"
 
 
+class FormationModule(SQLModel, table=True):
+    """Module (chapitre) d'une formation"""
+    __tablename__ = "formation_module"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    formation_id: int = Field(foreign_key="formations.id", ondelete="CASCADE")
+    title: str = Field(max_length=200)
+    description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    order: int = Field(default=0)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+    lecons: List["FormationLecon"] = Relationship(
+        back_populates="module",
+        sa_relationship_kwargs={"passive_deletes": True, "order_by": "FormationLecon.order"},
+    )
+
+    def __repr__(self) -> str:
+        return f"<FormationModule: {self.title}>"
+
+
+class FormationLecon(SQLModel, table=True):
+    """Leçon au sein d'un module"""
+    __tablename__ = "formation_lecon"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    module_id: int = Field(foreign_key="formation_module.id", ondelete="CASCADE")
+    title: str = Field(max_length=200)
+    # type: "video" | "pdf" | "text"
+    type: str = Field(default="text", max_length=20)
+    # Pour video : URL YouTube/Vimeo
+    # Pour pdf uploadé : chemin fichier
+    # Pour text : contenu HTML/markdown
+    content: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    file_path: Optional[str] = Field(default=None, max_length=500)
+    duration_minutes: Optional[int] = Field(default=None)
+    is_preview: bool = Field(default=False)  # visible sans inscription
+    order: int = Field(default=0)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+    module: Optional["FormationModule"] = Relationship(back_populates="lecons")
+
+    def __repr__(self) -> str:
+        return f"<FormationLecon: {self.title} ({self.type})>"
+
+
 class FormationInscription(SQLModel, table=True):
     """Inscription d'un participant à une formation"""
     __tablename__ = "formation_inscription"

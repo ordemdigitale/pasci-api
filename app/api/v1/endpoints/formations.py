@@ -15,16 +15,23 @@ from typing import Optional, List
 
 from app.core.config import settings
 from app.database.session import get_db
-from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat
+from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat, FormationModule, FormationLecon
 from app.models.users import User
 from app.schemas.formation import (
     FormationCreate, FormationRead, FormationUpdate, FormationReadWithRelations,
     FormationRubriqueCreate, FormationRubriqueRead, FormationRubriqueUpdate,
     FormationInscriptionCreate, FormationInscriptionRead, CertificatRead,
     PaiementInitierResponse, PaiementWebhookPayload,
+    FormationModuleCreate, FormationModuleUpdate, FormationModuleRead,
+    FormationLeconCreate, FormationLeconUpdate, FormationLeconRead,
 )
 from app.core.auth import get_current_user, get_current_staff_user
 from app.services.cinetpay import cinetpay_service
+from app.services.email import (
+    send_inscription_confirmation,
+    send_paiement_confirme,
+    send_certificat_emis,
+)
 from app.core.config import settings
 
 formations_router = APIRouter()
@@ -147,6 +154,15 @@ async def emettre_certificat(
     inscription.certificate_issued = True
     await db.commit()
     await db.refresh(certificat)
+
+    # Email avec le code du certificat
+    await send_certificat_emis(
+        participant_name=inscription.participant_name,
+        participant_email=inscription.participant_email,
+        formation_title=formation.title,
+        cert_code=certificat.code,
+    )
+
     return certificat
 
 
@@ -589,6 +605,33 @@ async def delete_formation(
 # INSCRIPTIONS  (/{formation_slug}/...)
 # ─────────────────────────────────────────────────────────────
 
+@formations_router.get("/{formation_slug}/check-inscription")
+async def check_inscription(
+    formation_slug: str,
+    email: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Vérifie si un email est déjà inscrit à une formation."""
+    result = await db.execute(
+        select(Formation).where(Formation.slug == formation_slug)
+    )
+    formation = result.scalar_one_or_none()
+    if not formation:
+        return {"registered": False}
+
+    existing = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.formation_id == formation.id,
+            FormationInscription.participant_email == email,
+        )
+    )
+    inscription = existing.scalar_one_or_none()
+    return {
+        "registered": inscription is not None,
+        "payment_status": inscription.payment_status if inscription else None,
+    }
+
+
 @formations_router.post("/{formation_slug}/inscrire", response_model=FormationInscriptionRead, status_code=status.HTTP_201_CREATED)
 async def inscrire_participant(
     formation_slug: str,
@@ -638,6 +681,23 @@ async def inscrire_participant(
 
     await db.commit()
     await db.refresh(inscription)
+
+    # Email de confirmation pour les formations gratuites
+    if formation.type == "gratuite":
+        start_date_str = (
+            formation.start_date.strftime("%d/%m/%Y à %H:%M")
+            if formation.start_date else None
+        )
+        await send_inscription_confirmation(
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            formation_title=formation.title,
+            formation_slug=formation_slug,
+            start_date=start_date_str,
+            location=formation.location,
+            trainer=formation.trainer,
+        )
+
     return inscription
 
 
@@ -744,10 +804,24 @@ async def cinetpay_webhook(
             formation.current_participants += 1
             if formation.max_participants and formation.current_participants >= formation.max_participants:
                 formation.is_full = True
+
+        await db.commit()
+
+        # Email de confirmation de paiement
+        payment_date_str = inscription.payment_date.strftime("%d/%m/%Y à %H:%M") if inscription.payment_date else None
+        await send_paiement_confirme(
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            formation_title=formation.title if formation else payload.cpm_trans_id,
+            formation_slug=formation_slug,
+            amount=float(payload.cpm_amount),
+            transaction_id=payload.cpm_trans_id,
+            payment_date=payment_date_str,
+        )
     else:
         inscription.payment_status = "failed"
+        await db.commit()
 
-    await db.commit()
     return {"status": "ok"}
 
 
@@ -785,6 +859,19 @@ async def simuler_paiement_confirme(
 
     await db.commit()
     await db.refresh(inscription)
+
+    # Email de confirmation paiement simulé
+    if formation:
+        await send_paiement_confirme(
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            formation_title=formation.title,
+            formation_slug=formation.slug,
+            amount=inscription.payment_amount or 0,
+            transaction_id="SIMULATION",
+            payment_date=inscription.payment_date.strftime("%d/%m/%Y à %H:%M"),
+        )
+
     return inscription
 
 
@@ -805,3 +892,191 @@ async def list_inscriptions(
         .order_by(FormationInscription.created_at.desc())
     )
     return insc_result.scalars().all()
+
+
+# ─────────────────────────────────────────────────────────────
+# MODULES & LEÇONS
+# ─────────────────────────────────────────────────────────────
+
+async def _get_formation_or_404(slug: str, db: AsyncSession) -> Formation:
+    result = await db.execute(select(Formation).where(Formation.slug == slug))
+    formation = result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation non trouvée.")
+    return formation
+
+
+async def _get_module_or_404(module_id: int, db: AsyncSession) -> FormationModule:
+    result = await db.execute(select(FormationModule).where(FormationModule.id == module_id))
+    module = result.scalar_one_or_none()
+    if not module:
+        raise HTTPException(status_code=404, detail="Module non trouvé.")
+    return module
+
+
+@formations_router.get("/{formation_slug}/modules", response_model=List[FormationModuleRead])
+async def list_modules(formation_slug: str, db: AsyncSession = Depends(get_db)):
+    """Liste les modules d'une formation avec leurs leçons (public)"""
+    formation = await _get_formation_or_404(formation_slug, db)
+    result = await db.execute(
+        select(FormationModule)
+        .where(FormationModule.formation_id == formation.id)
+        .order_by(FormationModule.order)
+        .options(selectinload(FormationModule.lecons))
+    )
+    return result.scalars().all()
+
+
+@formations_router.post("/{formation_slug}/modules", response_model=FormationModuleRead, status_code=201)
+async def create_module(
+    formation_slug: str,
+    data: FormationModuleCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Créer un module (staff only)"""
+    formation = await _get_formation_or_404(formation_slug, db)
+    module = FormationModule(formation_id=formation.id, **data.model_dump())
+    db.add(module)
+    await db.commit()
+    await db.refresh(module)
+    # reload with lecons
+    result = await db.execute(
+        select(FormationModule).where(FormationModule.id == module.id)
+        .options(selectinload(FormationModule.lecons))
+    )
+    return result.scalar_one()
+
+
+@formations_router.patch("/{formation_slug}/modules/{module_id}", response_model=FormationModuleRead)
+async def update_module(
+    formation_slug: str,
+    module_id: int,
+    data: FormationModuleUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Modifier un module (staff only)"""
+    module = await _get_module_or_404(module_id, db)
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(module, key, value)
+    await db.commit()
+    result = await db.execute(
+        select(FormationModule).where(FormationModule.id == module_id)
+        .options(selectinload(FormationModule.lecons))
+    )
+    return result.scalar_one()
+
+
+@formations_router.delete("/{formation_slug}/modules/{module_id}", status_code=204)
+async def delete_module(
+    formation_slug: str,
+    module_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Supprimer un module et toutes ses leçons (staff only)"""
+    module = await _get_module_or_404(module_id, db)
+    await db.delete(module)
+    await db.commit()
+    return None
+
+
+@formations_router.post("/{formation_slug}/modules/{module_id}/lecons", response_model=FormationLeconRead, status_code=201)
+async def create_lecon(
+    formation_slug: str,
+    module_id: int,
+    data: FormationLeconCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Créer une leçon dans un module (staff only)"""
+    module = await _get_module_or_404(module_id, db)
+    lecon = FormationLecon(module_id=module.id, **data.model_dump())
+    db.add(lecon)
+    await db.commit()
+    await db.refresh(lecon)
+    return lecon
+
+
+@formations_router.patch("/{formation_slug}/modules/{module_id}/lecons/{lecon_id}", response_model=FormationLeconRead)
+async def update_lecon(
+    formation_slug: str,
+    module_id: int,
+    lecon_id: int,
+    data: FormationLeconUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Modifier une leçon (staff only)"""
+    result = await db.execute(select(FormationLecon).where(FormationLecon.id == lecon_id))
+    lecon = result.scalar_one_or_none()
+    if not lecon:
+        raise HTTPException(status_code=404, detail="Leçon non trouvée.")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(lecon, key, value)
+    await db.commit()
+    await db.refresh(lecon)
+    return lecon
+
+
+@formations_router.delete("/{formation_slug}/modules/{module_id}/lecons/{lecon_id}", status_code=204)
+async def delete_lecon(
+    formation_slug: str,
+    module_id: int,
+    lecon_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Supprimer une leçon (staff only)"""
+    result = await db.execute(select(FormationLecon).where(FormationLecon.id == lecon_id))
+    lecon = result.scalar_one_or_none()
+    if not lecon:
+        raise HTTPException(status_code=404, detail="Leçon non trouvée.")
+    # Supprimer le fichier PDF si existant
+    if lecon.file_path:
+        full_path = os.path.join("static", lecon.file_path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
+    await db.delete(lecon)
+    await db.commit()
+    return None
+
+
+@formations_router.post("/{formation_slug}/modules/{module_id}/lecons/{lecon_id}/upload", response_model=FormationLeconRead)
+async def upload_lecon_pdf(
+    formation_slug: str,
+    module_id: int,
+    lecon_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Uploader un fichier PDF pour une leçon (staff only)"""
+    if not file.content_type in ["application/pdf"]:
+        raise HTTPException(status_code=400, detail="Seuls les fichiers PDF sont acceptés.")
+
+    result = await db.execute(select(FormationLecon).where(FormationLecon.id == lecon_id))
+    lecon = result.scalar_one_or_none()
+    if not lecon:
+        raise HTTPException(status_code=404, detail="Leçon non trouvée.")
+
+    # Supprimer l'ancien fichier si existant
+    if lecon.file_path:
+        old_path = os.path.join("static", lecon.file_path)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
+    upload_dir = "static/formations/pdf"
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}_{file.filename}"
+    file_path = os.path.join(upload_dir, filename)
+
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    lecon.file_path = f"formations/pdf/{filename}"
+    lecon.type = "pdf"
+    await db.commit()
+    await db.refresh(lecon)
+    return lecon

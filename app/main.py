@@ -42,6 +42,11 @@ app = FastAPI(
   lifespan=app_lifespan,
 )
 
+# PDFs et fichiers formations (doit être monté AVANT /static générique)
+os.makedirs("static/formations/pdf", exist_ok=True)
+app.mount("/static/formations", StaticFiles(directory="static/formations"), name="static-formations")
+
+# Images/thumbnails (uploads/images)
 app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 
 # Session middleware for admin authentication
