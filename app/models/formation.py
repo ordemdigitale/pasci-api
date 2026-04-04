@@ -227,3 +227,32 @@ class Certificat(SQLModel, table=True):
 
     def __repr__(self) -> str:
         return f"<Certificat: {self.code} — {self.participant_name}>"
+
+
+class FormationAvis(SQLModel, table=True):
+    """Avis d'un participant sur une formation"""
+    __tablename__ = "formation_avis"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    formation_id: int = Field(foreign_key="formations.id", ondelete="CASCADE", index=True)
+    inscription_id: int = Field(foreign_key="formation_inscription.id", ondelete="CASCADE", unique=True)
+    participant_name: str = Field(max_length=200)
+    note: int = Field(ge=1, le=5)
+    commentaire: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+
+class FormationProgression(SQLModel, table=True):
+    """Suivi de progression : leçons vues par inscription"""
+    __tablename__ = "formation_progression"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    inscription_id: int = Field(foreign_key="formation_inscription.id", ondelete="CASCADE", index=True)
+    lecon_id: int = Field(foreign_key="formation_lecon.id", ondelete="CASCADE", index=True)
+    viewed_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )

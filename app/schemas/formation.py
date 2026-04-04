@@ -66,6 +66,23 @@ class FormationInscriptionRead(BaseModel):
         from_attributes = True
 
 
+class FormationAvisCreate(BaseModel):
+    note: int = Field(ge=1, le=5)
+    commentaire: Optional[str] = None
+
+
+class FormationAvisRead(BaseModel):
+    id: int
+    formation_id: int
+    participant_name: str
+    note: int
+    commentaire: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class PaiementInitierResponse(BaseModel):
     """Réponse lors de l'initiation d'un paiement CinetPay"""
     inscription_id: int

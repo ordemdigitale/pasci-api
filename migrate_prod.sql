@@ -77,6 +77,28 @@ CREATE TABLE IF NOT EXISTS certificat (
 );
 CREATE INDEX IF NOT EXISTS ix_certificat_code ON certificat(code);
 
+-- 7. Table formation_avis
+CREATE TABLE IF NOT EXISTS formation_avis (
+    id SERIAL PRIMARY KEY,
+    formation_id INTEGER NOT NULL REFERENCES formations(id) ON DELETE CASCADE,
+    inscription_id INTEGER NOT NULL UNIQUE REFERENCES formation_inscription(id) ON DELETE CASCADE,
+    participant_name VARCHAR(200) NOT NULL,
+    note INTEGER NOT NULL CHECK (note BETWEEN 1 AND 5),
+    commentaire TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_formation_avis_formation ON formation_avis(formation_id);
+
+-- 8. Table formation_progression
+CREATE TABLE IF NOT EXISTS formation_progression (
+    id SERIAL PRIMARY KEY,
+    inscription_id INTEGER NOT NULL REFERENCES formation_inscription(id) ON DELETE CASCADE,
+    lecon_id INTEGER NOT NULL REFERENCES formation_lecon(id) ON DELETE CASCADE,
+    viewed_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    UNIQUE(inscription_id, lecon_id)
+);
+CREATE INDEX IF NOT EXISTS ix_formation_progression_inscription ON formation_progression(inscription_id);
+
 -- ============================================================
 SELECT 'Migration terminée avec succès' AS status;
 -- ============================================================

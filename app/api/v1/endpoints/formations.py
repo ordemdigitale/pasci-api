@@ -15,7 +15,7 @@ from typing import Optional, List
 
 from app.core.config import settings
 from app.database.session import get_db
-from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat, FormationModule, FormationLecon
+from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat, FormationModule, FormationLecon, FormationProgression, FormationAvis
 from app.models.users import User
 from app.schemas.formation import (
     FormationCreate, FormationRead, FormationUpdate, FormationReadWithRelations,
@@ -24,6 +24,7 @@ from app.schemas.formation import (
     PaiementInitierResponse, PaiementWebhookPayload,
     FormationModuleCreate, FormationModuleUpdate, FormationModuleRead,
     FormationLeconCreate, FormationLeconUpdate, FormationLeconRead,
+    FormationAvisCreate, FormationAvisRead,
 )
 from app.core.auth import get_current_user, get_current_staff_user
 from app.services.cinetpay import cinetpay_service
@@ -104,6 +105,269 @@ async def delete_rubrique(
 # VÉRIFICATION CERTIFICAT (doit être AVANT /{formation_slug})
 # ─────────────────────────────────────────────────────────────
 
+@formations_router.post("/lecons/{lecon_id}/vue")
+async def marquer_lecon_vue(
+    lecon_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Marque une leçon comme vue et vérifie si la formation est complétée à 100%"""
+    # Vérifier que la leçon existe
+    lecon_result = await db.execute(select(FormationLecon).where(FormationLecon.id == lecon_id))
+    lecon = lecon_result.scalar_one_or_none()
+    if not lecon:
+        raise HTTPException(status_code=404, detail="Leçon introuvable.")
+
+    # Récupérer le module puis la formation
+    module_result = await db.execute(select(FormationModule).where(FormationModule.id == lecon.module_id))
+    module = module_result.scalar_one()
+    formation_id = module.formation_id
+
+    # Trouver l'inscription active de l'utilisateur
+    insc_result = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.formation_id == formation_id,
+            FormationInscription.participant_email == current_user.email,
+        )
+    )
+    inscription = insc_result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=403, detail="Vous n'êtes pas inscrit à cette formation.")
+
+    # Enregistrer la vue si pas déjà faite
+    existing = await db.execute(
+        select(FormationProgression).where(
+            FormationProgression.inscription_id == inscription.id,
+            FormationProgression.lecon_id == lecon_id,
+        )
+    )
+    if not existing.scalar_one_or_none():
+        db.add(FormationProgression(inscription_id=inscription.id, lecon_id=lecon_id))
+        await db.commit()
+
+    # Compter toutes les leçons de la formation
+    all_lecons_result = await db.execute(
+        select(FormationLecon)
+        .join(FormationModule, FormationLecon.module_id == FormationModule.id)
+        .where(FormationModule.formation_id == formation_id)
+    )
+    total_lecons = len(all_lecons_result.scalars().all())
+
+    # Compter les leçons vues
+    vues_result = await db.execute(
+        select(FormationProgression).where(FormationProgression.inscription_id == inscription.id)
+    )
+    total_vues = len(vues_result.scalars().all())
+
+    progression = round((total_vues / total_lecons) * 100) if total_lecons > 0 else 0
+
+    # 100% → auto-complétion + certificat
+    certificat_code = None
+    if progression >= 100 and not inscription.is_completed:
+        inscription.is_completed = True
+        inscription.completed_at = datetime.utcnow()
+
+        # Émettre le certificat si pas encore fait
+        if not inscription.certificate_issued:
+            form_result = await db.execute(select(Formation).where(Formation.id == formation_id))
+            formation = form_result.scalar_one()
+            certificat = Certificat(
+                inscription_id=inscription.id,
+                formation_title=formation.title,
+                participant_name=inscription.participant_name,
+                participant_email=inscription.participant_email,
+            )
+            db.add(certificat)
+            inscription.certificate_issued = True
+            await db.commit()
+            await db.refresh(certificat)
+            certificat_code = certificat.code
+            await send_certificat_emis(
+                participant_name=inscription.participant_name,
+                participant_email=inscription.participant_email,
+                formation_title=formation.title,
+                cert_code=certificat.code,
+            )
+        else:
+            await db.commit()
+
+    return {
+        "lecon_id": lecon_id,
+        "progression": progression,
+        "total_lecons": total_lecons,
+        "lecons_vues": total_vues,
+        "completed": inscription.is_completed,
+        "certificat_code": certificat_code,
+    }
+
+
+@formations_router.get("/{formation_slug}/ma-progression")
+async def ma_progression(
+    formation_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retourne la progression de l'utilisateur connecté pour une formation"""
+    form_result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
+    formation = form_result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation introuvable.")
+
+    insc_result = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.formation_id == formation.id,
+            FormationInscription.participant_email == current_user.email,
+        )
+    )
+    inscription = insc_result.scalar_one_or_none()
+    if not inscription:
+        return {"progression": 0, "lecons_vues": [], "completed": False, "certificat_code": None}
+
+    # Leçons vues
+    vues_result = await db.execute(
+        select(FormationProgression).where(FormationProgression.inscription_id == inscription.id)
+    )
+    vues = vues_result.scalars().all()
+    lecons_vues_ids = [v.lecon_id for v in vues]
+
+    # Total leçons
+    all_lecons_result = await db.execute(
+        select(FormationLecon)
+        .join(FormationModule, FormationLecon.module_id == FormationModule.id)
+        .where(FormationModule.formation_id == formation.id)
+    )
+    total_lecons = len(all_lecons_result.scalars().all())
+    progression = round((len(lecons_vues_ids) / total_lecons) * 100) if total_lecons > 0 else 0
+
+    # Code certificat si émis
+    cert_code = None
+    if inscription.certificate_issued:
+        cert_result = await db.execute(
+            select(Certificat).where(Certificat.inscription_id == inscription.id)
+        )
+        cert = cert_result.scalar_one_or_none()
+        if cert:
+            cert_code = cert.code
+
+    return {
+        "progression": progression,
+        "lecons_vues": lecons_vues_ids,
+        "total_lecons": total_lecons,
+        "completed": inscription.is_completed,
+        "certificat_code": cert_code,
+    }
+
+
+@formations_router.post("/{formation_slug}/avis", response_model=FormationAvisRead, status_code=status.HTTP_201_CREATED)
+async def soumettre_avis(
+    formation_slug: str,
+    avis_data: FormationAvisCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soumettre un avis sur une formation (inscrits uniquement, un seul avis par inscription)"""
+    form_result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
+    formation = form_result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation introuvable.")
+
+    insc_result = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.formation_id == formation.id,
+            FormationInscription.participant_email == current_user.email,
+        )
+    )
+    inscription = insc_result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=403, detail="Vous devez être inscrit pour laisser un avis.")
+
+    # Vérifier qu'il n'a pas déjà laissé un avis
+    existing = await db.execute(
+        select(FormationAvis).where(FormationAvis.inscription_id == inscription.id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Vous avez déjà laissé un avis pour cette formation.")
+
+    participant_name = [current_user.first_name, current_user.last_name]
+    participant_name = " ".join(p for p in participant_name if p) or current_user.username or current_user.email.split("@")[0]
+
+    avis = FormationAvis(
+        formation_id=formation.id,
+        inscription_id=inscription.id,
+        participant_name=participant_name,
+        note=avis_data.note,
+        commentaire=avis_data.commentaire,
+    )
+    db.add(avis)
+    await db.commit()
+    await db.refresh(avis)
+    return avis
+
+
+@formations_router.get("/{formation_slug}/mon-avis")
+async def mon_avis(
+    formation_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retourne l'avis de l'utilisateur connecté pour cette formation, ou null"""
+    form_result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
+    formation = form_result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation introuvable.")
+
+    insc_result = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.formation_id == formation.id,
+            FormationInscription.participant_email == current_user.email,
+        )
+    )
+    inscription = insc_result.scalar_one_or_none()
+    if not inscription:
+        return None
+
+    avis_result = await db.execute(
+        select(FormationAvis).where(FormationAvis.inscription_id == inscription.id)
+    )
+    avis = avis_result.scalar_one_or_none()
+    if not avis:
+        return None
+    return {"id": avis.id, "note": avis.note, "commentaire": avis.commentaire}
+
+
+@formations_router.get("/{formation_slug}/avis", response_model=List[FormationAvisRead])
+async def liste_avis(
+    formation_slug: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les avis d'une formation (public)"""
+    form_result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
+    formation = form_result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation introuvable.")
+
+    result = await db.execute(
+        select(FormationAvis)
+        .where(FormationAvis.formation_id == formation.id)
+        .order_by(FormationAvis.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@formations_router.get("/mes-certificats", response_model=List[CertificatRead])
+async def mes_certificats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retourne les certificats de l'utilisateur connecté (par email)"""
+    result = await db.execute(
+        select(Certificat)
+        .where(Certificat.participant_email == current_user.email)
+        .order_by(Certificat.issued_at.desc())
+    )
+    return result.scalars().all()
+
+
 @formations_router.get("/certificats/verifier/{code}", response_model=CertificatRead)
 async def verifier_certificat(code: str, db: AsyncSession = Depends(get_db)):
     """Vérifier l'authenticité d'un certificat via son code unique (public)"""
@@ -142,7 +406,7 @@ async def emettre_certificat(
 
     if not inscription.is_completed:
         inscription.is_completed = True
-        inscription.completed_at = datetime.now(timezone.utc)
+        inscription.completed_at = datetime.utcnow()
 
     certificat = Certificat(
         inscription_id=inscription.id,
@@ -498,6 +762,26 @@ async def get_formation_update_form(
         update_dict["osc_id"] = int(osc_id)
 
     return FormationUpdate(**update_dict)
+
+
+@formations_router.patch("/inscriptions/{inscription_id}/completer", response_model=FormationInscriptionRead)
+async def marquer_inscription_completee(
+    inscription_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Marquer une inscription comme complétée (staff only)"""
+    result = await db.execute(
+        select(FormationInscription).where(FormationInscription.id == inscription_id)
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription non trouvée.")
+    inscription.is_completed = True
+    inscription.completed_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(inscription)
+    return inscription
 
 
 @formations_router.patch("/{formation_slug}", response_model=FormationReadWithRelations, status_code=status.HTTP_200_OK)
