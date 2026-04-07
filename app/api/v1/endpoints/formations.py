@@ -731,10 +731,10 @@ async def get_formation_update_form(
         update_dict["current_participants"] = current_participants
     
     if registration_link is not None:
-        update_dict["registration_link"] = registration_link
-    
+        update_dict["registration_link"] = registration_link if registration_link != "" else None
+
     if materials_link is not None:
-        update_dict["materials_link"] = materials_link
+        update_dict["materials_link"] = materials_link if materials_link != "" else None
     
     if is_published is not None:
         update_dict["is_published"] = is_published
