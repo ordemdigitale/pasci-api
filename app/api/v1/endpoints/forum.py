@@ -1,11 +1,13 @@
 # app/api/v1/endpoints/forum.py | Forum endpoints
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+import os, shutil, uuid
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional, Union
 import slugify as slugify_lib
 import time
 
+from app.core.config import settings
 from app.database.session import get_db
 from app.models.forum import PoleConcertation, ForumSujet, ForumCommentaire
 from app.models.users import User
@@ -15,6 +17,26 @@ from app.schemas.forum import (
     ForumCommentaireCreate, ForumCommentaireRead,
 )
 from app.core.auth import get_current_user, get_current_staff_user
+
+ALLOWED_IMAGE_EXT = ["jpg", "jpeg", "png", "webp"]
+
+def _save_image(upload: UploadFile) -> str:
+    """Save an uploaded image to UPLOAD_DIR and return the filename."""
+    ext = upload.filename.rsplit(".", 1)[-1].lower()
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise HTTPException(status_code=400, detail=f"Format invalide. Formats acceptés: {ALLOWED_IMAGE_EXT}")
+    filename = f"{uuid.uuid4()}.{ext}"
+    path = os.path.join(settings.UPLOAD_DIR, filename)
+    with open(path, "wb") as f:
+        shutil.copyfileobj(upload.file, f)
+    return filename
+
+def _delete_image(image_path: Optional[str]):
+    """Delete an image file from UPLOAD_DIR if it exists."""
+    if image_path and not image_path.startswith("/images/"):
+        full = os.path.join(settings.UPLOAD_DIR, image_path)
+        if os.path.exists(full):
+            os.remove(full)
 
 forum_router = APIRouter()
 
@@ -55,12 +77,28 @@ async def list_poles(
 
 @forum_router.post("/poles", response_model=PoleConcertationRead, status_code=status.HTTP_201_CREATED)
 async def create_pole(
-    pole: PoleConcertationCreate,
+    name: str = Form(...),
+    category: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    objectifs: Optional[str] = Form(None),
+    is_active: bool = Form(True),
+    image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
 ):
     """Créer un pôle (staff only)"""
-    db_pole = PoleConcertation(**pole.model_dump())
+    image_path = None
+    if image and image.filename:
+        image_path = _save_image(image)
+
+    db_pole = PoleConcertation(
+        name=name,
+        category=category,
+        description=description,
+        image_path=image_path,
+        objectifs=objectifs,
+        is_active=is_active,
+    )
     db.add(db_pole)
     await db.commit()
     await db.refresh(db_pole)
@@ -89,7 +127,12 @@ async def get_pole(pole_slug: str, db: AsyncSession = Depends(get_db)):
 @forum_router.patch("/poles/{pole_slug}", response_model=PoleConcertationRead)
 async def update_pole(
     pole_slug: str,
-    pole_update: PoleConcertationUpdate,
+    name: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    objectifs: Optional[str] = Form(None),
+    is_active: Optional[str] = Form(None),
+    image: Union[UploadFile, str, None] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
 ):
@@ -99,10 +142,23 @@ async def update_pole(
     pole = result.scalars().first()
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
-    for key, value in pole_update.model_dump(exclude_unset=True).items():
-        setattr(pole, key, value)
-    if "name" in pole_update.model_dump(exclude_unset=True):
-        pole.slug = slugify_lib.slugify(pole.name)
+
+    if isinstance(image, UploadFile) and image.filename:
+        _delete_image(pole.image_path)
+        pole.image_path = _save_image(image)
+
+    if name is not None:
+        pole.name = name
+        pole.slug = slugify_lib.slugify(name)
+    if category is not None:
+        pole.category = category or None
+    if description is not None:
+        pole.description = description or None
+    if objectifs is not None:
+        pole.objectifs = objectifs or None
+    if is_active is not None:
+        pole.is_active = is_active.lower() in ("true", "1", "yes")
+
     await db.commit()
     await db.refresh(pole)
     pole_data = PoleConcertationRead.model_validate(pole)
