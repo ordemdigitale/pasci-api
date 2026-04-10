@@ -189,8 +189,8 @@ class FormationRead(FormationBase):
     def thumbnail_url(self) -> str:
         """Generate full URL for thumbnail image"""
         if self.thumbnail_path and self.thumbnail_path != "default.png":
-            return f"http://localhost:8000/static/{self.thumbnail_path}"
-        return "http://localhost:8000/static/default.png"
+            return f"{settings.API_BASE_URL}/static/{self.thumbnail_path}"
+        return f"{settings.API_BASE_URL}/static/default.png"
 
     class Config:
         from_attributes = True

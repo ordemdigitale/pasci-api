@@ -20,6 +20,7 @@ import app.models.formation
 import app.models.documentation
 import app.models.offre_projet
 import app.models.forum
+import app.models.annonce
 
 logger = logging.getLogger(__name__)
 

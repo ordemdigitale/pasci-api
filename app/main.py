@@ -30,6 +30,7 @@ from app.api.v1.endpoints.formations import formations_router
 from app.api.v1.endpoints.documentation import documentation_router
 from app.api.v1.endpoints.offre_projet import offre_projet_router
 from app.api.v1.endpoints.forum import forum_router
+from app.api.v1.endpoints.annonces import annonces_router
 from app.admin.config import create_admin_panel
 
 # Configure logging
@@ -94,6 +95,7 @@ app.include_router(documentation_router, prefix="/api/v1/documentation", tags=["
 app.include_router(stats_router, prefix="/api/v1/stats", tags=["statistics"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(forum_router, prefix="/api/v1/forum", tags=["forum"])
+app.include_router(annonces_router, prefix="/api/v1/annonces", tags=["annonces"])
 
 @app.get("/")
 async def root():

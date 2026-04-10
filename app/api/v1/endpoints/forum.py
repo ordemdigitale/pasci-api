@@ -178,6 +178,7 @@ async def delete_pole(
     pole = result.scalar_one_or_none()
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
+    _delete_image(pole.image_path)
     await db.delete(pole)
     await db.commit()
     return None

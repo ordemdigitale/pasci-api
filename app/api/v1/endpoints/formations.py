@@ -1163,7 +1163,7 @@ async def simuler_paiement_confirme(
 async def list_inscriptions(
     formation_slug: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Liste des inscriptions (staff only)"""
     result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
