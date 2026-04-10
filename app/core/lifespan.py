@@ -21,6 +21,8 @@ import app.models.documentation
 import app.models.offre_projet
 import app.models.forum
 import app.models.annonce
+import app.models.hero_slide
+import app.models.site_config
 
 logger = logging.getLogger(__name__)
 
