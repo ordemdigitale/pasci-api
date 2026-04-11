@@ -57,11 +57,13 @@ class Settings(BaseSettings):
   SMTP_TLS: bool = False                    # True si port 465
   SMTP_STARTTLS: bool = False               # True si port 587
 
-  # CinetPay — renseigner ces valeurs dans .env une fois l'API acquise
-  CINETPAY_API_KEY: Optional[str] = None        # ex: "123456789"
-  CINETPAY_SITE_ID: Optional[str] = None        # ex: "987654321"
+  # CinetPay — paiement en ligne
+  CINETPAY_API_KEY: Optional[str] = None
+  CINETPAY_API_PASSWORD: Optional[str] = None
+  CINETPAY_SITE_ID: Optional[str] = None
   CINETPAY_API_URL: str = "https://api-checkout.cinetpay.com/v2/payment"
-  CINETPAY_CURRENCY: str = "XOF"                # XOF pour FCFA (UEMOA) / XAF pour FCFA (CEMAC)
+  CINETPAY_CHECK_URL: str = "https://api-checkout.cinetpay.com/v2/payment/check"
+  CINETPAY_CURRENCY: str = "XOF"
   CINETPAY_RETURN_URL: str = "http://localhost:3000/formations/paiement/retour"
   CINETPAY_NOTIFY_URL: str = "http://localhost:8000/api/v1/formations/paiement/webhook"
 

@@ -1037,6 +1037,7 @@ async def initier_paiement(
             participant_email=inscription.participant_email,
             description=f"Inscription : {formation.title}",
             formation_slug=formation_slug,
+            participant_phone=data.participant_phone,
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur CinetPay : {str(e)}")
@@ -1097,7 +1098,7 @@ async def cinetpay_webhook(
             participant_name=inscription.participant_name,
             participant_email=inscription.participant_email,
             formation_title=formation.title if formation else payload.cpm_trans_id,
-            formation_slug=formation_slug,
+            formation_slug=formation.slug if formation else "",
             amount=float(payload.cpm_amount),
             transaction_id=payload.cpm_trans_id,
             payment_date=payment_date_str,

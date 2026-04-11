@@ -43,6 +43,7 @@ class FormationRubriqueUpdate(BaseModel):
 class FormationInscriptionCreate(BaseModel):
     participant_name: str
     participant_email: str
+    participant_phone: Optional[str] = None
 
 
 class FormationInscriptionRead(BaseModel):

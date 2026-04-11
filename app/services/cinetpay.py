@@ -32,6 +32,7 @@ class CinetPayService:
         participant_email: str,
         description: str,
         formation_slug: str,
+        participant_phone: Optional[str] = None,
     ) -> dict:
         """
         Initie un paiement CinetPay.
@@ -47,34 +48,47 @@ class CinetPayService:
         if not settings.cinetpay_configured:
             return {
                 "transaction_id": transaction_id,
-                "payment_url": f"/formations/paiement/simulation?tid={transaction_id}&amount={amount}&slug={formation_slug}",
+                "payment_url": f"/formations/paiement/simulation?tid={transaction_id}&amount={int(amount)}&slug={formation_slug}",
                 "simulated": True,
             }
 
         # ── Mode PRODUCTION (clés configurées) ─────────────────
+        # Séparer prénom et nom
+        name_parts = participant_name.strip().split(" ", 1)
+        customer_name = name_parts[0]
+        customer_surname = name_parts[1] if len(name_parts) > 1 else name_parts[0]
+
         payload = {
             "apikey": settings.CINETPAY_API_KEY,
             "site_id": settings.CINETPAY_SITE_ID,
             "transaction_id": transaction_id,
-            "amount": int(amount),           # CinetPay attend un entier
+            "amount": int(amount),
             "currency": settings.CINETPAY_CURRENCY,
             "description": description,
             "return_url": f"{settings.CINETPAY_RETURN_URL}?slug={formation_slug}",
             "notify_url": settings.CINETPAY_NOTIFY_URL,
-            "customer_name": participant_name,
+            "customer_name": customer_name,
+            "customer_surname": customer_surname,
             "customer_email": participant_email,
-            "channels": "ALL",               # Mobile Money + carte bancaire
+            "customer_phone_number": participant_phone or "",
+            "customer_address": "Côte d'Ivoire",
+            "customer_city": "Abidjan",
+            "customer_country": "CI",
+            "customer_state": "CI",
+            "customer_zip_code": "00225",
+            "channels": "ALL",
             "lang": "fr",
             "metadata": formation_slug,
         }
+        if settings.CINETPAY_API_PASSWORD:
+            payload["apikey_password"] = settings.CINETPAY_API_PASSWORD
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(settings.CINETPAY_API_URL, json=payload)
-            response.raise_for_status()
             data = response.json()
 
-        if data.get("code") != "201":
-            raise ValueError(f"CinetPay error: {data.get('message', 'Erreur inconnue')}")
+        if response.status_code >= 400 or data.get("code") not in ("201", "00"):
+            raise ValueError(f"CinetPay error [{response.status_code}]: {data.get('message', data)}")
 
         return {
             "transaction_id": transaction_id,
@@ -100,10 +114,12 @@ class CinetPayService:
             "site_id": settings.CINETPAY_SITE_ID,
             "transaction_id": transaction_id,
         }
+        if settings.CINETPAY_API_PASSWORD:
+            payload["apikey_password"] = settings.CINETPAY_API_PASSWORD
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
-                "https://api-checkout.cinetpay.com/v2/payment/check",
+                settings.CINETPAY_CHECK_URL,
                 json=payload,
             )
             response.raise_for_status()
