@@ -186,11 +186,11 @@ class FormationRead(FormationBase):
 
     @computed_field
     @property
-    def thumbnail_url(self) -> str:
+    def thumbnail_url(self) -> Optional[str]:
         """Generate full URL for thumbnail image"""
         if self.thumbnail_path and self.thumbnail_path != "default.png":
             return f"{settings.API_BASE_URL}/static/{self.thumbnail_path}"
-        return f"{settings.API_BASE_URL}/static/default.png"
+        return None
 
     class Config:
         from_attributes = True

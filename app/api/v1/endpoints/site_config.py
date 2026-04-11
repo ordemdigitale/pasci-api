@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+import os, shutil, uuid
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Dict
@@ -6,6 +7,7 @@ from pydantic import BaseModel
 
 from app.database.session import get_db
 from app.models.site_config import SiteConfig
+from app.core.config import settings
 
 site_config_router = APIRouter()
 
@@ -29,6 +31,34 @@ async def upsert_config(key: str, body: ConfigUpdate, db: AsyncSession = Depends
         row.value = body.value
     else:
         row = SiteConfig(key=key, value=body.value)
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"key": row.key, "value": row.value}
+
+
+@site_config_router.post("/upload/{key}")
+async def upload_config_image(key: str, image: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    """Upload an image and store its URL in site config."""
+    ext = image.filename.rsplit(".", 1)[-1].lower() if image.filename and "." in image.filename else "jpg"
+    filename = f"{uuid.uuid4()}.{ext}"
+    path = os.path.join(settings.UPLOAD_DIR, filename)
+    with open(path, "wb") as f:
+        shutil.copyfileobj(image.file, f)
+    image_url = f"{settings.API_BASE_URL}/static/{filename}"
+
+    result = await db.execute(select(SiteConfig).where(SiteConfig.key == key))
+    row = result.scalars().first()
+    if row:
+        # delete old file if it's a stored upload
+        if row.value and "/static/" in row.value:
+            old_filename = row.value.split("/static/")[-1]
+            old_path = os.path.join(settings.UPLOAD_DIR, old_filename)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        row.value = image_url
+    else:
+        row = SiteConfig(key=key, value=image_url)
         db.add(row)
     await db.commit()
     await db.refresh(row)
