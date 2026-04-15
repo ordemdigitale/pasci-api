@@ -24,9 +24,7 @@ from dotenv import load_dotenv
 env_path = application_path / '.env'
 load_dotenv(dotenv_path=env_path)
 
-# Import the FastAPI application
-from app.main import app as application
-
-# If you need ASGI to WSGI conversion, uncomment below:
-# from asgiref.wsgi import WsgiToAsgi
-# application = WsgiToAsgi(application)
+# Import the FastAPI application (ASGI) and wrap it for WSGI/Passenger
+from app.main import app as fastapi_app
+from a2wsgi import ASGIMiddleware
+application = ASGIMiddleware(fastapi_app)
