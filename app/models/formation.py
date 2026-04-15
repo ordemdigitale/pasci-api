@@ -184,6 +184,7 @@ class FormationInscription(SQLModel, table=True):
     # payment_status : "gratuite" | "pending" | "paid" | "failed"
     payment_status: str = Field(default="gratuite", max_length=20)
     payment_transaction_id: Optional[str] = Field(default=None, max_length=100, unique=True)
+    payment_notify_token: Optional[str] = Field(default=None, max_length=500)  # notify_token CinetPay v1
     payment_amount: Optional[float] = Field(default=None)
     payment_date: Optional[datetime] = Field(default=None)
     payment_operator: Optional[str] = Field(default=None, max_length=100)  # ex: "ORANGE_CI"

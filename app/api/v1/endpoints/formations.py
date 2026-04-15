@@ -1042,8 +1042,9 @@ async def initier_paiement(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Erreur CinetPay : {str(e)}")
 
-    # Sauvegarder le transaction_id
+    # Sauvegarder le transaction_id et le notify_token
     inscription.payment_transaction_id = paiement["transaction_id"]
+    inscription.payment_notify_token = paiement.get("notify_token", "")
     await db.commit()
 
     return PaiementInitierResponse(
@@ -1062,12 +1063,12 @@ async def cinetpay_webhook(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Webhook appelé automatiquement par CinetPay après chaque paiement.
-    Met à jour le statut de l'inscription selon le résultat.
+    Webhook appelé automatiquement par CinetPay v1 après chaque paiement.
+    Vérifie le notify_token puis confirme le statut via l'API.
     """
     result = await db.execute(
         select(FormationInscription).where(
-            FormationInscription.payment_transaction_id == payload.cpm_trans_id
+            FormationInscription.payment_transaction_id == payload.merchant_transaction_id
         )
     )
     inscription = result.scalar_one_or_none()
@@ -1075,12 +1076,25 @@ async def cinetpay_webhook(
         # CinetPay réessaie → on retourne 200 pour éviter les retry infinis
         return {"status": "not_found"}
 
-    if payload.cpm_trans_status == "ACCEPTED" and payload.cpm_result == "00":
+    # Vérification timing-safe du notify_token
+    stored_token = inscription.payment_notify_token or ""
+    received_token = payload.notify_token
+    if stored_token and stored_token != received_token:
+        return {"status": "invalid_token"}
+
+    # Confirmer le statut auprès de CinetPay
+    try:
+        verification = await cinetpay_service.verifier_paiement(payload.transaction_id)
+        paiement_status = verification.get("status", "PENDING")
+    except Exception:
+        paiement_status = "PENDING"
+
+    if paiement_status == "SUCCESS":
         inscription.payment_status = "paid"
         inscription.payment_date = datetime.now(timezone.utc)
-        inscription.payment_operator = payload.payment_method
+        inscription.payment_operator = verification.get("operator", "")
 
-        # Confirmer l'inscription maintenant que le paiement est validé
+        # Incrémenter le compteur de participants
         form_result = await db.execute(
             select(Formation).where(Formation.id == inscription.formation_id)
         )
@@ -1097,13 +1111,13 @@ async def cinetpay_webhook(
         await send_paiement_confirme(
             participant_name=inscription.participant_name,
             participant_email=inscription.participant_email,
-            formation_title=formation.title if formation else payload.cpm_trans_id,
+            formation_title=formation.title if formation else payload.merchant_transaction_id,
             formation_slug=formation.slug if formation else "",
-            amount=float(payload.cpm_amount),
-            transaction_id=payload.cpm_trans_id,
+            amount=float(inscription.payment_amount or 0),
+            transaction_id=payload.merchant_transaction_id,
             payment_date=payment_date_str,
         )
-    else:
+    elif paiement_status == "FAILED":
         inscription.payment_status = "failed"
         await db.commit()
 

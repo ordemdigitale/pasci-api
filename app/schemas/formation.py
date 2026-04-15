@@ -95,18 +95,11 @@ class PaiementInitierResponse(BaseModel):
 
 
 class PaiementWebhookPayload(BaseModel):
-    """Payload reçu par CinetPay après paiement"""
-    cpm_trans_id: str
-    cpm_site_id: str
-    cpm_amount: str
-    cpm_currency: str
-    cpm_payid: str
-    cpm_payment_date: Optional[str] = None
-    cpm_payment_time: Optional[str] = None
-    cpm_error_message: Optional[str] = None
-    cpm_result: str        # "00" = succès
-    cpm_trans_status: str  # "ACCEPTED" | "REFUSED" | "PENDING"
-    payment_method: Optional[str] = None
+    """Payload reçu par CinetPay v1 après paiement (notify_url)"""
+    notify_token: str          # token à vérifier contre celui stocké à l'initiation
+    transaction_id: str        # ID CinetPay de la transaction
+    merchant_transaction_id: str  # notre ID (PASCI-...)
+    user: Optional[dict] = None
 
 
 # ── Certificat ─────────────────────────────────────────────────

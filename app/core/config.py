@@ -57,20 +57,26 @@ class Settings(BaseSettings):
   SMTP_TLS: bool = False                    # True si port 465
   SMTP_STARTTLS: bool = False               # True si port 587
 
-  # CinetPay — paiement en ligne
+  # CinetPay — paiement en ligne (API v1)
   CINETPAY_API_KEY: Optional[str] = None
   CINETPAY_API_PASSWORD: Optional[str] = None
-  CINETPAY_SITE_ID: Optional[str] = None
-  CINETPAY_API_URL: str = "https://api-checkout.cinetpay.com/v2/payment"
-  CINETPAY_CHECK_URL: str = "https://api-checkout.cinetpay.com/v2/payment/check"
+  CINETPAY_COUNTRY: str = "CI"           # Code pays ISO (CI, SN, CM, etc.)
   CINETPAY_CURRENCY: str = "XOF"
   CINETPAY_RETURN_URL: str = "http://localhost:3000/formations/paiement/retour"
+  CINETPAY_FAILED_URL: str = "http://localhost:3000/formations/paiement/retour?status=failed"
   CINETPAY_NOTIFY_URL: str = "http://localhost:8000/api/v1/formations/paiement/webhook"
 
   @property
   def cinetpay_configured(self) -> bool:
-    """Retourne True si CinetPay est configuré (clés renseignées)"""
-    return bool(self.CINETPAY_API_KEY and self.CINETPAY_SITE_ID)
+    """Retourne True si CinetPay est configuré (clé + mot de passe renseignés)"""
+    return bool(self.CINETPAY_API_KEY and self.CINETPAY_API_PASSWORD)
+
+  @property
+  def cinetpay_base_url(self) -> str:
+    """Retourne l'URL de base selon le préfixe de la clé (sandbox ou production)"""
+    if self.CINETPAY_API_KEY and self.CINETPAY_API_KEY.startswith("sk_live_"):
+      return "https://api.cinetpay.co"
+    return "https://api.cinetpay.net"
 
   class Config:
     case_sensitive = True
