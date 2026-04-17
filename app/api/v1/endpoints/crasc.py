@@ -1,7 +1,7 @@
 import os, shutil, uuid, slugify
 from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
 from sqlalchemy.orm import selectinload, joinedload
-from sqlmodel import desc, select
+from sqlmodel import desc, select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Optional, List, Annotated
 
@@ -23,7 +23,8 @@ from app.schemas.crasc import (
    NewsCreate,
    NewsRead,
    NewsReadDetail,
-   NewsUpdate
+   NewsUpdate,
+   PaginatedResponse
 )
 from app.models.crasc import (
    Crasc, Region, OscType, Osc, News
@@ -89,7 +90,7 @@ async def create_crasc(
       )
 
 
-@crasc_router.get("/crasc", response_model=List[CrascReadDetail], status_code=status.HTTP_200_OK)
+@crasc_router.get("/crasc", response_model=List[CrascRead], status_code=status.HTTP_200_OK)
 async def get_crascs(
     skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
     limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
@@ -98,9 +99,6 @@ async def get_crascs(
     """Get all CRASC with pagination"""
     result = await db.execute(
        select(Crasc)
-       .options(selectinload(Crasc.regions))
-       .options(selectinload(Crasc.oscs))
-       .options(selectinload(Crasc.news_items))
        .offset(skip)
        .limit(limit)
        .order_by(Crasc.name)
@@ -336,7 +334,7 @@ async def create_osc_type(
         }
       )
 
-@crasc_router.get("/osc-type", response_model=List[OscTypeReadDetail], status_code=status.HTTP_200_OK)
+@crasc_router.get("/osc-type", response_model=List[OscTypeRead], status_code=status.HTTP_200_OK)
 async def get_all_osc_type(
     skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
     limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
@@ -345,7 +343,6 @@ async def get_all_osc_type(
     """Get all OSC types with pagination"""
     query = await db.execute(
        select(OscType)
-       .options(selectinload(OscType.oscs))
        .offset(skip)
        .limit(limit)
        .order_by(OscType.name)
@@ -506,45 +503,56 @@ async def create_osc(
     )
 
 
-@crasc_router.get("/osc", response_model=List[OscReadDetail], status_code=status.HTTP_200_OK)
+@crasc_router.get("/osc", response_model=PaginatedResponse[OscReadDetail], status_code=status.HTTP_200_OK)
 async def get_all_osc(
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(100, ge=1, le=500, description="Number of records to return"),
-    type_id: Optional[int] = Query(None, description="Filter by OSC type ID"),
-    crasc_id: Optional[int] = Query(None, description="Filter by CRASC ID"),
-    search: Optional[str] = Query(None, description="Search by name or description"),
+    page: int = Query(1, ge=1, description="Numéro de page"),
+    size: int = Query(20, ge=1, le=100, description="Nombre d'éléments par page"),
+    type_id: Optional[int] = Query(None, description="Filtrer par type d'OSC"),
+    crasc_id: Optional[int] = Query(None, description="Filtrer par CRASC"),
+    region_id: Optional[int] = Query(None, description="Filtrer par région"),
+    search: Optional[str] = Query(None, description="Recherche par nom ou description"),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Get all OSC with optional filtering and pagination
-    """
+    """Get all OSC with pagination and optional filters"""
+    # Build base filter conditions
+    filters = []
+    if type_id:
+        filters.append(Osc.type_id == type_id)
+    if crasc_id:
+        filters.append(Osc.crasc_id == crasc_id)
+    if region_id:
+        filters.append(Osc.region_id == region_id)
+    if search:
+        term = f"%{search}%"
+        filters.append((Osc.name.ilike(term)) | (Osc.description.ilike(term)))
+
+    # Count total matching records
+    count_query = select(func.count()).select_from(Osc)
+    if filters:
+        count_query = count_query.where(*filters)
+    total = (await db.execute(count_query)).scalar()
+
+    # Fetch paginated items
+    offset = (page - 1) * size
     query = select(Osc).options(
         selectinload(Osc.type),
         selectinload(Osc.crasc),
         selectinload(Osc.news_items)
     )
-    
-    # Apply filters
-    if type_id:
-        query = query.where(Osc.type_id == type_id)
-    
-    if crasc_id:
-        query = query.where(Osc.crasc_id == crasc_id)
-    
-    if search:
-        search_term = f"%{search}%"
-        query = query.where(
-            (Osc.name.ilike(search_term)) | 
-            (Osc.description.ilike(search_term))
-        )
-    
-    # Apply pagination
-    query = query.offset(skip).limit(limit).order_by(Osc.name)
-    
+    if filters:
+        query = query.where(*filters)
+    query = query.order_by(Osc.name).offset(offset).limit(size)
+
     result = await db.execute(query)
-    osc_list = result.scalars().all()
-    
-    return osc_list
+    items = result.scalars().all()
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=-(-total // size)  # ceiling division
+    )
 
 
 @crasc_router.get("/osc/{osc_slug}", response_model=OscReadDetail, status_code=status.HTTP_200_OK)
@@ -582,25 +590,91 @@ async def get_osc_update_form(
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     ville: Optional[str] = Form(None),
-    latitude: Optional[float] = Form(None),
-    longitude: Optional[float] = Form(None)
+    latitude: Optional[str] = Form(None),
+    longitude: Optional[str] = Form(None),
+    website: Optional[str] = Form(None),
+    reseaux_sociaux: Optional[str] = Form(None),
+    date_creation: Optional[str] = Form(None),
+    numero_recepisse: Optional[str] = Form(None),
+    niveau_couverture: Optional[str] = Form(None),
+    zone_couverture: Optional[str] = Form(None),
+    categorie: Optional[str] = Form(None),
+    domaine_prioritaire: Optional[str] = Form(None),
+    domaine_prioritaire_2: Optional[str] = Form(None),
+    domaine_prioritaire_3: Optional[str] = Form(None),
+    domaine_prioritaire_4: Optional[str] = Form(None),
+    nb_membres: Optional[str] = Form(None),
+    nb_femmes_membres: Optional[str] = Form(None),
+    nb_membres_jeunes: Optional[str] = Form(None),
+    nb_membres_be: Optional[str] = Form(None),
+    nb_personnes_engagees: Optional[str] = Form(None),
+    nb_beneficiaires: Optional[str] = Form(None),
+    nb_activites: Optional[str] = Form(None),
+    budget_annuel: Optional[str] = Form(None),
+    type_financement: Optional[str] = Form(None),
+    etat_cotisations: Optional[str] = Form(None),
+    montant_cotisation: Optional[str] = Form(None),
+    nom_president: Optional[str] = Form(None),
+    sexe_president: Optional[str] = Form(None),
+    mode_designation_president: Optional[str] = Form(None),
+    duree_mandat_be: Optional[str] = Form(None),
+    adhesion_crasc: Optional[str] = Form(None),
+    reseau_appartenance: Optional[str] = Form(None),
+    secteurs_activites: Optional[str] = Form(None),
+    populations_cibles: Optional[str] = Form(None),
+    savoir_faire: Optional[str] = Form(None),
+    difficultes: Optional[str] = Form(None),
+    recommandations: Optional[str] = Form(None),
 ) -> OscUpdate:
     """Parse form data into OscUpdate"""
-    # Parse numeric fields
-    parsed_type_id = int(type_id) if type_id and type_id != "" else None
-    parsed_crasc_id = int(crasc_id) if crasc_id and crasc_id != "" else None
+    def to_int(v): return int(v) if v and v.strip() != "" else None
+    def to_float(v): return float(v) if v and v.strip() != "" else None
+    def to_bool(v): return True if v == "true" else (False if v == "false" else None)
 
     return OscUpdate(
         name=name,
         description=description,
-        type_id=parsed_type_id,
-        crasc_id=parsed_crasc_id,
+        type_id=to_int(type_id),
+        crasc_id=to_int(crasc_id),
         address=address,
         email=email,
         phone=phone,
         ville=ville,
-        latitude=latitude,
-        longitude=longitude
+        latitude=to_float(latitude),
+        longitude=to_float(longitude),
+        website=website,
+        reseaux_sociaux=reseaux_sociaux,
+        date_creation=date_creation,
+        numero_recepisse=numero_recepisse,
+        niveau_couverture=niveau_couverture,
+        zone_couverture=zone_couverture,
+        categorie=categorie,
+        domaine_prioritaire=domaine_prioritaire,
+        domaine_prioritaire_2=domaine_prioritaire_2,
+        domaine_prioritaire_3=domaine_prioritaire_3,
+        domaine_prioritaire_4=domaine_prioritaire_4,
+        nb_membres=to_int(nb_membres),
+        nb_femmes_membres=to_int(nb_femmes_membres),
+        nb_membres_jeunes=to_int(nb_membres_jeunes),
+        nb_membres_be=to_int(nb_membres_be),
+        nb_personnes_engagees=to_int(nb_personnes_engagees),
+        nb_beneficiaires=to_int(nb_beneficiaires),
+        nb_activites=to_int(nb_activites),
+        budget_annuel=to_int(budget_annuel),
+        type_financement=type_financement,
+        etat_cotisations=etat_cotisations,
+        montant_cotisation=to_int(montant_cotisation),
+        nom_president=nom_president,
+        sexe_president=sexe_president,
+        mode_designation_president=mode_designation_president,
+        duree_mandat_be=duree_mandat_be,
+        adhesion_crasc=to_bool(adhesion_crasc),
+        reseau_appartenance=reseau_appartenance,
+        secteurs_activites=secteurs_activites,
+        populations_cibles=populations_cibles,
+        savoir_faire=savoir_faire,
+        difficultes=difficultes,
+        recommandations=recommandations,
     )
 
 @crasc_router.patch("/osc/{osc_slug}", response_model=OscRead)
@@ -643,13 +717,21 @@ async def update_osc_with_form(
         
         osc.thumbnail_path = filename
     
-    # Update other fields (same logic as regular PATCH)
-    update_data = osc_update.model_dump(exclude_unset=True)
-    # Update remaining fields
+    # Update other fields — exclude None to avoid overwriting existing data
+    update_data = {k: v for k, v in osc_update.model_dump().items() if v is not None}
     for key, value in update_data.items():
        setattr(osc, key, value)
     if "name" in update_data:
-      osc.slug = slugify.slugify(osc.name)
+      base_slug = slugify.slugify(osc.name)[:95]
+      new_slug = base_slug
+      n = 1
+      while True:
+          conflict = await db.execute(select(Osc).where(Osc.slug == new_slug, Osc.id != osc.id))
+          if not conflict.scalars().first():
+              break
+          n += 1
+          new_slug = f"{base_slug}-{n}"
+      osc.slug = new_slug
     
     try:
         #db.add(osc)

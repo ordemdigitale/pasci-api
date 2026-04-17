@@ -1,7 +1,16 @@
 from pydantic import BaseModel, computed_field
-from typing import Optional, List
+from typing import Optional, List, Generic, TypeVar
 from datetime import datetime
 from sqlmodel import Field
+
+T = TypeVar("T")
+
+class PaginatedResponse(BaseModel, Generic[T]):
+  items: List[T]
+  total: int
+  page: int
+  size: int
+  pages: int
 
 
 # CRASC Schemas
@@ -100,6 +109,47 @@ class OscBase(BaseModel):
   email: Optional[str] = None
   phone: Optional[str] = None
   ville: Optional[str] = None
+  # Champs complémentaires
+  website: Optional[str] = None
+  reseaux_sociaux: Optional[str] = None
+  date_creation: Optional[str] = None
+  numero_recepisse: Optional[str] = None
+  niveau_couverture: Optional[str] = None
+  zone_couverture: Optional[str] = None
+  categorie: Optional[str] = None
+  domaine_prioritaire: Optional[str] = None
+  domaine_prioritaire_2: Optional[str] = None
+  domaine_prioritaire_3: Optional[str] = None
+  domaine_prioritaire_4: Optional[str] = None
+  nb_membres: Optional[int] = None
+  nb_femmes_membres: Optional[int] = None
+  nb_membres_jeunes: Optional[int] = None
+  nb_membres_be: Optional[int] = None
+  nb_personnes_engagees: Optional[int] = None
+  nb_beneficiaires: Optional[int] = None
+  nb_activites: Optional[int] = None
+  budget_annuel: Optional[int] = None
+  type_financement: Optional[str] = None
+  etat_cotisations: Optional[str] = None
+  montant_cotisation: Optional[int] = None
+  nom_president: Optional[str] = None
+  sexe_president: Optional[str] = None
+  mode_designation_president: Optional[str] = None
+  duree_mandat_be: Optional[str] = None
+  adhesion_crasc: Optional[bool] = None
+  reseau_appartenance: Optional[str] = None
+  secteurs_activites: Optional[str] = None
+  populations_cibles: Optional[str] = None
+  savoir_faire: Optional[str] = None
+  difficultes: Optional[str] = None
+  recommandations: Optional[str] = None
+  financement_cotisation: Optional[bool] = None
+  financement_dons: Optional[bool] = None
+  financement_legs: Optional[bool] = None
+  financement_collectivites: Optional[bool] = None
+  financement_fonds_propres: Optional[bool] = None
+  financement_ong_intl: Optional[bool] = None
+  financement_multilateral: Optional[bool] = None
   
   @computed_field
   @property
@@ -138,6 +188,39 @@ class OscUpdate(BaseModel):
   email: Optional[str] = None
   phone: Optional[str] = None
   ville: Optional[str] = None
+  website: Optional[str] = None
+  reseaux_sociaux: Optional[str] = None
+  date_creation: Optional[str] = None
+  numero_recepisse: Optional[str] = None
+  niveau_couverture: Optional[str] = None
+  zone_couverture: Optional[str] = None
+  categorie: Optional[str] = None
+  domaine_prioritaire: Optional[str] = None
+  domaine_prioritaire_2: Optional[str] = None
+  domaine_prioritaire_3: Optional[str] = None
+  domaine_prioritaire_4: Optional[str] = None
+  nb_membres: Optional[int] = None
+  nb_femmes_membres: Optional[int] = None
+  nb_membres_jeunes: Optional[int] = None
+  nb_membres_be: Optional[int] = None
+  nb_personnes_engagees: Optional[int] = None
+  nb_beneficiaires: Optional[int] = None
+  nb_activites: Optional[int] = None
+  budget_annuel: Optional[int] = None
+  type_financement: Optional[str] = None
+  etat_cotisations: Optional[str] = None
+  montant_cotisation: Optional[int] = None
+  nom_president: Optional[str] = None
+  sexe_president: Optional[str] = None
+  mode_designation_president: Optional[str] = None
+  duree_mandat_be: Optional[str] = None
+  adhesion_crasc: Optional[bool] = None
+  reseau_appartenance: Optional[str] = None
+  secteurs_activites: Optional[str] = None
+  populations_cibles: Optional[str] = None
+  savoir_faire: Optional[str] = None
+  difficultes: Optional[str] = None
+  recommandations: Optional[str] = None
 
 
 #News Schemas
