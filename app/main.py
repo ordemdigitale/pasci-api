@@ -33,6 +33,7 @@ from app.api.v1.endpoints.forum import forum_router
 from app.api.v1.endpoints.annonces import annonces_router
 from app.api.v1.endpoints.hero_slides import hero_slides_router
 from app.api.v1.endpoints.site_config import site_config_router
+from app.api.v1.endpoints.adhesion import adhesion_router
 from app.admin.config import create_admin_panel
 
 # Configure logging
@@ -100,6 +101,7 @@ app.include_router(forum_router, prefix="/api/v1/forum", tags=["forum"])
 app.include_router(annonces_router, prefix="/api/v1/annonces", tags=["annonces"])
 app.include_router(hero_slides_router, prefix="/api/v1/hero-slides", tags=["hero-slides"])
 app.include_router(site_config_router, prefix="/api/v1/config", tags=["config"])
+app.include_router(adhesion_router, prefix="/api/v1/adhesion", tags=["adhesion"])
 
 @app.get("/")
 async def root():
