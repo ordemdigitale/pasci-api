@@ -302,6 +302,79 @@ async def send_certificat_emis(
     )
 
 
+_MERCI_DON = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <!-- Header vert -->
+        <tr>
+          <td style="background:#2A591D;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:22px;">Merci pour votre don ❤️</h2>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour <strong>{{ donor_name }}</strong>,<br><br>
+              Nous avons bien reçu votre don et vous en remercions chaleureusement.
+              Votre générosité contribue directement au renforcement des organisations de la société civile en Côte d'Ivoire.
+            </p>
+
+            <!-- Reçu -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:28px;">
+              <tr><td style="padding:24px;">
+                <p style="margin:0 0 6px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Reçu de don</p>
+                <p style="margin:0;font-size:28px;font-weight:700;color:#2A591D;">{{ amount }} FCFA</p>
+                {% if transaction_id %}
+                <p style="margin:10px 0 0;font-size:12px;color:#9ca3af;">Référence : {{ transaction_id }}</p>
+                {% endif %}
+                <p style="margin:4px 0 0;font-size:12px;color:#9ca3af;">Date : {{ don_date }}</p>
+              </td></tr>
+            </table>
+
+            <!-- Ce que votre don permet -->
+            <p style="margin:0 0 12px;color:#1a1a1a;font-size:15px;font-weight:700;">Votre don permet de :</p>
+            <ul style="margin:0 0 24px;padding-left:20px;color:#555;font-size:14px;line-height:1.9;">
+              <li>Renforcer les capacités des OSC membres du CRASC</li>
+              <li>Financer des formations professionnelles pour les acteurs de la société civile</li>
+              <li>Soutenir les actions de plaidoyer et de défense des droits</li>
+              <li>Favoriser le réseautage entre les organisations</li>
+            </ul>
+
+            <!-- CTA -->
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+              <tr><td style="background:#2A591D;border-radius:6px;">
+                <a href="{{ site_url }}" style="display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">
+                  Visiter la plateforme →
+                </a>
+              </td></tr>
+            </table>
+
+            <p style="margin:0 0 12px;color:#555;font-size:14px;line-height:1.6;">
+              Si vous avez des questions, contactez-nous à <a href="mailto:pdoc@plateforme-osci.org" style="color:#E05017;">pdoc@plateforme-osci.org</a>.
+            </p>
+
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              Cet email a été envoyé à {{ donor_email }}.<br>
+              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
 _RESET_PASSWORD = """
 <!DOCTYPE html>
 <html lang="fr">
@@ -355,6 +428,31 @@ _RESET_PASSWORD = """
 </body>
 </html>
 """
+
+
+async def send_merci_don(
+    *,
+    donor_name: str,
+    donor_email: str,
+    montant: int,
+    transaction_id: Optional[str] = None,
+    don_date: Optional[str] = None,
+) -> None:
+    from datetime import datetime
+    html = _render(
+        _MERCI_DON,
+        donor_name=donor_name,
+        donor_email=donor_email,
+        amount=f"{montant:,}".replace(",", " "),
+        transaction_id=transaction_id,
+        don_date=don_date or datetime.now().strftime("%d/%m/%Y"),
+        site_url=settings.FRONTEND_URL.rstrip("/"),
+    )
+    await _send(
+        to=donor_email,
+        subject="Merci pour votre don — PASCI",
+        html=html,
+    )
 
 
 async def send_reset_password(

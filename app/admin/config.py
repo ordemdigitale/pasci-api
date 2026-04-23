@@ -111,6 +111,9 @@ def create_admin_panel(app) -> Admin:
         TeamAdmin,
         HeroAdmin,
         DocumentationAdmin,
+        DonAdmin,
+        VolontaireAdmin,
+        DemandeAdhesionAdmin,
     )
 
     admin.add_view(UserAdmin)
@@ -126,6 +129,9 @@ def create_admin_panel(app) -> Admin:
     admin.add_view(TeamAdmin)
     admin.add_view(HeroAdmin)
     admin.add_view(DocumentationAdmin)
+    admin.add_view(DonAdmin)
+    admin.add_view(VolontaireAdmin)
+    admin.add_view(DemandeAdhesionAdmin)
 
     logger.info("✅ Admin panel configured successfully")
     return admin

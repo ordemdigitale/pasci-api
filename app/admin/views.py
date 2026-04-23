@@ -7,6 +7,9 @@ from app.models.key_stats import KeyStats
 from app.models.ptf import Ptf, Projet
 from app.models.hero import Hero, Team
 from app.models.documentation import Documentation
+from app.models.don import Don
+from app.models.volontaire import Volontaire
+from app.models.adhesion import DemandeAdhesion
 
 
 class UserAdmin(ModelView, model=User):
@@ -218,3 +221,84 @@ class DocumentationAdmin(ModelView, model=Documentation):
     column_searchable_list = [Documentation.title, Documentation.description]
     column_sortable_list = [Documentation.title, Documentation.created_at]
     column_default_sort = [(Documentation.created_at, True)]
+
+
+class DonAdmin(ModelView, model=Don):
+    name = "Don"
+    name_plural = "Dons"
+    icon = "fa-solid fa-heart"
+    can_create = False
+
+    column_list = [
+        Don.id,
+        Don.nom,
+        Don.email,
+        Don.telephone,
+        Don.montant,
+        Don.statut,
+        Don.transaction_id,
+        Don.created_at,
+    ]
+
+    column_searchable_list = [Don.nom, Don.email, Don.transaction_id]
+    column_sortable_list = [Don.montant, Don.statut, Don.created_at]
+    column_default_sort = [(Don.created_at, True)]
+    column_details_list = [
+        Don.id, Don.nom, Don.email, Don.telephone,
+        Don.montant, Don.message, Don.statut,
+        Don.transaction_id, Don.notify_token, Don.created_at,
+    ]
+
+
+class VolontaireAdmin(ModelView, model=Volontaire):
+    name = "Volontaire"
+    name_plural = "Volontaires"
+    icon = "fa-solid fa-hands-helping"
+    can_create = False
+
+    column_list = [
+        Volontaire.id,
+        Volontaire.nom,
+        Volontaire.email,
+        Volontaire.domaine,
+        Volontaire.disponibilite,
+        Volontaire.statut,
+        Volontaire.created_at,
+    ]
+
+    column_searchable_list = [Volontaire.nom, Volontaire.email, Volontaire.domaine]
+    column_sortable_list = [Volontaire.statut, Volontaire.created_at]
+    column_default_sort = [(Volontaire.created_at, True)]
+    column_details_list = [
+        Volontaire.id, Volontaire.nom, Volontaire.email, Volontaire.telephone,
+        Volontaire.profession, Volontaire.domaine, Volontaire.disponibilite,
+        Volontaire.motivation, Volontaire.statut, Volontaire.note_admin,
+        Volontaire.created_at,
+    ]
+
+
+class DemandeAdhesionAdmin(ModelView, model=DemandeAdhesion):
+    name = "Demande d'adhésion"
+    name_plural = "Demandes d'adhésion"
+    icon = "fa-solid fa-clipboard-list"
+    can_create = False
+
+    column_list = [
+        DemandeAdhesion.id,
+        DemandeAdhesion.nom_organisation,
+        DemandeAdhesion.type_organisation,
+        DemandeAdhesion.region,
+        DemandeAdhesion.email,
+        DemandeAdhesion.statut,
+        DemandeAdhesion.created_at,
+    ]
+
+    column_searchable_list = [DemandeAdhesion.nom_organisation, DemandeAdhesion.email]
+    column_sortable_list = [DemandeAdhesion.statut, DemandeAdhesion.created_at]
+    column_default_sort = [(DemandeAdhesion.created_at, True)]
+    column_details_list = [
+        DemandeAdhesion.id, DemandeAdhesion.nom_organisation, DemandeAdhesion.type_organisation,
+        DemandeAdhesion.region, DemandeAdhesion.ville, DemandeAdhesion.email,
+        DemandeAdhesion.telephone, DemandeAdhesion.description, DemandeAdhesion.motivation,
+        DemandeAdhesion.statut, DemandeAdhesion.note_admin, DemandeAdhesion.created_at,
+    ]
