@@ -1,4 +1,4 @@
-import os, shutil, uuid, slugify
+import os, uuid, slugify
 from fastapi import APIRouter, HTTPException, UploadFile, status,  Depends, Form, File, Query
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
@@ -19,6 +19,32 @@ from app.schemas.ptf import(
 from app.models.ptf import Ptf, Projet
 
 ptf_router = APIRouter()
+
+ALLOWED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp"]
+
+async def _save_upload(file: UploadFile, field: str) -> str:
+    """Lit et sauvegarde un UploadFile de manière async. Retourne le nom de fichier."""
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"type": "validation_error", "errors": [
+                {"field": field, "message": f"Format invalide. Formats acceptés : {ALLOWED_IMAGE_EXTENSIONS}."}
+            ]}
+        )
+    contents = await file.read()
+    filename = f"{uuid.uuid4()}.{ext}"
+    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    return filename
+
+def _delete_file(path: Optional[str]) -> None:
+    """Supprime un fichier uploadé si il existe."""
+    if path and path != "default.png":
+        full_path = os.path.join(settings.UPLOAD_DIR, path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
 
 ######################
 # PTF Endpoints
@@ -44,59 +70,14 @@ async def create_ptf(
   
   # Handle thumbnail upload
   if thumbnail and thumbnail.filename:
-    # User uploaded image: generate unique name and save
-    file_extension = thumbnail.filename.split(".")[-1]
-    # check for the extension to ensure users only upload images
-    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
-    if file_extension.lower() not in allowed_extensions:
-      raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={
-          "type": "validation_error",
-          "errors": [
-            {
-              "field": "thumbnail",
-              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
-            }
-          ]
-        }
-      )
-    filename = f"{uuid.uuid4()}.{file_extension}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-
-    with open(file_path, "wb") as buffer:
-      shutil.copyfileobj(thumbnail.file, buffer)
-
-    thumbnail_saved_path = filename
+    thumbnail_saved_path = await _save_upload(thumbnail, "thumbnail")
   else:
-    # No file uploaded, use the default filename defined in your model
     thumbnail_saved_path = "default.png"
 
   # Handle cover image upload
   cover_saved_path = None
   if cover and cover.filename:
-    file_extension = cover.filename.split(".")[-1]
-    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
-    if file_extension.lower() not in allowed_extensions:
-      raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={
-          "type": "validation_error",
-          "errors": [
-            {
-              "field": "cover",
-              "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
-            }
-          ]
-        }
-      )
-    filename = f"{uuid.uuid4()}.{file_extension}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-
-    with open(file_path, "wb") as buffer:
-      shutil.copyfileobj(cover.file, buffer)
-
-    cover_saved_path = filename
+    cover_saved_path = await _save_upload(cover, "cover")
 
   # create the db record
   ptf_create = Ptf(
@@ -212,68 +193,14 @@ async def update_ptf(
     )
 
   # Handle thumbnail upload if provided
-  if isinstance(thumbnail, UploadFile) and thumbnail.filename:  # ← Core guard: Check type and non-empty filename
-    file_extension = thumbnail.filename.split(".")[-1].lower()
-    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
-    if file_extension not in allowed_extensions:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "type": "validation_error",
-                "errors": [
-                    {
-                        "field": "thumbnail",
-                        "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
-                    }
-                ]
-            }
-        )
-
-    # Delete old thumbnail if it exists and is not default
-    if ptf.thumbnail_path and ptf.thumbnail_path != "default.png":
-      old_file_path = os.path.join(settings.UPLOAD_DIR, ptf.thumbnail_path)
-      if os.path.exists(old_file_path):
-        os.remove(old_file_path)
-
-    # Save new thumbnail
-    filename = f"{uuid.uuid4()}.{file_extension}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-    with open(file_path, "wb") as buffer:
-      shutil.copyfileobj(thumbnail.file, buffer)
-
-    ptf.thumbnail_path = filename
+  if isinstance(thumbnail, UploadFile) and thumbnail.filename:
+    _delete_file(ptf.thumbnail_path)
+    ptf.thumbnail_path = await _save_upload(thumbnail, "thumbnail")
 
   # Handle cover upload if provided
-  if isinstance(cover, UploadFile) and cover.filename:  # ← Core guard: Check type and non-empty filename
-    file_extension = cover.filename.split(".")[-1].lower()
-    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
-    if file_extension not in allowed_extensions:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "type": "validation_error",
-                "errors": [
-                    {
-                        "field": "thumbnail",
-                        "message": f"Format d'image invalide. Les formats valides sont: {allowed_extensions}."
-                    }
-                ]
-            }
-        )
-
-    # Delete old cover if it exists
-    if ptf.cover_path:
-      old_file_path = os.path.join(settings.UPLOAD_DIR, ptf.cover_path)
-      if os.path.exists(old_file_path):
-        os.remove(old_file_path)
-
-    # Save new cover
-    filename = f"{uuid.uuid4()}.{file_extension}"
-    file_path = os.path.join(settings.UPLOAD_DIR, filename)
-    with open(file_path, "wb") as buffer:
-      shutil.copyfileobj(cover.file, buffer)
-
-    ptf.cover_path = filename
+  if isinstance(cover, UploadFile) and cover.filename:
+    _delete_file(ptf.cover_path)
+    ptf.cover_path = await _save_upload(cover, "cover")
 
   # Update text fields only if provided
   if name is not None:

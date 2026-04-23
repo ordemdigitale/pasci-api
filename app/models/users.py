@@ -42,6 +42,13 @@ class User(SQLModel, table=True):
   avatar: Optional[str] = Field(default=None, max_length=500)
   bio: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
 
+  # Password reset
+  reset_token: Optional[str] = Field(default=None, max_length=255, nullable=True)
+  reset_token_expires: Optional[datetime] = Field(
+      default=None,
+      sa_column=Column(DateTime(timezone=True), nullable=True)
+  )
+
   # ——— Additional methods ———
 
   def set_password(self, raw_password: str):

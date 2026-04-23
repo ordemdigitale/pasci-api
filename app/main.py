@@ -4,10 +4,7 @@ from fastapi import FastAPI
 from starlette.formparsers import MultiPartParser
 
 # Augmenter la limite d'upload à 50 Mo (défaut Starlette = 1 Mo)
-_original_mp_init = MultiPartParser.__init__
-def _mp_init(self, headers, stream, *, max_files=1000, max_fields=1000, max_part_size=50*1024*1024):
-    _original_mp_init(self, headers, stream, max_files=max_files, max_fields=max_fields, max_part_size=max_part_size)
-MultiPartParser.__init__ = _mp_init
+MultiPartParser.max_part_size = 50 * 1024 * 1024
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware

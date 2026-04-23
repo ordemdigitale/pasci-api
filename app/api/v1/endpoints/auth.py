@@ -1,9 +1,13 @@
 # app/api/v1/endpoints/auth.py
+import secrets
+from datetime import datetime, timezone, timedelta
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
-from datetime import timedelta
+
 from app.models.users import User
 from app.database.session import get_db
 from app.schemas.users import UserRead, UserCreate
@@ -11,6 +15,7 @@ from app.schemas.auth import Token
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
 from app.core.config import settings
 from app.services.user_service import UserService
+from app.services.email import send_reset_password
 
 auth_router = APIRouter()
 
@@ -79,3 +84,63 @@ async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
 @auth_router.post("/logout")
 async def logout():
     return {"message": "Logout endpoint"}
+
+
+# ── Password reset schemas ────────────────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+# ── Password reset endpoints ──────────────────────────────────────────────────
+
+@auth_router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Envoie un email de réinitialisation si l'email existe. Ne révèle jamais si l'email est enregistré."""
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if user:
+        token = secrets.token_urlsafe(32)
+        user.reset_token = token
+        user.reset_token_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        db.add(user)
+        await db.commit()
+
+        await send_reset_password(
+            user_name=user.full_name or user.get_username(),
+            user_email=user.email,
+            token=token,
+        )
+
+    return {"message": "Si cet email existe, un lien a été envoyé"}
+
+
+@auth_router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Réinitialise le mot de passe à partir d'un token valide et non expiré."""
+    result = await db.execute(select(User).where(User.reset_token == body.token))
+    user = result.scalar_one_or_none()
+
+    if not user or user.reset_token_expires is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token invalide ou expiré")
+
+    expires = user.reset_token_expires
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+
+    if expires < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token invalide ou expiré")
+
+    user.password = get_password_hash(body.new_password)
+    user.reset_token = None
+    user.reset_token_expires = None
+    db.add(user)
+    await db.commit()
+
+    return {"message": "Mot de passe réinitialisé avec succès"}
