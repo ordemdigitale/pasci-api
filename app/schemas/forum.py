@@ -14,6 +14,11 @@ class PoleConcertationBase(BaseModel):
     description: Optional[str] = None
     image_path: Optional[str] = None
     objectifs: Optional[str] = None  # JSON string
+    objectifs_annuels: Optional[str] = None  # JSON string
+    nb_osc_membres: Optional[int] = None
+    regions_influence: Optional[str] = None  # JSON string
+    realisations: Optional[str] = None  # JSON string
+    agenda: Optional[str] = None  # JSON string
     is_active: bool = True
 
 
@@ -46,6 +51,11 @@ class PoleConcertationUpdate(BaseModel):
     description: Optional[str] = None
     image_path: Optional[str] = None
     objectifs: Optional[str] = None
+    objectifs_annuels: Optional[str] = None
+    nb_osc_membres: Optional[int] = None
+    regions_influence: Optional[str] = None
+    realisations: Optional[str] = None
+    agenda: Optional[str] = None
     is_active: Optional[bool] = None
 
 

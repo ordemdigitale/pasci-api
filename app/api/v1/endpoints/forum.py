@@ -81,6 +81,11 @@ async def create_pole(
     category: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     objectifs: Optional[str] = Form(None),
+    objectifs_annuels: Optional[str] = Form(None),
+    nb_osc_membres: Optional[int] = Form(None),
+    regions_influence: Optional[str] = Form(None),
+    realisations: Optional[str] = Form(None),
+    agenda: Optional[str] = Form(None),
     is_active: bool = Form(True),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
@@ -97,6 +102,11 @@ async def create_pole(
         description=description,
         image_path=image_path,
         objectifs=objectifs,
+        objectifs_annuels=objectifs_annuels,
+        nb_osc_membres=nb_osc_membres,
+        regions_influence=regions_influence,
+        realisations=realisations,
+        agenda=agenda,
         is_active=is_active,
     )
     db.add(db_pole)
@@ -131,6 +141,11 @@ async def update_pole(
     category: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     objectifs: Optional[str] = Form(None),
+    objectifs_annuels: Optional[str] = Form(None),
+    nb_osc_membres: Optional[str] = Form(None),
+    regions_influence: Optional[str] = Form(None),
+    realisations: Optional[str] = Form(None),
+    agenda: Optional[str] = Form(None),
     is_active: Optional[str] = Form(None),
     image: Union[UploadFile, str, None] = File(None),
     db: AsyncSession = Depends(get_db),
@@ -156,6 +171,19 @@ async def update_pole(
         pole.description = description or None
     if objectifs is not None:
         pole.objectifs = objectifs or None
+    if objectifs_annuels is not None:
+        pole.objectifs_annuels = objectifs_annuels or None
+    if nb_osc_membres is not None:
+        try:
+            pole.nb_osc_membres = int(nb_osc_membres) if nb_osc_membres else None
+        except ValueError:
+            pole.nb_osc_membres = None
+    if regions_influence is not None:
+        pole.regions_influence = regions_influence or None
+    if realisations is not None:
+        pole.realisations = realisations or None
+    if agenda is not None:
+        pole.agenda = agenda or None
     if is_active is not None:
         pole.is_active = is_active.lower() in ("true", "1", "yes")
 

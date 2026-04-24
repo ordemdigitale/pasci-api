@@ -17,6 +17,11 @@ class PoleConcertation(SQLModel, table=True):
     description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     image_path: Optional[str] = Field(default=None, max_length=500)
     objectifs: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list
+    objectifs_annuels: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list
+    nb_osc_membres: Optional[int] = Field(default=None, nullable=True)
+    regions_influence: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list
+    realisations: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list
+    agenda: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list of {date, titre, description}
     is_active: bool = Field(default=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
