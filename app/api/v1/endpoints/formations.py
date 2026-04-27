@@ -26,7 +26,7 @@ from app.schemas.formation import (
     FormationLeconCreate, FormationLeconUpdate, FormationLeconRead,
     FormationAvisCreate, FormationAvisRead,
 )
-from app.core.auth import get_current_user, get_current_staff_user
+from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff
 from app.services.cinetpay import cinetpay_service
 from app.services.email import (
     send_inscription_confirmation,
@@ -449,7 +449,8 @@ async def create_formation(
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
     thumbnail: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_or_staff),
 ) -> Formation:
     """
     Create a new formation/training
@@ -526,6 +527,8 @@ async def create_formation(
             }
         )
 
+    statut_pub = "publie" if current_user.is_staff else "en_attente"
+
     try:
         formation = Formation(
             title=title.strip(),
@@ -544,7 +547,8 @@ async def create_formation(
             rubrique_id=rubrique_id_int,
             crasc_id=crasc_id_int,
             osc_id=osc_id_int,
-            thumbnail_path=saved_path
+            thumbnail_path=saved_path,
+            statut_publication=statut_pub,
         )
         db.add(formation)
         await db.commit()
@@ -591,7 +595,7 @@ async def get_formations(
         selectinload(Formation.crasc),
         selectinload(Formation.osc),
         selectinload(Formation.rubrique),
-    )
+    ).where(Formation.statut_publication == "publie")
 
     # Apply filters
     if published_only:
@@ -642,6 +646,7 @@ async def get_upcoming_formations(
         .where(Formation.is_published == True)
         .where(Formation.is_completed == False)
         .where(Formation.start_date >= datetime.now())
+        .where(Formation.statut_publication == "publie")
         .order_by(Formation.start_date.asc())
         .limit(limit)
     )
@@ -883,6 +888,40 @@ async def delete_formation(
     await db.delete(formation)
     await db.commit()
     return None
+
+
+@formations_router.get("/admin/en-attente", response_model=List[FormationRead])
+async def list_formations_en_attente(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Liste toutes les formations en attente de validation (staff only)."""
+    result = await db.execute(
+        select(Formation)
+        .where(Formation.statut_publication == "en_attente")
+        .order_by(Formation.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+@formations_router.patch("/{formation_slug}/valider", response_model=FormationRead)
+async def valider_formation(
+    formation_slug: str,
+    action: str = Query(..., description="publie ou rejete"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Approuver ou rejeter une formation (staff only)."""
+    if action not in ("publie", "rejete"):
+        raise HTTPException(status_code=400, detail="Action invalide.")
+    result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
+    formation = result.scalar_one_or_none()
+    if not formation:
+        raise HTTPException(status_code=404, detail="Formation non trouvée.")
+    formation.statut_publication = action
+    await db.commit()
+    await db.refresh(formation)
+    return formation
 
 
 # ─────────────────────────────────────────────────────────────

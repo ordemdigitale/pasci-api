@@ -27,6 +27,7 @@ class User(SQLModel, table=True):
   is_active: bool = Field(default=True)
   is_staff: bool = Field(default=False)
   is_superuser: bool = Field(default=False)
+  is_redacteur: bool = Field(default=False)
 
   # Timestamps
   date_joined: Optional[datetime] = Field(

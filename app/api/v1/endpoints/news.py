@@ -19,6 +19,8 @@ from app.schemas.crasc import (
     NewsUpdate
 )
 from app.models.crasc import News
+from app.models.users import User
+from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff
 
 news_router = APIRouter()
 
@@ -119,7 +121,8 @@ async def create_news(
     thumbnail: Optional[UploadFile] = File(None),
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_or_staff),
 ):
     """
     Create a new news article
@@ -153,13 +156,17 @@ async def create_news(
     else:
         saved_path = "default.png"
 
+    # Si rédacteur → en attente de validation, si staff → publié directement
+    statut = "publie" if current_user.is_staff else "en_attente"
+
     # Create database record
     news_create = News(
         title=title.strip(),
         content=content,
         crasc_id=crasc_id_int,
         osc_id=osc_id_int,
-        thumbnail_path=saved_path
+        thumbnail_path=saved_path,
+        statut_publication=statut,
     )
 
     # Check for duplicate title
@@ -218,11 +225,11 @@ async def get_all_news(
     - **sort_by**: Sort field (created_at, title)
     - **sort_order**: Sort order (asc, desc)
     """
-    # Base query with relationships
+    # Base query with relationships — public : uniquement publiés
     query = select(News).options(
         selectinload(News.crasc),
         selectinload(News.osc)
-    )
+    ).where(News.statut_publication == "publie")
 
     # Apply filters
     if crasc_id:
@@ -269,7 +276,7 @@ async def get_spotlight_news_per_crasc(db: AsyncSession = Depends(get_db)):
     query = (
         select(News)
         .distinct(News.crasc_id)
-        .where(News.crasc_id.is_not(None))
+        .where(News.crasc_id.is_not(None), News.statut_publication == "publie")
         .options(selectinload(News.crasc), selectinload(News.osc))
         .order_by(News.crasc_id, News.id.desc())
     )
@@ -290,6 +297,7 @@ async def get_recent_news(
     """
     query = (
         select(News)
+        .where(News.statut_publication == "publie")
         .options(selectinload(News.crasc), selectinload(News.osc))
         .order_by(desc(News.created_at))
         .limit(limit)
@@ -416,6 +424,44 @@ async def update_news(
                 }]
             }
         )
+
+
+@news_router.get("/admin/en-attente", response_model=List[NewsReadDetail])
+async def list_news_en_attente(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Liste toutes les actualités en attente de validation (staff only)."""
+    result = await db.execute(
+        select(News)
+        .where(News.statut_publication == "en_attente")
+        .options(selectinload(News.crasc), selectinload(News.osc))
+        .order_by(News.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+@news_router.patch("/{news_slug}/valider", response_model=NewsReadDetail)
+async def valider_news(
+    news_slug: str,
+    action: str = Query(..., description="publie ou rejete"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Approuver ou rejeter une actualité (staff only)."""
+    if action not in ("publie", "rejete"):
+        raise HTTPException(status_code=400, detail="Action invalide. Utilisez 'publie' ou 'rejete'.")
+    result = await db.execute(
+        select(News).where(News.slug == news_slug).options(selectinload(News.crasc), selectinload(News.osc))
+    )
+    news = result.scalar_one_or_none()
+    if not news:
+        raise HTTPException(status_code=404, detail="Actualité non trouvée.")
+    news.statut_publication = action
+    news.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(news)
+    return news
 
 
 @news_router.delete("/{news_slug}", status_code=status.HTTP_204_NO_CONTENT)

@@ -35,6 +35,7 @@ class UserRead(BaseModel):
   is_active: bool
   is_staff: bool
   is_superuser: bool
+  is_redacteur: bool
   date_joined: datetime
   last_login: Optional[datetime]
   avatar: Optional[str]
@@ -72,5 +73,6 @@ class UserUpdateAdmin(BaseModel):
   is_active: Optional[bool] = None
   is_staff: Optional[bool] = None
   is_superuser: Optional[bool] = None
+  is_redacteur: Optional[bool] = None
   avatar: Optional[str] = None
   bio: Optional[str] = None

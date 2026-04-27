@@ -99,6 +99,33 @@ CREATE TABLE IF NOT EXISTS formation_progression (
 );
 CREATE INDEX IF NOT EXISTS ix_formation_progression_inscription ON formation_progression(inscription_id);
 
+-- 9. Nouvelles colonnes sur pole_concertation (migration d4e5f6a7b8c9)
+ALTER TABLE pole_concertation ADD COLUMN IF NOT EXISTS objectifs_annuels TEXT;
+ALTER TABLE pole_concertation ADD COLUMN IF NOT EXISTS nb_osc_membres INTEGER;
+ALTER TABLE pole_concertation ADD COLUMN IF NOT EXISTS regions_influence TEXT;
+ALTER TABLE pole_concertation ADD COLUMN IF NOT EXISTS realisations TEXT;
+ALTER TABLE pole_concertation ADD COLUMN IF NOT EXISTS agenda TEXT;
+
+-- 10. is_redacteur sur user + statut_publication sur les contenus (migration f1a2b3c4d5e6)
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS is_redacteur BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE news ADD COLUMN IF NOT EXISTS statut_publication VARCHAR(20) NOT NULL DEFAULT 'publie';
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS statut_publication VARCHAR(20) NOT NULL DEFAULT 'publie';
+ALTER TABLE formations ADD COLUMN IF NOT EXISTS statut_publication VARCHAR(20) NOT NULL DEFAULT 'publie';
+ALTER TABLE offreprojet ADD COLUMN IF NOT EXISTS statut_publication VARCHAR(20) NOT NULL DEFAULT 'publie';
+
+-- 11. Table numero_utile (migration e5f6a7b8c9d0)
+CREATE TABLE IF NOT EXISTS numero_utile (
+    id SERIAL PRIMARY KEY,
+    nom VARCHAR(150) NOT NULL,
+    numero VARCHAR(50) NOT NULL,
+    description TEXT,
+    categorie VARCHAR(100),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    ordre INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 -- ============================================================
 SELECT 'Migration terminée avec succès' AS status;
 -- ============================================================

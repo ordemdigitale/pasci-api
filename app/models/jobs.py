@@ -15,6 +15,8 @@ class Jobs(SQLModel, table=True):
     type: str = Field(max_length=200, nullable=False, description="Job type")
     is_expired: bool = Field(default=False, description="Indicates if the job posting is expired")
     slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
+    # brouillon | en_attente | publie | rejete
+    statut_publication: str = Field(default="publie", max_length=20)
 
     # Nouveaux champs pour le détail de l'offre (stockés en JSON)
     missions: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Missions et responsabilités (JSON)")

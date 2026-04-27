@@ -33,6 +33,8 @@ class OffreProjet(SQLModel, table=True):
     # Statut et progression
     statut: str = Field(default="En attente", max_length=50, description="Statut du projet")
     progression: int = Field(default=0, description="Progression du projet (0-100%)")
+    # brouillon | en_attente | publie | rejete
+    statut_publication: str = Field(default="publie", max_length=20)
 
     # Données structurées (JSON)
     resultats_attendus: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Résultats attendus (JSON)")

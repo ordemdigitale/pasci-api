@@ -71,6 +71,8 @@ class Formation(SQLModel, table=True):
     is_published: bool = Field(default=False, description="Formation publiée et visible")
     is_full: bool = Field(default=False, description="Formation complète")
     is_completed: bool = Field(default=False, description="Formation terminée")
+    # brouillon | en_attente | publie | rejete
+    statut_publication: str = Field(default="publie", max_length=20)
 
     # Media
     thumbnail_path: Optional[str] = Field(default="default.png", max_length=2048)

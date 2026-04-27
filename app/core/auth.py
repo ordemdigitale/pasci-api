@@ -65,6 +65,16 @@ async def get_current_staff_user(current_user: User = Depends(get_current_user))
    return current_user
 
 
+async def get_current_redacteur_or_staff(current_user: User = Depends(get_current_user)) -> User:
+    """Autorise les rédacteurs ET le staff (pour créer du contenu)."""
+    if not (current_user.is_staff or current_user.is_redacteur):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès réservé aux rédacteurs et au staff."
+        )
+    return current_user
+
+
 # Optional: Superuser only
 async def get_current_superuser(user: User = Depends(get_current_active_user)):
     if not user.is_superuser:

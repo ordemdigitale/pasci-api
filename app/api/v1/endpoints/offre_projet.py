@@ -2,7 +2,7 @@
 API Endpoints for Offre Projet Management
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -12,7 +12,9 @@ from uuid import UUID
 
 from app.database.session import get_db
 from app.models.offre_projet import OffreProjet
+from app.models.users import User
 from app.schemas.offre_projet import OffreProjetCreate, OffreProjetRead, OffreProjetUpdate
+from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff
 
 offre_projet_router = APIRouter()
 
@@ -29,8 +31,8 @@ async def get_all_projets(
     statut: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ) -> List[OffreProjet]:
-    """Get all projets with optional filters"""
-    query = select(OffreProjet).offset(skip).limit(limit)
+    """Get all published projets with optional filters"""
+    query = select(OffreProjet).where(OffreProjet.statut_publication == "publie").offset(skip).limit(limit)
 
     if domaine:
         query = query.where(OffreProjet.domaine == domaine)
@@ -48,8 +50,11 @@ async def get_active_projets(
     limit: int = 100,
     db: AsyncSession = Depends(get_db)
 ) -> List[OffreProjet]:
-    """Get only active projets (En cours)"""
-    query = select(OffreProjet).where(OffreProjet.statut == "En cours").offset(skip).limit(limit)
+    """Get only active published projets (En cours)"""
+    query = select(OffreProjet).where(
+        OffreProjet.statut == "En cours",
+        OffreProjet.statut_publication == "publie"
+    ).offset(skip).limit(limit)
     result = await db.execute(query)
     projets = result.scalars().all()
     return projets
@@ -87,7 +92,8 @@ async def create_projet(
     resultats_attendus: Optional[str] = Form(None),
     partenaires: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_or_staff),
 ) -> OffreProjet:
     """Create a new projet"""
 
@@ -108,6 +114,8 @@ async def create_projet(
             content = await image.read()
             buffer.write(content)
 
+    statut_pub = "publie" if current_user.is_staff else "en_attente"
+
     # Create projet
     projet = OffreProjet(
         nom=nom,
@@ -124,6 +132,7 @@ async def create_projet(
         resultats_attendus=resultats_attendus,
         partenaires=partenaires,
         image_path=image_filename,
+        statut_publication=statut_pub,
     )
 
     db.add(projet)
@@ -222,6 +231,40 @@ async def update_projet(
     await db.commit()
     await db.refresh(projet)
 
+    return projet
+
+
+@offre_projet_router.get("/admin/en-attente", response_model=List[OffreProjetRead])
+async def list_projets_en_attente(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Liste toutes les offres de projets en attente de validation (staff only)."""
+    result = await db.execute(
+        select(OffreProjet)
+        .where(OffreProjet.statut_publication == "en_attente")
+        .order_by(OffreProjet.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+@offre_projet_router.patch("/{slug}/valider", response_model=OffreProjetRead)
+async def valider_projet(
+    slug: str,
+    action: str = Query(..., description="publie ou rejete"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Approuver ou rejeter une offre de projet (staff only)."""
+    if action not in ("publie", "rejete"):
+        raise HTTPException(status_code=400, detail="Action invalide.")
+    result = await db.execute(select(OffreProjet).where(OffreProjet.slug == slug))
+    projet = result.scalar_one_or_none()
+    if not projet:
+        raise HTTPException(status_code=404, detail="Projet non trouvé.")
+    projet.statut_publication = action
+    await db.commit()
+    await db.refresh(projet)
     return projet
 
 

@@ -235,6 +235,8 @@ class News(SQLModel, table=True):
 
   id: Optional[int] = Field(default=None, primary_key=True)
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
+  # brouillon | en_attente | publie | rejete
+  statut_publication: str = Field(default="publie", max_length=20)
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
     sa_column=Column(DateTime(timezone=True), server_default=func.now())
@@ -249,7 +251,7 @@ class News(SQLModel, table=True):
     super().__init__(**kwargs)
     if self.title and not self.slug:
       self.slug = slugify.slugify(self.title)
-  
+
   # Representation in admin/logs
   def __repr__(self) -> str:
     return f"<Titre: {self.title}>"
