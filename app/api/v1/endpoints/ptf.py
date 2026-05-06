@@ -147,6 +147,8 @@ async def get_ptf(ptf_slug: str, db: AsyncSession = Depends(get_db)):
     select(Ptf).options(selectinload(Ptf.projets)).where(Ptf.slug == ptf_slug)
   )
   ptf = result.scalars().first()
+  if not ptf:
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PTF non trouvé.")
   return ptf
 
 ## update: PATCH
@@ -217,8 +219,12 @@ async def update_ptf(
 
   # Persist changes
   await db.commit()
-  await db.refresh(ptf)
-  return ptf
+
+  # Re-requêter avec selectinload pour charger les relations (refresh seul ne les recharge pas en async)
+  result = await db.execute(
+    select(Ptf).options(selectinload(Ptf.projets)).where(Ptf.id == ptf.id)
+  )
+  return result.scalars().first()
 
 ## delete: DELETE
 @ptf_router.delete("/{ptf_slug}", status_code=status.HTTP_204_NO_CONTENT)

@@ -2,6 +2,7 @@ from pydantic import BaseModel, computed_field
 from typing import Optional, List, Generic, TypeVar
 from datetime import datetime
 from sqlmodel import Field
+from app.core.config import settings
 
 T = TypeVar("T")
 
@@ -156,7 +157,7 @@ class OscBase(BaseModel):
   def thumbnail_url(self) -> Optional[str]:
     """Constructs the full URL path for the thumbnail"""
     if self.thumbnail_path and self.thumbnail_path != "default.png":
-      return f"https://api.plateforme-osci.org/static/{self.thumbnail_path}"
+      return f"{settings.API_BASE_URL}/static/{self.thumbnail_path}"
     return None
 
 class OscCreate(OscBase):
@@ -237,7 +238,7 @@ class NewsBase(BaseModel):
   @property
   def thumbnail_url(self) -> str:
     """Constructs the full URL path for the frontend"""
-    return f"https://api.plateforme-osci.org/static/{self.thumbnail_path}"
+    return f"{settings.API_BASE_URL}/static/{self.thumbnail_path}"
 
 class NewsCreate(NewsBase):
     pass
