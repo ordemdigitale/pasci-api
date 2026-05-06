@@ -168,6 +168,8 @@ async def update_ptf(
   domaines: Optional[str] = Form(None),
   thumbnail: Union[UploadFile, str, None] = File(None),
   cover: Union[UploadFile, str, None] = File(None),
+  remove_thumbnail: Optional[str] = Form(None),
+  remove_cover: Optional[str] = Form(None),
   db: AsyncSession = Depends(get_db)
 ):
   """Update a PTF by slug"""
@@ -182,15 +184,21 @@ async def update_ptf(
       detail="PTF non trouvé."
     )
 
-  # Handle thumbnail upload if provided
+  # Handle thumbnail
   if isinstance(thumbnail, UploadFile) and thumbnail.filename:
     _delete_file(ptf.thumbnail_path)
     ptf.thumbnail_path = await _save_upload(thumbnail, "thumbnail")
+  elif remove_thumbnail == "1":
+    _delete_file(ptf.thumbnail_path)
+    ptf.thumbnail_path = None
 
-  # Handle cover upload if provided
+  # Handle cover
   if isinstance(cover, UploadFile) and cover.filename:
     _delete_file(ptf.cover_path)
     ptf.cover_path = await _save_upload(cover, "cover")
+  elif remove_cover == "1":
+    _delete_file(ptf.cover_path)
+    ptf.cover_path = None
 
   # Update text fields only if provided
   if name is not None:
