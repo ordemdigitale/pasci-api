@@ -68,69 +68,57 @@ async def create_ptf(
   db: AsyncSession = Depends(get_db)
 ) -> Ptf:
   
-  # Handle thumbnail upload
-  if thumbnail and thumbnail.filename:
-    thumbnail_saved_path = await _save_upload(thumbnail, "thumbnail")
-  else:
-    thumbnail_saved_path = "default.png"
-
-  # Handle cover image upload
-  cover_saved_path = None
-  if cover and cover.filename:
-    cover_saved_path = await _save_upload(cover, "cover")
-
-  # create the db record
-  ptf_create = Ptf(
-    name=name,
-    description=description,
-    mission=mission,
-    vision=vision,
-    thumbnail_path=thumbnail_saved_path,
-    cover_path=cover_saved_path,
-    website=website,
-    email=email,
-    phone=phone,
-    address=address,
-    pays=pays,
-    date_creation=date_creation,
-    domaines=domaines,
-  )
-
-  # Check for duplicate PTF name
-  result = await db.execute(select(Ptf).where(Ptf.name == ptf_create.name))
-  existing_news = result.scalars().first()
-  if existing_news:
+  # Check for duplicate PTF name first (before saving files)
+  result = await db.execute(select(Ptf).where(Ptf.name == name))
+  if result.scalars().first():
     raise HTTPException(
       status_code=status.HTTP_409_CONFLICT,
       detail={
         "type": "duplicate_error",
-        "errors": [
-          {
-            "field": "name",
-            "message": "Un PTF avec ce nom existe déjà. Veuillez choisir un nom différent."
-          }
-        ]
+        "errors": [{"field": "name", "message": "Un PTF avec ce nom existe déjà. Veuillez choisir un nom différent."}]
       }
     )
-  
+
   try:
-    db_ptf = Ptf(**ptf_create.model_dump())
+    # Handle thumbnail upload
+    if thumbnail and thumbnail.filename:
+      thumbnail_saved_path = await _save_upload(thumbnail, "thumbnail")
+    else:
+      thumbnail_saved_path = "default.png"
+
+    # Handle cover image upload
+    cover_saved_path = None
+    if cover and cover.filename:
+      cover_saved_path = await _save_upload(cover, "cover")
+
+    db_ptf = Ptf(
+      name=name,
+      description=description,
+      mission=mission,
+      vision=vision,
+      thumbnail_path=thumbnail_saved_path,
+      cover_path=cover_saved_path,
+      website=website,
+      email=email,
+      phone=phone,
+      address=address,
+      pays=pays,
+      date_creation=date_creation,
+      domaines=domaines,
+    )
     db.add(db_ptf)
     await db.commit()
     await db.refresh(db_ptf)
     return db_ptf
+  except HTTPException:
+    raise
   except Exception as e:
     await db.rollback()
     raise HTTPException(
       status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
       detail={
         "type": "database_error",
-        "errors": [
-          {
-            "field": "database",
-            "message": f"Erreur lors de la création: {str(e)}"
-          }
-        ]
+        "errors": [{"field": "database", "message": f"Erreur lors de la création: {str(e)}"}]
       }
     )
 

@@ -29,6 +29,9 @@ class User(SQLModel, table=True):
   is_superuser: bool = Field(default=False)
   is_redacteur: bool = Field(default=False)
 
+  # CRASC rattaché (pour les admin CRASC = is_staff)
+  crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id", nullable=True)
+
   # Timestamps
   date_joined: Optional[datetime] = Field(
       default_factory=datetime.utcnow,

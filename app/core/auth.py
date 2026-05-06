@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from uuid import UUID
+from typing import Optional
 from jose import JWTError, jwt
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
@@ -80,3 +81,47 @@ async def get_current_superuser(user: User = Depends(get_current_active_user)):
     if not user.is_superuser:
         raise HTTPException(status_code=403, detail="Not enough privileges")
     return user
+
+
+# Auth optionnelle : retourne l'utilisateur connecté ou None
+_optional_oauth2 = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+async def get_optional_current_user(
+    token: Optional[str] = Depends(_optional_oauth2),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    """Retourne l'utilisateur connecté, ou None si non authentifié."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, _get_secret_key(), algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if not user_id:
+            return None
+        user_uuid = UUID(user_id)
+    except (JWTError, ValueError):
+        return None
+    result = await db.execute(select(User).where(User.id == user_uuid))
+    user = result.scalar_one_or_none()
+    return user if user and user.is_active else None
+
+
+async def get_current_staff_or_superuser(current_user: User = Depends(get_current_user)) -> User:
+    """Autorise le staff (admin CRASC) ET les superusers."""
+    if not (current_user.is_staff or current_user.is_superuser):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès réservé aux administrateurs CRASC et aux superadmins."
+        )
+    return current_user
+
+
+def check_crasc_ownership(user: User, crasc_id: Optional[int]) -> None:
+    """Lève une 403 si un staff tente d'accéder aux données d'un autre CRASC."""
+    if user.is_superuser:
+        return
+    if crasc_id is None or user.crasc_id != crasc_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous n'avez pas accès aux données de ce CRASC."
+        )

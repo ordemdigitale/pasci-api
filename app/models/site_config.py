@@ -13,7 +13,7 @@ class SiteConfig(SQLModel, table=True):
     value: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
     )
 
     def __repr__(self) -> str:

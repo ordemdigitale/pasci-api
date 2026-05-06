@@ -27,7 +27,7 @@ class Tag(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=100, unique=True, index=True)
-    slug: str = Field(max_length=120, unique=True, index=True)
+    slug: Optional[str] = Field(default=None, max_length=120, unique=True, index=True)
     description: Optional[str] = Field(default=None, max_length=500)
     color: Optional[str] = Field(default="#3B82F6", max_length=7)  # Hex color code
     created_at: datetime = Field(default_factory=datetime.now)

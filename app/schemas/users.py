@@ -17,6 +17,15 @@ class UserCreate(BaseModel):
       raise ValueError("Password must be at least 8 characters long")
 
 
+class CrascAdminCreate(BaseModel):
+  """Schema pour créer l'admin d'un CRASC."""
+  email: str
+  username: Optional[str] = None
+  password: str
+  first_name: Optional[str] = None
+  last_name: Optional[str] = None
+
+
 class UserUpdate(BaseModel):
   email: Optional[str] = None
   username: Optional[str] = None
@@ -36,6 +45,7 @@ class UserRead(BaseModel):
   is_staff: bool
   is_superuser: bool
   is_redacteur: bool
+  crasc_id: Optional[int]
   date_joined: datetime
   last_login: Optional[datetime]
   avatar: Optional[str]
@@ -74,5 +84,6 @@ class UserUpdateAdmin(BaseModel):
   is_staff: Optional[bool] = None
   is_superuser: Optional[bool] = None
   is_redacteur: Optional[bool] = None
+  crasc_id: Optional[int] = None
   avatar: Optional[str] = None
   bio: Optional[str] = None
