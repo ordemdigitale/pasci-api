@@ -1,13 +1,11 @@
 # app/models/user.py | User model definition
 from datetime import datetime
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from sqlalchemy import Column, Text, DateTime
 from sqlalchemy.sql import func
 from sqlmodel import SQLModel, Field
 from typing import Optional
 from uuid import uuid4, UUID
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class User(SQLModel, table=True):
   # Core fields
@@ -57,11 +55,13 @@ class User(SQLModel, table=True):
 
   def set_password(self, raw_password: str):
       """Hash and set the password"""
-      self.password = pwd_context.hash(raw_password)
+      password_bytes = raw_password.encode("utf-8")
+      hashed = _bcrypt.hashpw(password_bytes, _bcrypt.gensalt())
+      self.password = hashed.decode("utf-8")
 
   def check_password(self, raw_password: str) -> bool:
       """Verify a raw password against the stored hash"""
-      return pwd_context.verify(raw_password, self.password)
+      return _bcrypt.checkpw(raw_password.encode("utf-8"), self.password.encode("utf-8"))
 
   @property
   def full_name(self) -> str:
