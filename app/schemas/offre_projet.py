@@ -2,7 +2,21 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, computed_field
 from uuid import UUID
+from app.core.config import settings
 import json
+
+
+class PtfMinimal(BaseModel):
+    """Infos PTF minimales pour l'embed dans OffreProjetRead"""
+    id: int
+    name: str
+    slug: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    pays: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 
 # Schemas for Offre Projet
 class OffreProjetBase(BaseModel):
@@ -21,6 +35,7 @@ class OffreProjetBase(BaseModel):
     partenaires: Optional[str] = None
     image_path: Optional[str] = "default-project.jpg"
     date_publication: Optional[datetime] = None
+    ptf_id: Optional[int] = None
 
 
 class OffreProjetCreate(OffreProjetBase):
@@ -32,13 +47,14 @@ class OffreProjetRead(OffreProjetBase):
     slug: str
     created_at: datetime
     updated_at: datetime
+    ptf: Optional[PtfMinimal] = None
 
     @computed_field
     @property
     def image_url(self) -> Optional[str]:
         """Generate full URL for project image"""
         if self.image_path and self.image_path != "default-project.jpg":
-            return f"http://localhost:8000/static/{self.image_path}"
+            return f"{settings.API_BASE_URL}/static/{self.image_path}"
         return None
 
     @computed_field
@@ -80,3 +96,4 @@ class OffreProjetUpdate(BaseModel):
     partenaires: Optional[str] = None
     image_path: Optional[str] = None
     date_publication: Optional[datetime] = None
+    ptf_id: Optional[int] = None

@@ -1,11 +1,14 @@
 # Model pour représenter les Offres de Projets
 ## app/models/offre_projet.py
 from datetime import datetime, timezone
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, String, DateTime, func, TEXT, Integer
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from uuid import uuid4, UUID
 import slugify
+
+if TYPE_CHECKING:
+    from app.models.ptf import Ptf
 
 
 class OffreProjet(SQLModel, table=True):
@@ -39,6 +42,10 @@ class OffreProjet(SQLModel, table=True):
     # Données structurées (JSON)
     resultats_attendus: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Résultats attendus (JSON)")
     partenaires: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Partenaires (JSON)")
+
+    # Lien vers un PTF (optionnel)
+    ptf_id: Optional[int] = Field(default=None, foreign_key="ptf.id", nullable=True)
+    ptf: Optional["Ptf"] = Relationship(sa_relationship_kwargs={"foreign_keys": "[OffreProjet.ptf_id]", "lazy": "select"})
 
     # Image
     image_path: Optional[str] = Field(default="default-project.jpg", nullable=True, max_length=2048, description="Chemin de l'image")

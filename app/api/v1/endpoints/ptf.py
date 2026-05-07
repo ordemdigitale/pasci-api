@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status,  Depends, Form
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import Optional, List, Union
+from typing import Optional, List
 from app.core.config import settings
 from app.database.session import get_db
 from app.schemas.ptf import(
@@ -166,8 +166,8 @@ async def update_ptf(
   pays: Optional[str] = Form(None),
   date_creation: Optional[str] = Form(None),
   domaines: Optional[str] = Form(None),
-  thumbnail: Union[UploadFile, str, None] = File(None),
-  cover: Union[UploadFile, str, None] = File(None),
+  thumbnail: Optional[UploadFile] = File(None),
+  cover: Optional[UploadFile] = File(None),
   remove_thumbnail: Optional[str] = Form(None),
   remove_cover: Optional[str] = Form(None),
   db: AsyncSession = Depends(get_db)
@@ -185,7 +185,7 @@ async def update_ptf(
     )
 
   # Handle thumbnail
-  if isinstance(thumbnail, UploadFile) and thumbnail.filename:
+  if thumbnail and getattr(thumbnail, 'filename', None):
     _delete_file(ptf.thumbnail_path)
     ptf.thumbnail_path = await _save_upload(thumbnail, "thumbnail")
   elif remove_thumbnail == "1":
@@ -193,7 +193,7 @@ async def update_ptf(
     ptf.thumbnail_path = None
 
   # Handle cover
-  if isinstance(cover, UploadFile) and cover.filename:
+  if cover and getattr(cover, 'filename', None):
     _delete_file(ptf.cover_path)
     ptf.cover_path = await _save_upload(cover, "cover")
   elif remove_cover == "1":

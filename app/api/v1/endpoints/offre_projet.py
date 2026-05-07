@@ -5,6 +5,7 @@ API Endpoints for Offre Projet Management
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import os
 from pathlib import Path
@@ -29,19 +30,19 @@ async def get_all_projets(
     limit: int = 100,
     domaine: Optional[str] = None,
     statut: Optional[str] = None,
+    ptf_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ) -> List[OffreProjet]:
     """Get all published projets with optional filters"""
-    query = select(OffreProjet).where(OffreProjet.statut_publication == "publie").offset(skip).limit(limit)
-
+    query = select(OffreProjet).options(selectinload(OffreProjet.ptf)).where(OffreProjet.statut_publication == "publie").offset(skip).limit(limit)
     if domaine:
         query = query.where(OffreProjet.domaine == domaine)
     if statut:
         query = query.where(OffreProjet.statut == statut)
-
+    if ptf_id:
+        query = query.where(OffreProjet.ptf_id == ptf_id)
     result = await db.execute(query)
-    projets = result.scalars().all()
-    return projets
+    return result.scalars().all()
 
 
 @offre_projet_router.get("/active", response_model=List[OffreProjetRead])
@@ -51,28 +52,22 @@ async def get_active_projets(
     db: AsyncSession = Depends(get_db)
 ) -> List[OffreProjet]:
     """Get only active published projets (En cours)"""
-    query = select(OffreProjet).where(
+    query = select(OffreProjet).options(selectinload(OffreProjet.ptf)).where(
         OffreProjet.statut == "En cours",
         OffreProjet.statut_publication == "publie"
     ).offset(skip).limit(limit)
     result = await db.execute(query)
-    projets = result.scalars().all()
-    return projets
+    return result.scalars().all()
 
 
 @offre_projet_router.get("/{slug}", response_model=OffreProjetRead)
 async def get_projet_by_slug(slug: str, db: AsyncSession = Depends(get_db)) -> OffreProjet:
     """Get a single projet by slug"""
-    query = select(OffreProjet).where(OffreProjet.slug == slug)
+    query = select(OffreProjet).options(selectinload(OffreProjet.ptf)).where(OffreProjet.slug == slug)
     result = await db.execute(query)
     projet = result.scalar_one_or_none()
-
     if not projet:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projet with slug '{slug}' not found"
-        )
-
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Projet with slug '{slug}' not found")
     return projet
 
 
@@ -91,6 +86,7 @@ async def create_projet(
     progression: int = Form(0),
     resultats_attendus: Optional[str] = Form(None),
     partenaires: Optional[str] = Form(None),
+    ptf_id: Optional[int] = Form(None),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_redacteur_or_staff),
@@ -133,6 +129,7 @@ async def create_projet(
         partenaires=partenaires,
         image_path=image_filename,
         statut_publication=statut_pub,
+        ptf_id=ptf_id,
     )
 
     db.add(projet)
@@ -158,6 +155,7 @@ async def update_projet(
     progression: Optional[int] = Form(None),
     resultats_attendus: Optional[str] = Form(None),
     partenaires: Optional[str] = Form(None),
+    ptf_id: Optional[int] = Form(None),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db)
 ) -> OffreProjet:
@@ -227,11 +225,16 @@ async def update_projet(
         projet.resultats_attendus = resultats_attendus
     if partenaires is not None:
         projet.partenaires = partenaires
+    if ptf_id is not None:
+        projet.ptf_id = ptf_id
 
     await db.commit()
-    await db.refresh(projet)
 
-    return projet
+    # Re-query avec selectinload pour charger la relation ptf
+    result2 = await db.execute(
+        select(OffreProjet).options(selectinload(OffreProjet.ptf)).where(OffreProjet.id == projet.id)
+    )
+    return result2.scalar_one()
 
 
 @offre_projet_router.get("/admin/en-attente", response_model=List[OffreProjetRead])
