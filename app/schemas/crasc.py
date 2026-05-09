@@ -1,6 +1,7 @@
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, field_validator
 from typing import Optional, List, Generic, TypeVar
 from datetime import datetime
+from math import isnan
 from sqlmodel import Field
 from app.core.config import settings
 
@@ -152,6 +153,18 @@ class OscBase(BaseModel):
   financement_ong_intl: Optional[bool] = None
   financement_multilateral: Optional[bool] = None
   
+  @field_validator("latitude", "longitude", mode="before")
+  @classmethod
+  def sanitize_float(cls, v):
+    if v is None:
+      return None
+    try:
+      if isnan(float(v)):
+        return None
+    except (TypeError, ValueError):
+      return None
+    return v
+
   @computed_field
   @property
   def thumbnail_url(self) -> Optional[str]:
