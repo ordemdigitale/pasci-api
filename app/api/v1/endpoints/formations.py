@@ -769,6 +769,30 @@ async def get_formation_update_form(
     return FormationUpdate(**update_dict)
 
 
+@formations_router.delete("/inscriptions/{inscription_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def supprimer_inscription(
+    inscription_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Supprimer (désinscrire) un participant d'une formation (staff only)"""
+    result = await db.execute(
+        select(FormationInscription).where(FormationInscription.id == inscription_id)
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription non trouvée.")
+    # Décrémenter le compteur de participants de la formation
+    formation_result = await db.execute(
+        select(Formation).where(Formation.id == inscription.formation_id)
+    )
+    formation = formation_result.scalar_one_or_none()
+    if formation and formation.current_participants > 0:
+        formation.current_participants -= 1
+    await db.delete(inscription)
+    await db.commit()
+
+
 @formations_router.patch("/inscriptions/{inscription_id}/completer", response_model=FormationInscriptionRead)
 async def marquer_inscription_completee(
     inscription_id: int,
