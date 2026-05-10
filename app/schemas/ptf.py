@@ -19,6 +19,7 @@ class PtfBase(BaseModel):
   address: Optional[str] = None
   pays: Optional[str] = None
   date_creation: Optional[str] = None
+  conseil: Optional[str] = None
   domaines: Optional[str] = None  # JSON string
 
   @computed_field
@@ -75,6 +76,7 @@ class PtfUpdate(BaseModel):
   address: Optional[str] = None
   pays: Optional[str] = None
   date_creation: Optional[str] = None
+  conseil: Optional[str] = None
   domaines: Optional[str] = None  # JSON string
 
 # Projet schemas

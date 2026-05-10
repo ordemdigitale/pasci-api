@@ -62,6 +62,7 @@ async def create_ptf(
   address: Optional[str] = Form(None),
   pays: Optional[str] = Form(None),
   date_creation: Optional[str] = Form(None),
+  conseil: Optional[str] = Form(None),
   domaines: Optional[str] = Form(None),
   thumbnail: Optional[UploadFile] = File(None),
   cover: Optional[UploadFile] = File(None),
@@ -104,6 +105,7 @@ async def create_ptf(
       address=address,
       pays=pays,
       date_creation=date_creation,
+      conseil=conseil,
       domaines=domaines,
     )
     db.add(db_ptf)
@@ -165,6 +167,7 @@ async def update_ptf(
   address: Optional[str] = Form(None),
   pays: Optional[str] = Form(None),
   date_creation: Optional[str] = Form(None),
+  conseil: Optional[str] = Form(None),
   domaines: Optional[str] = Form(None),
   thumbnail: Optional[UploadFile] = File(None),
   cover: Optional[UploadFile] = File(None),
@@ -222,6 +225,8 @@ async def update_ptf(
     ptf.pays = pays
   if date_creation is not None:
     ptf.date_creation = date_creation
+  if conseil is not None:
+    ptf.conseil = conseil
   if domaines is not None:
     ptf.domaines = domaines
 
