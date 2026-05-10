@@ -37,8 +37,8 @@ class Settings(BaseSettings):
   # Security
   SECRET_KEY: Optional[str] = None
   ALGORITHM: str = "HS256"
-  ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-  REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+  ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 heures
+  REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
   # ImageKit
   IMAGEKIT_PRIVATE_KEY: Optional[str] = None
