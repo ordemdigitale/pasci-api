@@ -7,7 +7,7 @@ import shutil
 import uuid
 import slugify
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Query
 from sqlmodel import select, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -983,6 +983,7 @@ async def check_inscription(
 async def inscrire_participant(
     formation_slug: str,
     data: FormationInscriptionCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1029,13 +1030,14 @@ async def inscrire_participant(
     await db.commit()
     await db.refresh(inscription)
 
-    # Email de confirmation pour les formations gratuites
+    # Email de confirmation pour les formations gratuites (en arrière-plan)
     if formation.type == "gratuite":
         start_date_str = (
             formation.start_date.strftime("%d/%m/%Y à %H:%M")
             if formation.start_date else None
         )
-        await send_inscription_confirmation(
+        background_tasks.add_task(
+            send_inscription_confirmation,
             participant_name=inscription.participant_name,
             participant_email=inscription.participant_email,
             formation_title=formation.title,
@@ -1123,6 +1125,7 @@ async def initier_paiement(
 @formations_router.post("/paiement/webhook")
 async def cinetpay_webhook(
     payload: PaiementWebhookPayload,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1153,7 +1156,7 @@ async def cinetpay_webhook(
         paiement_status = "PENDING"
 
     if paiement_status == "SUCCESS":
-        inscription.payment_status = "paid"
+        inscription.payment_status = "confirmed"
         inscription.payment_date = datetime.now(timezone.utc)
         inscription.payment_operator = verification.get("operator", "")
 
@@ -1169,9 +1172,10 @@ async def cinetpay_webhook(
 
         await db.commit()
 
-        # Email de confirmation de paiement
+        # Email de confirmation de paiement (en arrière-plan)
         payment_date_str = inscription.payment_date.strftime("%d/%m/%Y à %H:%M") if inscription.payment_date else None
-        await send_paiement_confirme(
+        background_tasks.add_task(
+            send_paiement_confirme,
             participant_name=inscription.participant_name,
             participant_email=inscription.participant_email,
             formation_title=formation.title if formation else payload.merchant_transaction_id,
@@ -1190,6 +1194,7 @@ async def cinetpay_webhook(
 @formations_router.post("/paiement/simulation/confirmer/{inscription_id}", response_model=FormationInscriptionRead)
 async def simuler_paiement_confirme(
     inscription_id: int,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1206,7 +1211,7 @@ async def simuler_paiement_confirme(
     if not inscription:
         raise HTTPException(status_code=404, detail="Inscription non trouvée.")
 
-    inscription.payment_status = "paid"
+    inscription.payment_status = "confirmed"
     inscription.payment_date = datetime.now(timezone.utc)
     inscription.payment_operator = "SIMULATION"
 
@@ -1222,9 +1227,10 @@ async def simuler_paiement_confirme(
     await db.commit()
     await db.refresh(inscription)
 
-    # Email de confirmation paiement simulé
+    # Email de confirmation paiement simulé (en arrière-plan)
     if formation:
-        await send_paiement_confirme(
+        background_tasks.add_task(
+            send_paiement_confirme,
             participant_name=inscription.participant_name,
             participant_email=inscription.participant_email,
             formation_title=formation.title,
