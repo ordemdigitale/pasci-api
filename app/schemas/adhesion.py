@@ -7,6 +7,8 @@ from datetime import datetime
 class DemandeAdhesionCreate(BaseModel):
     nom_organisation: str
     type_organisation: str
+    crasc_nom: Optional[str] = None
+    type_osc: Optional[str] = None
     region: str
     ville: Optional[str] = None
     email: str
@@ -19,6 +21,8 @@ class DemandeAdhesionRead(BaseModel):
     id: int
     nom_organisation: str
     type_organisation: str
+    crasc_nom: Optional[str] = None
+    type_osc: Optional[str] = None
     region: str
     ville: Optional[str] = None
     email: str

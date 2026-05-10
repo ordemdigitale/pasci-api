@@ -11,6 +11,8 @@ class DemandeAdhesion(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     nom_organisation: str = Field(max_length=200, nullable=False)
     type_organisation: str = Field(max_length=100, nullable=False)
+    crasc_nom: Optional[str] = Field(default=None, max_length=200, nullable=True)
+    type_osc: Optional[str] = Field(default=None, max_length=100, nullable=True)
     region: str = Field(max_length=100, nullable=False)
     ville: Optional[str] = Field(default=None, max_length=100, nullable=True)
     email: str = Field(max_length=200, nullable=False)
