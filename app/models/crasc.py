@@ -35,6 +35,10 @@ class Crasc(SQLModel, table=True):
     back_populates="crasc",
     sa_relationship_kwargs={"passive_deletes": True}
   )
+  evenements: List["Evenement"] = Relationship(
+    back_populates="crasc",
+    sa_relationship_kwargs={"passive_deletes": True}
+  )
   id: Optional[int] = Field(default=None, primary_key=True)
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
@@ -255,3 +259,35 @@ class News(SQLModel, table=True):
   # Representation in admin/logs
   def __repr__(self) -> str:
     return f"<Titre: {self.title}>"
+
+
+class Evenement(SQLModel, table=True):
+  """Représente un événement de l'agenda d'un CRASC."""
+  title: str = Field(index=True, description="Titre de l'événement.")
+  description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+  date_debut: datetime = Field(
+    description="Date et heure de début de l'événement.",
+    sa_column=Column(DateTime(timezone=True), nullable=False)
+  )
+  date_fin: Optional[datetime] = Field(
+    default=None,
+    sa_column=Column(DateTime(timezone=True), nullable=True),
+    description="Date et heure de fin (optionnelle)."
+  )
+  lieu: Optional[str] = Field(default=None, nullable=True, max_length=255, description="Lieu de l'événement.")
+
+  crasc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="crasc.id", ondelete="CASCADE")
+  crasc: Optional[Crasc] = Relationship(back_populates="evenements")
+
+  id: Optional[int] = Field(default=None, primary_key=True)
+  created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now())
+  )
+  updated_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
+  )
+
+  def __repr__(self) -> str:
+    return f"<Événement: {self.title}>"

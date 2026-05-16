@@ -32,10 +32,13 @@ from app.schemas.crasc import (
    NewsRead,
    NewsReadDetail,
    NewsUpdate,
+   EvenementCreate,
+   EvenementRead,
+   EvenementUpdate,
    PaginatedResponse
 )
 from app.models.crasc import (
-   Crasc, Region, OscType, Osc, News
+   Crasc, Region, OscType, Osc, News, Evenement
 )
 
 
@@ -97,7 +100,12 @@ async def get_crasc(
 ):
     result = await db.execute(
         select(Crasc)
-        .options(selectinload(Crasc.oscs), selectinload(Crasc.regions), selectinload(Crasc.news_items))
+        .options(
+            selectinload(Crasc.oscs),
+            selectinload(Crasc.regions),
+            selectinload(Crasc.news_items),
+            selectinload(Crasc.evenements),
+        )
         .where(Crasc.slug == crasc_slug)
     )
     crasc = result.scalars().first()
@@ -817,6 +825,96 @@ async def remove_crasc_admin(
         raise HTTPException(status_code=404, detail="Aucun admin trouvé pour ce CRASC.")
     admin.is_staff = False
     admin.crasc_id = None
+    await db.commit()
+    return None
+
+
+# ─────────────────────────── AGENDA / ÉVÉNEMENTS ───────────────────────────
+
+@crasc_router.post("/evenement", response_model=EvenementRead, status_code=status.HTTP_201_CREATED)
+async def create_evenement(
+    evenement_in: EvenementCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Crée un événement dans l'agenda d'un CRASC."""
+    if current_user.is_staff and not current_user.is_superuser:
+        resolved_crasc_id = current_user.crasc_id
+    else:
+        resolved_crasc_id = evenement_in.crasc_id
+
+    db_evt = Evenement(
+        title=evenement_in.title,
+        description=evenement_in.description,
+        date_debut=evenement_in.date_debut,
+        date_fin=evenement_in.date_fin,
+        lieu=evenement_in.lieu,
+        crasc_id=resolved_crasc_id,
+    )
+    db.add(db_evt)
+    try:
+        await db.commit()
+        await db.refresh(db_evt)
+        return db_evt
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail={"type": "database_error", "errors": [{"field": "database", "message": str(e)}]})
+
+
+@crasc_router.get("/evenement", response_model=List[EvenementRead], status_code=status.HTTP_200_OK)
+async def get_evenements(
+    crasc_id: Optional[int] = None,
+    a_venir: bool = Query(True, description="Si True, retourne uniquement les événements futurs"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les événements. Filtre par CRASC et/ou par date (futurs uniquement par défaut)."""
+    from datetime import datetime, timezone as tz
+    stmt = select(Evenement).order_by(Evenement.date_debut)
+    if crasc_id:
+        stmt = stmt.where(Evenement.crasc_id == crasc_id)
+    if a_venir:
+        stmt = stmt.where(Evenement.date_debut >= datetime.now(tz.utc))
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@crasc_router.get("/evenement/{evenement_id}", response_model=EvenementRead, status_code=status.HTTP_200_OK)
+async def get_evenement(evenement_id: int, db: AsyncSession = Depends(get_db)):
+    evt = await db.get(Evenement, evenement_id)
+    if not evt:
+        raise HTTPException(status_code=404, detail="Événement non trouvé.")
+    return evt
+
+
+@crasc_router.patch("/evenement/{evenement_id}", response_model=EvenementRead, status_code=status.HTTP_200_OK)
+async def update_evenement(
+    evenement_id: int,
+    evt_update: EvenementUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    evt = await db.get(Evenement, evenement_id)
+    if not evt:
+        raise HTTPException(status_code=404, detail="Événement non trouvé.")
+    check_crasc_ownership(current_user, evt.crasc_id)
+    for key, value in evt_update.model_dump(exclude_unset=True).items():
+        setattr(evt, key, value)
+    await db.commit()
+    await db.refresh(evt)
+    return evt
+
+
+@crasc_router.delete("/evenement/{evenement_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_evenement(
+    evenement_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    evt = await db.get(Evenement, evenement_id)
+    if not evt:
+        raise HTTPException(status_code=404, detail="Événement non trouvé.")
+    check_crasc_ownership(current_user, evt.crasc_id)
+    await db.delete(evt)
     await db.commit()
     return None
 

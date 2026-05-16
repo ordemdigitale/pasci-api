@@ -36,6 +36,7 @@ class CrascReadDetail(CrascBase):
   oscs: Optional[List["OscRead"]] = []
   regions: Optional[List["RegionRead"]] = []
   news: Optional[List["NewsRead"]] = []
+  evenements: Optional[List["EvenementRead"]] = []
   class Config:
     from_attributes = True
 
@@ -275,3 +276,29 @@ class NewsUpdate(BaseModel):
   content: Optional[str] = None
   osc_id: Optional[int] = None
   crasc_id: Optional[int] = None
+
+
+# Evenement Schemas
+class EvenementBase(BaseModel):
+  title: str
+  description: Optional[str] = None
+  date_debut: datetime
+  date_fin: Optional[datetime] = None
+  lieu: Optional[str] = None
+  crasc_id: Optional[int] = None
+
+class EvenementCreate(EvenementBase):
+  pass
+
+class EvenementRead(EvenementBase):
+  id: int
+  created_at: Optional[datetime] = None
+  class Config:
+    from_attributes = True
+
+class EvenementUpdate(BaseModel):
+  title: Optional[str] = None
+  description: Optional[str] = None
+  date_debut: Optional[datetime] = None
+  date_fin: Optional[datetime] = None
+  lieu: Optional[str] = None
