@@ -125,3 +125,24 @@ def check_crasc_ownership(user: User, crasc_id: Optional[int]) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Vous n'avez pas accès aux données de ce CRASC."
         )
+
+
+async def get_current_osc_user(current_user: User = Depends(get_current_user)) -> User:
+    """Autorise uniquement les utilisateurs liés à une OSC."""
+    if not current_user.osc_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès réservé aux représentants d'OSC."
+        )
+    return current_user
+
+
+def check_osc_ownership(user: User, osc_id: Optional[int]) -> None:
+    """Lève une 403 si un utilisateur OSC tente d'accéder à une autre OSC."""
+    if user.is_superuser or user.is_staff:
+        return
+    if osc_id is None or user.osc_id != osc_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous n'avez pas accès aux données de cette OSC."
+        )

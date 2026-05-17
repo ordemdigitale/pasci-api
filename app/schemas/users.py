@@ -26,6 +26,15 @@ class CrascAdminCreate(BaseModel):
   last_name: Optional[str] = None
 
 
+class OscUserCreate(BaseModel):
+  """Schema pour créer le compte utilisateur d'une OSC."""
+  email: str
+  username: Optional[str] = None
+  password: str
+  first_name: Optional[str] = None
+  last_name: Optional[str] = None
+
+
 class UserUpdate(BaseModel):
   email: Optional[str] = None
   username: Optional[str] = None
@@ -46,6 +55,7 @@ class UserRead(BaseModel):
   is_superuser: bool
   is_redacteur: bool
   crasc_id: Optional[int]
+  osc_id: Optional[int] = None
   date_joined: datetime
   last_login: Optional[datetime]
   avatar: Optional[str]
@@ -85,5 +95,6 @@ class UserUpdateAdmin(BaseModel):
   is_superuser: Optional[bool] = None
   is_redacteur: Optional[bool] = None
   crasc_id: Optional[int] = None
+  osc_id: Optional[int] = None
   avatar: Optional[str] = None
   bio: Optional[str] = None

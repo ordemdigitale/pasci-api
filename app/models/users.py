@@ -30,6 +30,9 @@ class User(SQLModel, table=True):
   # CRASC rattaché (pour les admin CRASC = is_staff)
   crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id", nullable=True)
 
+  # OSC rattachée (pour les représentants d'OSC)
+  osc_id: Optional[int] = Field(default=None, foreign_key="osc.id", nullable=True)
+
   # Timestamps
   date_joined: Optional[datetime] = Field(
       default_factory=datetime.utcnow,

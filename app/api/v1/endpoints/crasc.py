@@ -7,14 +7,17 @@ from typing import Optional, List, Annotated
 
 from app.core.config import settings
 from app.core.auth import (
+    get_current_user,
     get_current_superuser,
     get_current_staff_or_superuser,
     get_optional_current_user,
+    get_current_osc_user,
     check_crasc_ownership,
+    check_osc_ownership,
 )
 from app.database.session import get_db
 from app.models.users import User
-from app.schemas.users import UserRead, CrascAdminCreate
+from app.schemas.users import UserRead, CrascAdminCreate, OscUserCreate
 from app.schemas.crasc import (
    CrascRead,
    CrascReadDetail,
@@ -440,6 +443,22 @@ async def get_all_osc(
     return PaginatedResponse(items=items, total=total, page=page, size=size, pages=-(-total // size))
 
 
+@crasc_router.get("/osc/me", response_model=OscReadDetail, status_code=status.HTTP_200_OK)
+async def get_my_osc(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_osc_user),
+):
+    """Retourne l'OSC du compte utilisateur connecté."""
+    query = select(Osc).where(Osc.id == current_user.osc_id).options(
+        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items)
+    )
+    result = await db.execute(query)
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC introuvable.")
+    return osc
+
+
 @crasc_router.get("/osc/{osc_slug}", response_model=OscReadDetail, status_code=status.HTTP_200_OK)
 async def get_osc_by_slug(
     osc_slug: str,
@@ -538,7 +557,7 @@ async def update_osc_with_form(
     osc_update: OscUpdate = Depends(get_osc_update_form),
     thumbnail: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_or_superuser),
+    current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
         select(Osc).where(Osc.slug == osc_slug).options(selectinload(Osc.type), selectinload(Osc.crasc))
@@ -546,7 +565,14 @@ async def update_osc_with_form(
     osc = result.scalars().first()
     if not osc:
         raise HTTPException(status_code=404, detail="OSC non trouvée")
-    check_crasc_ownership(current_user, osc.crasc_id)
+
+    # Vérification des droits
+    if not (current_user.is_staff or current_user.is_superuser):
+        # L'utilisateur doit être rattaché à cette OSC
+        check_osc_ownership(current_user, osc.id)
+
+    if current_user.is_staff and not current_user.is_superuser:
+        check_crasc_ownership(current_user, osc.crasc_id)
 
     if thumbnail and thumbnail.filename:
         allowed_extensions = ["jpg", "jpeg", "png", "webp"]
@@ -560,8 +586,8 @@ async def update_osc_with_form(
         osc.thumbnail_path = filename
 
     update_data = {k: v for k, v in osc_update.model_dump().items() if v is not None}
-    # Staff ne peut pas changer le crasc_id
-    if current_user.is_staff and not current_user.is_superuser:
+    # Staff et utilisateurs OSC ne peuvent pas changer le crasc_id
+    if not current_user.is_superuser:
         update_data.pop("crasc_id", None)
     for key, value in update_data.items():
         setattr(osc, key, value)
@@ -825,6 +851,85 @@ async def remove_crasc_admin(
         raise HTTPException(status_code=404, detail="Aucun admin trouvé pour ce CRASC.")
     admin.is_staff = False
     admin.crasc_id = None
+    await db.commit()
+    return None
+
+
+# ─────────────────────────── OSC USER MANAGEMENT ───────────────────────────
+
+@crasc_router.get("/osc/{osc_slug}/user", response_model=Optional[UserRead], status_code=status.HTTP_200_OK)
+async def get_osc_user(
+    osc_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Retourne le compte utilisateur rattaché à cette OSC."""
+    result = await db.execute(select(Osc).where(Osc.slug == osc_slug))
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC non trouvée.")
+    user_result = await db.execute(select(User).where(User.osc_id == osc.id))
+    return user_result.scalar_one_or_none()
+
+
+@crasc_router.post("/osc/{osc_slug}/user", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+async def create_osc_user(
+    osc_slug: str,
+    user_data: OscUserCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Crée un compte utilisateur pour une OSC (staff/superuser uniquement)."""
+    result = await db.execute(select(Osc).where(Osc.slug == osc_slug))
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC non trouvée.")
+    if current_user.is_staff and not current_user.is_superuser:
+        check_crasc_ownership(current_user, osc.crasc_id)
+
+    existing = await db.execute(select(User).where(User.osc_id == osc.id))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Cette OSC a déjà un compte utilisateur.")
+
+    if (await db.execute(select(User).where(User.email == user_data.email))).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Cet email est déjà utilisé.")
+    if user_data.username:
+        if (await db.execute(select(User).where(User.username == user_data.username))).scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Ce nom d'utilisateur est déjà pris.")
+
+    new_user = User(
+        email=user_data.email,
+        username=user_data.username,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
+        is_active=True,
+        osc_id=osc.id,
+    )
+    new_user.set_password(user_data.password)
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user
+
+
+@crasc_router.delete("/osc/{osc_slug}/user", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_osc_user(
+    osc_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Supprime le compte utilisateur rattaché à cette OSC."""
+    result = await db.execute(select(Osc).where(Osc.slug == osc_slug))
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC non trouvée.")
+    if current_user.is_staff and not current_user.is_superuser:
+        check_crasc_ownership(current_user, osc.crasc_id)
+    user_result = await db.execute(select(User).where(User.osc_id == osc.id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Aucun compte utilisateur trouvé pour cette OSC.")
+    user.osc_id = None
     await db.commit()
     return None
 
