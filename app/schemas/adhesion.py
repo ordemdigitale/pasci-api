@@ -41,3 +41,15 @@ class DemandeAdhesionRead(BaseModel):
 class DemandeAdhesionUpdate(BaseModel):
     statut: Optional[str] = None
     note_admin: Optional[str] = None
+
+
+class OscCredentials(BaseModel):
+    osc_id: int
+    osc_name: str
+    email: str
+    username: str
+    temp_password: str
+
+
+class DemandeAdhesionReadWithCredentials(DemandeAdhesionRead):
+    credentials: Optional[OscCredentials] = None
