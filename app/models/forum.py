@@ -2,9 +2,12 @@
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, DateTime, TEXT, func
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from uuid import UUID
 import slugify as slugify_lib
+
+if TYPE_CHECKING:
+    from app.models.crasc import Osc
 
 
 class PoleConcertation(SQLModel, table=True):
@@ -35,6 +38,10 @@ class PoleConcertation(SQLModel, table=True):
     sujets: List["ForumSujet"] = Relationship(
         back_populates="pole",
         sa_relationship_kwargs={"passive_deletes": True},
+    )
+    oscs: List["Osc"] = Relationship(
+        back_populates="poles",
+        sa_relationship_kwargs={"secondary": "osc_pole", "lazy": "selectin"},
     )
 
     def __init__(self, **kwargs):

@@ -1,11 +1,21 @@
 # models/crasc.py (Model name CRASC + related models)
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer
+from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer, Table, UniqueConstraint
 from sqlalchemy.event import listens_for
 from typing import Optional, List
 import slugify, re
 from app.models.tags import NewsTag
+from sqlmodel import SQLModel as _SM
+
+
+# ─── Table de liaison OSC ↔ Pôle de concertation (many-to-many) ───
+osc_pole_link = Table(
+    "osc_pole",
+    _SM.metadata,
+    Column("osc_id", Integer, ForeignKey("osc.id", ondelete="CASCADE"), primary_key=True),
+    Column("pole_id", Integer, ForeignKey("pole_concertation.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class Crasc(SQLModel, table=True):
@@ -200,6 +210,10 @@ class Osc(SQLModel, table=True):
   documents: List["Documentation"] = Relationship(
     back_populates="osc",
     sa_relationship_kwargs={"passive_deletes": True}
+  )
+  poles: List["PoleConcertation"] = Relationship(
+    back_populates="oscs",
+    sa_relationship_kwargs={"secondary": "osc_pole", "lazy": "selectin"},
   )
   id: Optional[int] = Field(default=None, primary_key=True)
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)

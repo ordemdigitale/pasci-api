@@ -43,6 +43,7 @@ from app.schemas.crasc import (
 from app.models.crasc import (
    Crasc, Region, OscType, Osc, News, Evenement
 )
+from app.models.forum import PoleConcertation
 
 
 crasc_router = APIRouter()
@@ -431,7 +432,7 @@ async def get_all_osc(
 
     offset = (page - 1) * size
     query = select(Osc).options(
-        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items)
+        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items), selectinload(Osc.poles)
     )
     if filters:
         query = query.where(*filters)
@@ -450,7 +451,7 @@ async def get_my_osc(
 ):
     """Retourne l'OSC du compte utilisateur connecté."""
     query = select(Osc).where(Osc.id == current_user.osc_id).options(
-        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items)
+        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items), selectinload(Osc.poles)
     )
     result = await db.execute(query)
     osc = result.scalar_one_or_none()
@@ -466,7 +467,7 @@ async def get_osc_by_slug(
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     query = select(Osc).where(Osc.slug == osc_slug).options(
-        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items)
+        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items), selectinload(Osc.poles)
     )
     result = await db.execute(query)
     osc = result.scalar_one_or_none()
@@ -560,7 +561,7 @@ async def update_osc_with_form(
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Osc).where(Osc.slug == osc_slug).options(selectinload(Osc.type), selectinload(Osc.crasc))
+        select(Osc).where(Osc.slug == osc_slug).options(selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.poles))
     )
     osc = result.scalars().first()
     if not osc:
@@ -626,6 +627,41 @@ async def delete_osc(
     await db.delete(osc)
     await db.commit()
     return None
+
+
+@crasc_router.patch("/osc/{osc_slug}/poles", response_model=OscReadDetail)
+async def update_osc_poles(
+    osc_slug: str,
+    pole_ids: List[int],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remplace les pôles de concertation (domaines prioritaires) d'une OSC."""
+    result = await db.execute(
+        select(Osc).where(Osc.slug == osc_slug).options(
+            selectinload(Osc.type), selectinload(Osc.crasc),
+            selectinload(Osc.news_items), selectinload(Osc.poles)
+        )
+    )
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC non trouvée")
+
+    if not (current_user.is_staff or current_user.is_superuser):
+        check_osc_ownership(current_user, osc.id)
+    if current_user.is_staff and not current_user.is_superuser:
+        check_crasc_ownership(current_user, osc.crasc_id)
+
+    # Charger les pôles demandés
+    poles_result = await db.execute(
+        select(PoleConcertation).where(PoleConcertation.id.in_(pole_ids))
+    )
+    new_poles = list(poles_result.scalars().all())
+    osc.poles = new_poles
+
+    await db.commit()
+    await db.refresh(osc)
+    return osc
 
 
 # ─────────────────────────── NEWS ───────────────────────────

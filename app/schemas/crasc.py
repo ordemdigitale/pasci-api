@@ -177,9 +177,17 @@ class OscBase(BaseModel):
 class OscCreate(OscBase):
   pass
 
+class PoleMinimal(BaseModel):
+  id: int
+  name: str
+  slug: Optional[str] = None
+  class Config:
+    from_attributes = True
+
 class OscRead(OscBase):
   id: int
   slug: Optional[str] = None
+  poles: Optional[List[PoleMinimal]] = []
   class Config:
     from_attributes = True
 
@@ -189,6 +197,7 @@ class OscReadDetail(OscBase):
   type: Optional[OscTypeRead] = None
   crasc: Optional[CrascRead] = None
   news_items: Optional[List["NewsRead"]] = []
+  poles: Optional[List[PoleMinimal]] = []
   class Config:
     from_attributes = True
     
