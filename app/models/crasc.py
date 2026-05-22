@@ -24,6 +24,7 @@ class Crasc(SQLModel, table=True):
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
   description: Optional[str] = Field(default=None, nullable=True, max_length=100)
   osc_count: Optional[int] = Field(default=0, nullable=True, description="Nombre d'OSCs membre du CRASC")
+  email_pca: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Email du PCA du CRASC")
 
   regions: List["Region"] = Relationship(
     back_populates="crasc",

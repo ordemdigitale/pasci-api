@@ -1,5 +1,5 @@
 import os, shutil, uuid, slugify
-from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -22,6 +22,7 @@ from app.schemas.crasc import (
    CrascRead,
    CrascReadDetail,
    CrascUpdate,
+   CrascContactCreate,
    RegionRead,
    RegionReadDetail,
    RegionUpdate,
@@ -46,6 +47,7 @@ from app.models.crasc import (
    Crasc, Region, OscType, Osc, News, Evenement, CrascVideo
 )
 from app.models.forum import PoleConcertation
+from app.services.email import send_crasc_contact
 
 
 crasc_router = APIRouter()
@@ -1061,6 +1063,34 @@ async def delete_evenement(
     await db.delete(evt)
     await db.commit()
     return None
+
+
+# ─────────────────────────── CONTACT CRASC ───────────────────────────
+
+@crasc_router.post("/crasc/{crasc_slug}/contact", status_code=status.HTTP_200_OK)
+async def contact_crasc(
+    crasc_slug: str,
+    data: CrascContactCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """Envoie un message de contact au PDOC et au PCA du CRASC. Public."""
+    result = await db.execute(select(Crasc).where(Crasc.slug == crasc_slug))
+    crasc = result.scalar_one_or_none()
+    if not crasc:
+        raise HTTPException(status_code=404, detail="CRASC non trouvé.")
+
+    background_tasks.add_task(
+        send_crasc_contact,
+        nom=data.nom,
+        email=data.email,
+        telephone=data.telephone,
+        objet=data.objet,
+        message=data.message,
+        crasc_name=crasc.name,
+        email_pca=crasc.email_pca,
+    )
+    return {"detail": "Message transmis avec succès."}
 
 
 # ─────────────────────────── CRASC VIDEOS ───────────────────────────

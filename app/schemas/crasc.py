@@ -20,6 +20,7 @@ class CrascBase(BaseModel):
   name: str
   description: Optional[str] = None
   osc_count: Optional[int] = 0
+  email_pca: Optional[str] = None
 
 class CrascCreate(CrascBase):
   pass
@@ -41,10 +42,18 @@ class CrascReadDetail(CrascBase):
   class Config:
     from_attributes = True
 
+class CrascContactCreate(BaseModel):
+  nom: str
+  email: str
+  telephone: Optional[str] = None
+  objet: str
+  message: str
+
 class CrascUpdate(BaseModel):
   name: Optional[str] = None
   description: Optional[str] = None
   osc_count: Optional[int] = None
+  email_pca: Optional[str] = None
 
 
 #Region Schemas
