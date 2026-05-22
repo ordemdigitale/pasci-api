@@ -1,7 +1,7 @@
 """add_inscription_fields
 
 Revision ID: f2a3b4c5d6e7
-Revises: 6a4bb84ea76f
+Revises: 83359768847f
 Create Date: 2026-05-22 00:00:00.000000
 
 """
@@ -18,16 +18,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table('formation_inscription', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('participant_nom', sa.String(length=100), nullable=True))
-        batch_op.add_column(sa.Column('participant_prenoms', sa.String(length=150), nullable=True))
-        batch_op.add_column(sa.Column('participant_phone', sa.String(length=30), nullable=True))
-        batch_op.add_column(sa.Column('categorie_acteur', sa.String(length=100), nullable=True))
+    conn = op.get_bind()
+    conn.execute(sa.text("ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS participant_nom VARCHAR(100)"))
+    conn.execute(sa.text("ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS participant_prenoms VARCHAR(150)"))
+    conn.execute(sa.text("ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS participant_phone VARCHAR(30)"))
+    conn.execute(sa.text("ALTER TABLE formation_inscription ADD COLUMN IF NOT EXISTS categorie_acteur VARCHAR(100)"))
 
 
 def downgrade() -> None:
-    with op.batch_alter_table('formation_inscription', schema=None) as batch_op:
-        batch_op.drop_column('categorie_acteur')
-        batch_op.drop_column('participant_phone')
-        batch_op.drop_column('participant_prenoms')
-        batch_op.drop_column('participant_nom')
+    conn = op.get_bind()
+    conn.execute(sa.text("ALTER TABLE formation_inscription DROP COLUMN IF EXISTS categorie_acteur"))
+    conn.execute(sa.text("ALTER TABLE formation_inscription DROP COLUMN IF EXISTS participant_phone"))
+    conn.execute(sa.text("ALTER TABLE formation_inscription DROP COLUMN IF EXISTS participant_prenoms"))
+    conn.execute(sa.text("ALTER TABLE formation_inscription DROP COLUMN IF EXISTS participant_nom"))

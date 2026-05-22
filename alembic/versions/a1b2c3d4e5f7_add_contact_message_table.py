@@ -18,28 +18,33 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        'contact_message',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('categorie_acteur', sa.String(length=100), nullable=True),
-        sa.Column('nom', sa.String(length=100), nullable=False),
-        sa.Column('prenoms', sa.String(length=150), nullable=False),
-        sa.Column('fonction', sa.String(length=150), nullable=True),
-        sa.Column('sexe', sa.String(length=20), nullable=True),
-        sa.Column('tranche_age', sa.String(length=30), nullable=True),
-        sa.Column('email', sa.String(length=255), nullable=False),
-        sa.Column('contact', sa.String(length=30), nullable=True),
-        sa.Column('pays', sa.String(length=100), nullable=True),
-        sa.Column('lieu_residence', sa.String(length=150), nullable=True),
-        sa.Column('motif', sa.String(length=100), nullable=False),
-        sa.Column('message', sa.TEXT(), nullable=True),
-        sa.Column('statut', sa.String(length=20), nullable=False, server_default='nouveau'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.PrimaryKeyConstraint('id'),
-    )
-    op.create_index('ix_contact_message_id', 'contact_message', ['id'])
+    conn = op.get_bind()
+    conn.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS contact_message (
+            id SERIAL NOT NULL,
+            categorie_acteur VARCHAR(100),
+            nom VARCHAR(100) NOT NULL,
+            prenoms VARCHAR(150) NOT NULL,
+            fonction VARCHAR(150),
+            sexe VARCHAR(20),
+            tranche_age VARCHAR(30),
+            email VARCHAR(255) NOT NULL,
+            contact VARCHAR(30),
+            pays VARCHAR(100),
+            lieu_residence VARCHAR(150),
+            motif VARCHAR(100) NOT NULL,
+            message TEXT,
+            statut VARCHAR(20) NOT NULL DEFAULT 'nouveau',
+            created_at TIMESTAMPTZ DEFAULT now(),
+            PRIMARY KEY (id)
+        )
+    """))
+    conn.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS ix_contact_message_id ON contact_message (id)"
+    ))
 
 
 def downgrade() -> None:
-    op.drop_index('ix_contact_message_id', 'contact_message')
-    op.drop_table('contact_message')
+    conn = op.get_bind()
+    conn.execute(sa.text("DROP INDEX IF EXISTS ix_contact_message_id"))
+    conn.execute(sa.text("DROP TABLE IF EXISTS contact_message"))
