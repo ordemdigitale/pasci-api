@@ -8,9 +8,15 @@ class Don(SQLModel, table=True):
     __tablename__ = "don"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    nom: str = Field(max_length=200, nullable=False)
+    nom: str = Field(max_length=100, nullable=False)
+    prenoms: Optional[str] = Field(default=None, max_length=150)
+    fonction: Optional[str] = Field(default=None, max_length=150)
+    sexe: Optional[str] = Field(default=None, max_length=20)
+    tranche_age: Optional[str] = Field(default=None, max_length=30)
     email: str = Field(max_length=200, nullable=False)
     telephone: Optional[str] = Field(default=None, max_length=50)
+    pays: Optional[str] = Field(default=None, max_length=100)
+    lieu_residence: Optional[str] = Field(default=None, max_length=150)
     montant: int = Field(nullable=False)  # en FCFA
     message: Optional[str] = Field(default=None, sa_column=Column(TEXT))
 
