@@ -49,6 +49,10 @@ class Crasc(SQLModel, table=True):
     back_populates="crasc",
     sa_relationship_kwargs={"passive_deletes": True}
   )
+  videos: List["CrascVideo"] = Relationship(
+    back_populates="crasc",
+    sa_relationship_kwargs={"passive_deletes": True}
+  )
   id: Optional[int] = Field(default=None, primary_key=True)
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
@@ -273,6 +277,26 @@ class News(SQLModel, table=True):
   # Representation in admin/logs
   def __repr__(self) -> str:
     return f"<Titre: {self.title}>"
+
+
+class CrascVideo(SQLModel, table=True):
+  """Représente une vidéo (YouTube/Vimeo) associée à un CRASC."""
+  __tablename__ = "crasc_video"
+
+  id: Optional[int] = Field(default=None, primary_key=True)
+  crasc_id: int = Field(foreign_key="crasc.id", ondelete="CASCADE", nullable=False)
+  crasc: Optional[Crasc] = Relationship(back_populates="videos")
+  titre: str = Field(max_length=200, nullable=False)
+  url: str = Field(max_length=500, nullable=False)
+  description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+  ordre: int = Field(default=0, nullable=False)
+  created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now())
+  )
+
+  def __repr__(self) -> str:
+    return f"<CrascVideo: {self.titre}>"
 
 
 class Evenement(SQLModel, table=True):

@@ -37,6 +37,7 @@ class CrascReadDetail(CrascBase):
   regions: Optional[List["RegionRead"]] = []
   news: Optional[List["NewsRead"]] = []
   evenements: Optional[List["EvenementRead"]] = []
+  videos: Optional[List["CrascVideoRead"]] = []
   class Config:
     from_attributes = True
 
@@ -285,6 +286,26 @@ class NewsUpdate(BaseModel):
   content: Optional[str] = None
   osc_id: Optional[int] = None
   crasc_id: Optional[int] = None
+
+
+# CrascVideo Schemas
+class CrascVideoCreate(BaseModel):
+  crasc_id: int
+  titre: str
+  url: str
+  description: Optional[str] = None
+  ordre: int = 0
+
+class CrascVideoRead(BaseModel):
+  id: int
+  crasc_id: int
+  titre: str
+  url: str
+  description: Optional[str] = None
+  ordre: int = 0
+  created_at: Optional[datetime] = None
+  class Config:
+    from_attributes = True
 
 
 # Evenement Schemas

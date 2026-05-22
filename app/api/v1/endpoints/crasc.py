@@ -38,10 +38,12 @@ from app.schemas.crasc import (
    EvenementCreate,
    EvenementRead,
    EvenementUpdate,
+   CrascVideoCreate,
+   CrascVideoRead,
    PaginatedResponse
 )
 from app.models.crasc import (
-   Crasc, Region, OscType, Osc, News, Evenement
+   Crasc, Region, OscType, Osc, News, Evenement, CrascVideo
 )
 from app.models.forum import PoleConcertation
 
@@ -109,6 +111,7 @@ async def get_crasc(
             selectinload(Crasc.regions),
             selectinload(Crasc.news_items),
             selectinload(Crasc.evenements),
+            selectinload(Crasc.videos),
         )
         .where(Crasc.slug == crasc_slug)
     )
@@ -1056,6 +1059,55 @@ async def delete_evenement(
         raise HTTPException(status_code=404, detail="Événement non trouvé.")
     check_crasc_ownership(current_user, evt.crasc_id)
     await db.delete(evt)
+    await db.commit()
+    return None
+
+
+# ─────────────────────────── CRASC VIDEOS ───────────────────────────
+
+@crasc_router.get("/video", response_model=List[CrascVideoRead], status_code=status.HTTP_200_OK)
+async def list_crasc_videos(
+    crasc_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lister les vidéos d'un CRASC (public)."""
+    query = select(CrascVideo).order_by(CrascVideo.ordre, CrascVideo.created_at)
+    if crasc_id:
+        query = query.where(CrascVideo.crasc_id == crasc_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@crasc_router.post("/video", response_model=CrascVideoRead, status_code=status.HTTP_201_CREATED)
+async def create_crasc_video(
+    data: CrascVideoCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Ajouter une vidéo à un CRASC."""
+    crasc = await db.get(Crasc, data.crasc_id)
+    if not crasc:
+        raise HTTPException(status_code=404, detail="CRASC non trouvé.")
+    check_crasc_ownership(current_user, data.crasc_id)
+    video = CrascVideo(**data.model_dump())
+    db.add(video)
+    await db.commit()
+    await db.refresh(video)
+    return video
+
+
+@crasc_router.delete("/video/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_crasc_video(
+    video_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Supprimer une vidéo d'un CRASC."""
+    video = await db.get(CrascVideo, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Vidéo non trouvée.")
+    check_crasc_ownership(current_user, video.crasc_id)
+    await db.delete(video)
     await db.commit()
     return None
 
