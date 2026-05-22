@@ -41,9 +41,13 @@ class FormationRubriqueUpdate(BaseModel):
 # ── Inscription ────────────────────────────────────────────────
 
 class FormationInscriptionCreate(BaseModel):
-    participant_name: str
+    participant_nom: str
+    participant_prenoms: str
     participant_email: str
     participant_phone: Optional[str] = None
+    categorie_acteur: Optional[str] = None
+    # Compat backward : si fourni directement
+    participant_name: Optional[str] = None
 
 
 class FormationInscriptionRead(BaseModel):
@@ -51,7 +55,11 @@ class FormationInscriptionRead(BaseModel):
     formation_id: int
     user_id: Optional[UUID] = None
     participant_name: str
+    participant_nom: Optional[str] = None
+    participant_prenoms: Optional[str] = None
     participant_email: str
+    participant_phone: Optional[str] = None
+    categorie_acteur: Optional[str] = None
     is_completed: bool
     completed_at: Optional[datetime] = None
     certificate_issued: bool

@@ -35,6 +35,7 @@ from app.api.v1.endpoints.dons import dons_router
 from app.api.v1.endpoints.volontaires import volontaires_router
 from app.api.v1.endpoints.visites import visites_router
 from app.api.v1.endpoints.numeros_utiles import numeros_utiles_router
+from app.api.v1.endpoints.contact import contact_router
 from app.admin.config import create_admin_panel
 
 # Configure logging
@@ -107,6 +108,7 @@ app.include_router(dons_router, prefix="/api/v1/dons", tags=["dons"])
 app.include_router(volontaires_router, prefix="/api/v1/volontaires", tags=["volontaires"])
 app.include_router(visites_router, prefix="/api/v1/visites", tags=["visites"])
 app.include_router(numeros_utiles_router, prefix="/api/v1/numeros-utiles", tags=["numeros-utiles"])
+app.include_router(contact_router, prefix="/api/v1/contact", tags=["contact"])
 
 @app.get("/")
 async def root():

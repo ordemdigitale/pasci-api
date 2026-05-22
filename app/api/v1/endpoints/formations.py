@@ -1011,10 +1011,16 @@ async def inscrire_participant(
 
     payment_status = "gratuite" if formation.type == "gratuite" else "pending"
 
+    participant_name = data.participant_name or f"{data.participant_nom} {data.participant_prenoms}".strip()
+
     inscription = FormationInscription(
         formation_id=formation.id,
-        participant_name=data.participant_name,
+        participant_name=participant_name,
+        participant_nom=data.participant_nom,
+        participant_prenoms=data.participant_prenoms,
         participant_email=data.participant_email,
+        participant_phone=data.participant_phone,
+        categorie_acteur=data.categorie_acteur,
         payment_status=payment_status,
         payment_amount=formation.price if formation.type == "payante" else None,
     )
@@ -1081,10 +1087,15 @@ async def initier_paiement(
     inscription = existing_result.scalar_one_or_none()
 
     if not inscription:
+        participant_name = data.participant_name or f"{data.participant_nom} {data.participant_prenoms}".strip()
         inscription = FormationInscription(
             formation_id=formation.id,
-            participant_name=data.participant_name,
+            participant_name=participant_name,
+            participant_nom=data.participant_nom,
+            participant_prenoms=data.participant_prenoms,
             participant_email=data.participant_email,
+            participant_phone=data.participant_phone,
+            categorie_acteur=data.categorie_acteur,
             payment_status="pending",
             payment_amount=formation.price,
         )

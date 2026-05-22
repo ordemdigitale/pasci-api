@@ -455,6 +455,192 @@ async def send_merci_don(
     )
 
 
+_CONTACT_ACCUSE = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#E05017;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Votre message a bien été reçu ✓</h2>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour <strong>{{ prenom_nom }}</strong>,<br><br>
+              Nous avons bien reçu votre message concernant <strong>« {{ motif }} »</strong> et nous vous en remercions.
+              Notre équipe vous répondra dans les plus brefs délais.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff8f5;border:1px solid #fde8dc;border-radius:8px;margin-bottom:24px;">
+              <tr><td style="padding:20px;">
+                <p style="margin:0 0 6px;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Récapitulatif</p>
+                <p style="margin:4px 0;font-size:14px;color:#555;"><strong>Motif :</strong> {{ motif }}</p>
+                {% if categorie %}<p style="margin:4px 0;font-size:14px;color:#555;"><strong>Catégorie :</strong> {{ categorie }}</p>{% endif %}
+                {% if message_extrait %}<p style="margin:8px 0 0;font-size:14px;color:#555;font-style:italic;">« {{ message_extrait }} »</p>{% endif %}
+              </td></tr>
+            </table>
+            <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">
+              Pour toute urgence, vous pouvez nous joindre directement à
+              <a href="mailto:pdoc@plateforme-osci.org" style="color:#E05017;">pdoc@plateforme-osci.org</a>
+              ou au <strong>05 05 56 57 41</strong>.
+            </p>
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              Cet email a été envoyé à {{ email }}.<br>
+              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+_CONTACT_NOTIF_ADMIN = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#2A591D;padding:24px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">Nouveau message de contact</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
+              <tr style="background:#f9fafb;border-bottom:1px solid #e5e7eb;">
+                <td style="padding:10px 16px;font-size:12px;font-weight:700;color:#6b7280;width:40%;">Champ</td>
+                <td style="padding:10px 16px;font-size:12px;font-weight:700;color:#6b7280;">Valeur</td>
+              </tr>
+              <tr style="border-bottom:1px solid #f3f4f6;">
+                <td style="padding:10px 16px;font-size:13px;color:#6b7280;">Nom complet</td>
+                <td style="padding:10px 16px;font-size:13px;font-weight:600;color:#111827;">{{ prenom_nom }}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #f3f4f6;background:#fafafa;">
+                <td style="padding:10px 16px;font-size:13px;color:#6b7280;">Email</td>
+                <td style="padding:10px 16px;font-size:13px;color:#111827;"><a href="mailto:{{ email }}" style="color:#E05017;">{{ email }}</a></td>
+              </tr>
+              {% if contact %}
+              <tr style="border-bottom:1px solid #f3f4f6;">
+                <td style="padding:10px 16px;font-size:13px;color:#6b7280;">Contact</td>
+                <td style="padding:10px 16px;font-size:13px;color:#111827;">{{ contact }}</td>
+              </tr>
+              {% endif %}
+              {% if categorie %}
+              <tr style="border-bottom:1px solid #f3f4f6;background:#fafafa;">
+                <td style="padding:10px 16px;font-size:13px;color:#6b7280;">Catégorie</td>
+                <td style="padding:10px 16px;font-size:13px;color:#111827;">{{ categorie }}</td>
+              </tr>
+              {% endif %}
+              {% if fonction %}
+              <tr style="border-bottom:1px solid #f3f4f6;">
+                <td style="padding:10px 16px;font-size:13px;color:#6b7280;">Fonction</td>
+                <td style="padding:10px 16px;font-size:13px;color:#111827;">{{ fonction }}</td>
+              </tr>
+              {% endif %}
+              {% if pays %}
+              <tr style="border-bottom:1px solid #f3f4f6;background:#fafafa;">
+                <td style="padding:10px 16px;font-size:13px;color:#6b7280;">Pays / Résidence</td>
+                <td style="padding:10px 16px;font-size:13px;color:#111827;">{{ pays }}{% if lieu_residence %} — {{ lieu_residence }}{% endif %}</td>
+              </tr>
+              {% endif %}
+              <tr style="border-bottom:1px solid #f3f4f6;">
+                <td style="padding:10px 16px;font-size:13px;color:#6b7280;">Motif</td>
+                <td style="padding:10px 16px;font-size:13px;font-weight:700;color:#E05017;">{{ motif }}</td>
+              </tr>
+            </table>
+            {% if message %}
+            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#374151;">Message :</p>
+            <p style="margin:0 0 24px;font-size:14px;color:#555;background:#f9fafb;border-left:3px solid #E05017;padding:12px 16px;border-radius:4px;line-height:1.7;white-space:pre-wrap;">{{ message }}</p>
+            {% endif %}
+            <table cellpadding="0" cellspacing="0">
+              <tr><td style="background:#2A591D;border-radius:6px;">
+                <a href="{{ backoffice_url }}" style="display:inline-block;padding:10px 24px;color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;">
+                  Voir dans le backoffice →
+                </a>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_contact_accuse(
+    *,
+    nom: str,
+    prenoms: str,
+    email: str,
+    motif: str,
+    categorie: Optional[str] = None,
+    message: Optional[str] = None,
+) -> None:
+    prenom_nom = f"{prenoms} {nom}"
+    message_extrait = (message[:120] + "…") if message and len(message) > 120 else message
+    html = _render(
+        _CONTACT_ACCUSE,
+        prenom_nom=prenom_nom,
+        email=email,
+        motif=motif,
+        categorie=categorie or "",
+        message_extrait=message_extrait or "",
+    )
+    await _send(
+        to=email,
+        subject=f"Votre message a bien été reçu — PASCI",
+        html=html,
+    )
+
+
+async def send_contact_notif_admin(
+    *,
+    nom: str,
+    prenoms: str,
+    email: str,
+    motif: str,
+    categorie: Optional[str] = None,
+    fonction: Optional[str] = None,
+    contact: Optional[str] = None,
+    pays: Optional[str] = None,
+    lieu_residence: Optional[str] = None,
+    message: Optional[str] = None,
+) -> None:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    html = _render(
+        _CONTACT_NOTIF_ADMIN,
+        prenom_nom=f"{prenoms} {nom}",
+        email=email,
+        motif=motif,
+        categorie=categorie or "",
+        fonction=fonction or "",
+        contact=contact or "",
+        pays=pays or "",
+        lieu_residence=lieu_residence or "",
+        message=message or "",
+        backoffice_url=f"{frontend_url}/admin/contact",
+    )
+    await _send(
+        to=settings.SMTP_FROM,
+        subject=f"[Contact] Nouveau message — {motif} — {prenoms} {nom}",
+        html=html,
+    )
+
+
 async def send_reset_password(
     *,
     user_name: str,
