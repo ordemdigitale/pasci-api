@@ -252,6 +252,24 @@ class FormationAvis(SQLModel, table=True):
     )
 
 
+class CatalogueFormation(SQLModel, table=True):
+    """Catalogue de formation téléchargeable (PDF)"""
+    __tablename__ = "catalogue_formation"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    titre: str = Field(max_length=200, nullable=False)
+    description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    fichier_path: str = Field(max_length=500, nullable=False)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+    def __repr__(self) -> str:
+        return f"<CatalogueFormation: {self.titre}>"
+
+
 class FormationProgression(SQLModel, table=True):
     """Suivi de progression : leçons vues par inscription"""
     __tablename__ = "formation_progression"

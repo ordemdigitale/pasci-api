@@ -15,7 +15,7 @@ from typing import Optional, List
 
 from app.core.config import settings
 from app.database.session import get_db
-from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat, FormationModule, FormationLecon, FormationProgression, FormationAvis
+from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat, FormationModule, FormationLecon, FormationProgression, FormationAvis, CatalogueFormation
 from app.models.users import User
 from app.schemas.formation import (
     FormationCreate, FormationRead, FormationUpdate, FormationReadWithRelations,
@@ -25,6 +25,7 @@ from app.schemas.formation import (
     FormationModuleCreate, FormationModuleUpdate, FormationModuleRead,
     FormationLeconCreate, FormationLeconUpdate, FormationLeconRead,
     FormationAvisCreate, FormationAvisRead,
+    CatalogueFormationRead,
 )
 from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff
 from app.services.cinetpay import cinetpay_service
@@ -36,6 +37,87 @@ from app.services.email import (
 from app.core.config import settings
 
 formations_router = APIRouter()
+
+
+# ─────────────────────────────────────────────────────────────
+# CATALOGUE  (doit être AVANT les routes /{formation_slug})
+# ─────────────────────────────────────────────────────────────
+
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "../../../../static")
+
+
+@formations_router.get("/catalogue", response_model=List[CatalogueFormationRead])
+async def list_catalogues(
+    active_only: bool = Query(True),
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les catalogues de formation (publique)."""
+    query = select(CatalogueFormation).order_by(CatalogueFormation.created_at.desc())
+    if active_only:
+        query = query.where(CatalogueFormation.is_active == True)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@formations_router.post("/catalogue", response_model=CatalogueFormationRead, status_code=status.HTTP_201_CREATED)
+async def upload_catalogue(
+    titre: str = Form(...),
+    description: Optional[str] = Form(None),
+    fichier: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Uploader un nouveau catalogue de formation (PDF). Réservé aux admins."""
+    if not fichier.content_type or "pdf" not in fichier.content_type:
+        raise HTTPException(status_code=400, detail="Le fichier doit être un PDF.")
+    ext = "pdf"
+    filename = f"catalogues/{uuid.uuid4().hex}.{ext}"
+    dest_dir = os.path.join(STATIC_DIR, "catalogues")
+    os.makedirs(dest_dir, exist_ok=True)
+    dest_path = os.path.join(STATIC_DIR, filename)
+    with open(dest_path, "wb") as f:
+        shutil.copyfileobj(fichier.file, f)
+    catalogue = CatalogueFormation(titre=titre, description=description, fichier_path=filename)
+    db.add(catalogue)
+    await db.commit()
+    await db.refresh(catalogue)
+    return catalogue
+
+
+@formations_router.delete("/catalogue/{catalogue_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_catalogue(
+    catalogue_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Supprimer un catalogue."""
+    cat = await db.get(CatalogueFormation, catalogue_id)
+    if not cat:
+        raise HTTPException(status_code=404, detail="Catalogue non trouvé.")
+    # Supprimer le fichier physique
+    file_path = os.path.join(STATIC_DIR, cat.fichier_path)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    await db.delete(cat)
+    await db.commit()
+    return None
+
+
+@formations_router.patch("/catalogue/{catalogue_id}", response_model=CatalogueFormationRead)
+async def toggle_catalogue(
+    catalogue_id: int,
+    is_active: bool = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Activer/désactiver un catalogue."""
+    cat = await db.get(CatalogueFormation, catalogue_id)
+    if not cat:
+        raise HTTPException(status_code=404, detail="Catalogue non trouvé.")
+    cat.is_active = is_active
+    await db.commit()
+    await db.refresh(cat)
+    return cat
 
 
 # ─────────────────────────────────────────────────────────────

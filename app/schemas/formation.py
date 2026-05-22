@@ -9,6 +9,25 @@ from pydantic import BaseModel, Field, computed_field
 from app.core.config import settings
 
 
+# ── Catalogue ─────────────────────────────────────────────────
+
+class CatalogueFormationRead(BaseModel):
+    id: int
+    titre: str
+    description: Optional[str] = None
+    fichier_path: str
+    is_active: bool
+    created_at: datetime
+
+    @computed_field
+    @property
+    def fichier_url(self) -> str:
+        return f"{settings.API_BASE_URL}/static/{self.fichier_path}"
+
+    class Config:
+        from_attributes = True
+
+
 # ── Rubrique ──────────────────────────────────────────────────
 
 class FormationRubriqueCreate(BaseModel):
