@@ -35,8 +35,14 @@ class Ptf(SQLModel, table=True):
   pays: Optional[str] = Field(default=None, nullable=True, max_length=100)
   date_creation: Optional[str] = Field(default=None, nullable=True, max_length=50)
 
-  # Conseil
-  conseil: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+  # Classification
+  categorie: Optional[str] = Field(default=None, max_length=100, nullable=True)
+
+  # Exigences majeures (remplace Conseil)
+  exigences_majeures: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+
+  # Nature des relations avec les OSC
+  nature_relations: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
 
   # Domaines d'intervention (stocké en JSON)
   domaines: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
