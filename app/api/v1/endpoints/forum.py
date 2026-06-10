@@ -20,15 +20,16 @@ from app.core.auth import get_current_user, get_current_staff_user
 
 ALLOWED_IMAGE_EXT = ["jpg", "jpeg", "png", "webp"]
 
-def _save_image(upload: UploadFile) -> str:
+async def _save_image(upload: UploadFile) -> str:
     """Save an uploaded image to UPLOAD_DIR and return the filename."""
-    ext = upload.filename.rsplit(".", 1)[-1].lower()
+    ext = (upload.filename or "").rsplit(".", 1)[-1].lower()
     if ext not in ALLOWED_IMAGE_EXT:
         raise HTTPException(status_code=400, detail=f"Format invalide. Formats acceptés: {ALLOWED_IMAGE_EXT}")
+    contents = await upload.read()
     filename = f"{uuid.uuid4()}.{ext}"
     path = os.path.join(settings.UPLOAD_DIR, filename)
     with open(path, "wb") as f:
-        shutil.copyfileobj(upload.file, f)
+        f.write(contents)
     return filename
 
 def _delete_image(image_path: Optional[str]):
@@ -94,7 +95,7 @@ async def create_pole(
     """Créer un pôle (staff only)"""
     image_path = None
     if image and image.filename:
-        image_path = _save_image(image)
+        image_path = await _save_image(image)
 
     db_pole = PoleConcertation(
         name=name,
@@ -160,7 +161,7 @@ async def update_pole(
 
     if isinstance(image, UploadFile) and image.filename:
         _delete_image(pole.image_path)
-        pole.image_path = _save_image(image)
+        pole.image_path = await _save_image(image)
 
     if name is not None:
         pole.name = name
