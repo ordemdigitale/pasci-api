@@ -59,6 +59,10 @@ app = FastAPI(
 os.makedirs("static/formations/pdf", exist_ok=True)
 app.mount("/static/formations", StaticFiles(directory="static/formations"), name="static-formations")
 
+# Catalogues PDF (doit être monté AVANT /static générique)
+os.makedirs("static/catalogues", exist_ok=True)
+app.mount("/static/catalogues", StaticFiles(directory="static/catalogues"), name="static-catalogues")
+
 # Images/thumbnails (uploads/images)
 app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 
