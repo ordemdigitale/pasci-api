@@ -63,6 +63,9 @@ class Formation(SQLModel, table=True):
     max_participants: Optional[int] = Field(None, ge=1, description="Nombre maximum de participants")
     current_participants: int = Field(default=0, ge=0, description="Nombre actuel de participants")
 
+    # Catégorie thématique
+    categorie: Optional[str] = Field(default=None, max_length=200, description="Catégorie thématique de la formation")
+
     # Type et prix
     type: str = Field(default="gratuite", max_length=20)  # "gratuite" ou "payante"
     price: Optional[float] = Field(default=None, description="Prix en FCFA si payante")

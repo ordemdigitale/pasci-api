@@ -530,6 +530,7 @@ async def create_formation(
     rubrique_id: str = Form(""),
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
+    categorie: Optional[str] = Form(None),
     thumbnail: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_redacteur_or_staff),
@@ -629,6 +630,7 @@ async def create_formation(
             rubrique_id=rubrique_id_int,
             crasc_id=crasc_id_int,
             osc_id=osc_id_int,
+            categorie=categorie,
             thumbnail_path=saved_path,
             statut_publication=statut_pub,
         )
@@ -783,7 +785,8 @@ async def get_formation_update_form(
     price: Optional[float] = Form(None),
     rubrique_id: str = Form(""),
     crasc_id: str = Form(""),
-    osc_id: str = Form("")
+    osc_id: str = Form(""),
+    categorie: Optional[str] = Form(None)
 ) -> FormationUpdate:
     """Parse form data into FormationUpdate"""
     # Only include fields that are actually provided
@@ -847,6 +850,9 @@ async def get_formation_update_form(
 
     if osc_id and osc_id != "":
         update_dict["osc_id"] = int(osc_id)
+
+    if categorie is not None:
+        update_dict["categorie"] = categorie if categorie != "" else None
 
     return FormationUpdate(**update_dict)
 

@@ -160,6 +160,7 @@ class FormationBase(BaseModel):
     type: str = Field(default="gratuite")  # "gratuite" ou "payante"
     price: Optional[float] = None
     rubrique_id: Optional[int] = None
+    categorie: Optional[str] = None
 
 
 class FormationCreate(FormationBase):
@@ -189,6 +190,7 @@ class FormationUpdate(BaseModel):
     rubrique_id: Optional[int] = None
     crasc_id: Optional[int] = None
     osc_id: Optional[int] = None
+    categorie: Optional[str] = None
 
 
 class FormationRead(FormationBase):

@@ -10,6 +10,7 @@ from app.models.crasc import Crasc, Region, Osc, OscType, News
 from app.models.jobs import Jobs
 from app.models.key_stats import KeyStats
 from app.models.users import User
+from app.models.formation import Formation, FormationInscription
 
 stats_router = APIRouter()
 
@@ -331,6 +332,56 @@ async def get_jobs_trends(
         "expired_jobs": expired_jobs,
         "recent_7_days": recent_jobs,
         "active_percentage": round((active_jobs / total_jobs * 100) if total_jobs > 0 else 0, 2)
+    }
+
+
+@stats_router.get("/formations")
+async def get_formation_stats(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """Statistiques des formations : total inscrits, OSC formées, répartition par catégorie d'acteurs."""
+
+    # Total formations publiées
+    total_formations_res = await db.execute(
+        select(func.count(Formation.id)).where(Formation.is_published == True)
+    )
+    total_formations = total_formations_res.scalar_one()
+
+    # Total inscrits (toutes formations confondues)
+    total_inscrits_res = await db.execute(select(func.count(FormationInscription.id)))
+    total_inscrits = total_inscrits_res.scalar_one()
+
+    # OSC distinctes ayant au moins un inscrit (via osc_id sur la formation)
+    osc_formees_res = await db.execute(
+        select(func.count(func.distinct(Formation.osc_id)))
+        .join(FormationInscription, FormationInscription.formation_id == Formation.id)
+        .where(Formation.osc_id.isnot(None))
+    )
+    total_osc_formees = osc_formees_res.scalar_one()
+
+    # Répartition des inscrits par catégorie d'acteurs
+    cat_query = (
+        select(
+            FormationInscription.categorie_acteur.label("categorie"),
+            func.count(FormationInscription.id).label("total"),
+        )
+        .group_by(FormationInscription.categorie_acteur)
+        .order_by(desc("total"))
+    )
+    cat_result = await db.execute(cat_query)
+    cat_rows = cat_result.all()
+
+    par_categorie = [
+        {
+            "categorie": row.categorie or "Non renseigné",
+            "total": row.total,
+        }
+        for row in cat_rows
+    ]
+
+    return {
+        "total_formations": total_formations,
+        "total_inscrits": total_inscrits,
+        "total_osc_formees": total_osc_formees,
+        "par_categorie_acteur": par_categorie,
     }
 
 
