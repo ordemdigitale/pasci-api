@@ -166,6 +166,16 @@ class Osc(SQLModel, table=True):
   reseaux_sociaux: Optional[str] = Field(default=None, nullable=True, description="Réseaux sociaux")
   date_creation: Optional[str] = Field(default=None, nullable=True, max_length=30, description="Date de création")
   numero_recepisse: Optional[str] = Field(default=None, nullable=True, max_length=200, description="N° récépissé")
+  type_document_formalisation: Optional[str] = Field(
+    default=None,
+    nullable=True,
+    max_length=50,
+    description="Niveau/type de document de formalisation de l'OSC",
+  )
+  existence_siege: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un siège")
+  manuel_procedures: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un manuel de procédures")
+  plan_action: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un plan d'action")
+  rapports_annuels: Optional[bool] = Field(default=None, nullable=True, description="L'OSC rédige des rapports annuels d'activités")
   niveau_couverture: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Niveau de couverture")
   zone_couverture: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Zone de couverture")
   categorie: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Catégorie d'organisation")

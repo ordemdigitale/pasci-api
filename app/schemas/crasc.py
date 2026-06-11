@@ -4,6 +4,7 @@ from datetime import datetime
 from math import isnan
 from sqlmodel import Field
 from app.core.config import settings
+from app.services.osc_autoevaluation import COULEUR_HEX, calculer_score_autoevaluation, couleur_pour_score
 
 T = TypeVar("T")
 
@@ -127,6 +128,11 @@ class OscBase(BaseModel):
   reseaux_sociaux: Optional[str] = None
   date_creation: Optional[str] = None
   numero_recepisse: Optional[str] = None
+  type_document_formalisation: Optional[str] = None
+  existence_siege: Optional[bool] = None
+  manuel_procedures: Optional[bool] = None
+  plan_action: Optional[bool] = None
+  rapports_annuels: Optional[bool] = None
   niveau_couverture: Optional[str] = None
   zone_couverture: Optional[str] = None
   categorie: Optional[str] = None
@@ -163,6 +169,28 @@ class OscBase(BaseModel):
   financement_fonds_propres: Optional[bool] = None
   financement_ong_intl: Optional[bool] = None
   financement_multilateral: Optional[bool] = None
+
+  @computed_field
+  @property
+  def score_autoevaluation(self) -> int:
+    return calculer_score_autoevaluation(
+      self.type_document_formalisation,
+      self.existence_siege,
+      self.manuel_procedures,
+      self.plan_action,
+      self.rapports_annuels,
+      self.adhesion_crasc,
+    )
+
+  @computed_field
+  @property
+  def couleur_autoevaluation(self) -> str:
+    return couleur_pour_score(self.score_autoevaluation)
+
+  @computed_field
+  @property
+  def couleur_autoevaluation_hex(self) -> str:
+    return COULEUR_HEX[self.couleur_autoevaluation]
   
   @field_validator("latitude", "longitude", mode="before")
   @classmethod
@@ -226,6 +254,11 @@ class OscUpdate(BaseModel):
   reseaux_sociaux: Optional[str] = None
   date_creation: Optional[str] = None
   numero_recepisse: Optional[str] = None
+  type_document_formalisation: Optional[str] = None
+  existence_siege: Optional[bool] = None
+  manuel_procedures: Optional[bool] = None
+  plan_action: Optional[bool] = None
+  rapports_annuels: Optional[bool] = None
   niveau_couverture: Optional[str] = None
   zone_couverture: Optional[str] = None
   categorie: Optional[str] = None
