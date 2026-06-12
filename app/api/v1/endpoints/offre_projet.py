@@ -79,6 +79,7 @@ async def create_projet(
     zone: str = Form(...),
     durée: str = Form(...),
     budget: str = Form(...),
+    offre_url: Optional[str] = Form(None),
     objectif: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     beneficiaires: Optional[str] = Form(None),
@@ -120,6 +121,7 @@ async def create_projet(
         zone=zone,
         durée=durée,
         budget=budget,
+        offre_url=offre_url or None,
         objectif=objectif,
         description=description,
         beneficiaires=beneficiaires,
@@ -148,6 +150,7 @@ async def update_projet(
     zone: Optional[str] = Form(None),
     durée: Optional[str] = Form(None),
     budget: Optional[str] = Form(None),
+    offre_url: Optional[str] = Form(None),
     objectif: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     beneficiaires: Optional[str] = Form(None),
@@ -211,6 +214,8 @@ async def update_projet(
         projet.durée = durée
     if budget is not None:
         projet.budget = budget
+    if offre_url is not None:
+        projet.offre_url = offre_url or None
     if objectif is not None:
         projet.objectif = objectif
     if description is not None:

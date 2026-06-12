@@ -1,5 +1,5 @@
 from pydantic import BaseModel, computed_field, field_validator
-from typing import Optional, List, Generic, TypeVar
+from typing import Optional, List, Generic, TypeVar, Literal
 from datetime import datetime
 from math import isnan
 from sqlmodel import Field
@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.services.osc_autoevaluation import COULEUR_HEX, calculer_score_autoevaluation, couleur_pour_score
 
 T = TypeVar("T")
+NiveauRegroupement = Literal["Réseau", "Fédération", "Plateforme", "Confédération"]
 
 class PaginatedResponse(BaseModel, Generic[T]):
   items: List[T]
@@ -156,6 +157,7 @@ class OscBase(BaseModel):
   mode_designation_president: Optional[str] = None
   duree_mandat_be: Optional[str] = None
   adhesion_crasc: Optional[bool] = None
+  niveau_regroupement: Optional[NiveauRegroupement] = None
   reseau_appartenance: Optional[str] = None
   secteurs_activites: Optional[str] = None
   populations_cibles: Optional[str] = None
@@ -282,6 +284,7 @@ class OscUpdate(BaseModel):
   mode_designation_president: Optional[str] = None
   duree_mandat_be: Optional[str] = None
   adhesion_crasc: Optional[bool] = None
+  niveau_regroupement: Optional[NiveauRegroupement] = None
   reseau_appartenance: Optional[str] = None
   secteurs_activites: Optional[str] = None
   populations_cibles: Optional[str] = None

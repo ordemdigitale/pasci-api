@@ -199,6 +199,12 @@ class Osc(SQLModel, table=True):
   mode_designation_president: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Mode de désignation du président")
   duree_mandat_be: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Durée du mandat du bureau exécutif")
   adhesion_crasc: Optional[bool] = Field(default=None, nullable=True, description="Adhésion au CRASC")
+  niveau_regroupement: Optional[str] = Field(
+    default=None,
+    nullable=True,
+    max_length=30,
+    description="Niveau de regroupement de l'OSC",
+  )
   reseau_appartenance: Optional[str] = Field(default=None, nullable=True, description="Réseau d'appartenance")
   secteurs_activites: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Secteurs d'activités")
   populations_cibles: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Populations cibles")

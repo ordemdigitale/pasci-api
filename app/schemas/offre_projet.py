@@ -26,6 +26,7 @@ class OffreProjetBase(BaseModel):
     zone: str
     durée: str
     budget: str
+    offre_url: Optional[str] = None
     objectif: Optional[str] = None
     description: Optional[str] = None
     beneficiaires: Optional[str] = None
@@ -87,6 +88,7 @@ class OffreProjetUpdate(BaseModel):
     zone: Optional[str] = None
     durée: Optional[str] = None
     budget: Optional[str] = None
+    offre_url: Optional[str] = None
     objectif: Optional[str] = None
     description: Optional[str] = None
     beneficiaires: Optional[str] = None

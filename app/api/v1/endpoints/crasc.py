@@ -3,7 +3,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFil
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import Optional, List, Annotated
+from typing import Optional, List, Annotated, Literal
 
 from app.core.config import settings
 from app.core.auth import (
@@ -361,6 +361,7 @@ async def create_osc(
     plan_action: Optional[bool] = Form(None),
     rapports_annuels: Optional[bool] = Form(None),
     adhesion_crasc: Optional[bool] = Form(None),
+    niveau_regroupement: Optional[Literal["Réseau", "Fédération", "Plateforme", "Confédération"]] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_or_superuser),
 ):
@@ -398,6 +399,7 @@ async def create_osc(
         plan_action=plan_action,
         rapports_annuels=rapports_annuels,
         adhesion_crasc=adhesion_crasc,
+        niveau_regroupement=niveau_regroupement,
     )
     result = await db.execute(select(Osc).where(Osc.name == db_osc.name))
     if result.scalars().first():
@@ -538,6 +540,7 @@ async def get_osc_update_form(
     mode_designation_president: Optional[str] = Form(None),
     duree_mandat_be: Optional[str] = Form(None),
     adhesion_crasc: Optional[str] = Form(None),
+    niveau_regroupement: Optional[str] = Form(None),
     reseau_appartenance: Optional[str] = Form(None),
     secteurs_activites: Optional[str] = Form(None),
     populations_cibles: Optional[str] = Form(None),
@@ -573,7 +576,8 @@ async def get_osc_update_form(
         etat_cotisations=etat_cotisations, montant_cotisation=to_int(montant_cotisation),
         nom_president=nom_president, sexe_president=sexe_president,
         mode_designation_president=mode_designation_president, duree_mandat_be=duree_mandat_be,
-        adhesion_crasc=to_bool(adhesion_crasc), reseau_appartenance=reseau_appartenance,
+        adhesion_crasc=to_bool(adhesion_crasc), niveau_regroupement=niveau_regroupement,
+        reseau_appartenance=reseau_appartenance,
         secteurs_activites=secteurs_activites, populations_cibles=populations_cibles,
         savoir_faire=savoir_faire, difficultes=difficultes, recommandations=recommandations,
     )
