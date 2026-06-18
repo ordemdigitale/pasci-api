@@ -57,8 +57,8 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
 
 
 async def get_current_staff_user(current_user: User = Depends(get_current_user)) -> User:
-   """ Gett current staff user """
-   if not current_user.is_staff:
+   """Autorise le staff ET les superusers."""
+   if not (current_user.is_staff or current_user.is_superuser):
       raise HTTPException(
          status_code=status.HTTP_403_FORBIDDEN,
          detail="The user does not have enough privileges"
@@ -66,9 +66,31 @@ async def get_current_staff_user(current_user: User = Depends(get_current_user))
    return current_user
 
 
+async def get_current_redacteur_crasc(current_user: User = Depends(get_current_user)) -> User:
+    """Autorise uniquement les rédacteurs rattachés à un CRASC."""
+    if not (current_user.is_redacteur and current_user.crasc_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès réservé aux rédacteurs CRASC."
+        )
+    return current_user
+
+
+async def get_current_redacteur_crasc_or_staff(current_user: User = Depends(get_current_user)) -> User:
+    """Autorise le staff, superusers, ET les rédacteurs rattachés à un CRASC."""
+    if current_user.is_staff or current_user.is_superuser:
+        return current_user
+    if current_user.is_redacteur and current_user.crasc_id:
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Accès réservé aux rédacteurs CRASC et au staff."
+    )
+
+
 async def get_current_redacteur_or_staff(current_user: User = Depends(get_current_user)) -> User:
-    """Autorise les rédacteurs ET le staff (pour créer du contenu)."""
-    if not (current_user.is_staff or current_user.is_redacteur):
+    """Autorise les rédacteurs, le staff ET les superusers (pour créer du contenu)."""
+    if not (current_user.is_staff or current_user.is_superuser or current_user.is_redacteur):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Accès réservé aux rédacteurs et au staff."

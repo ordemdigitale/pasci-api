@@ -16,7 +16,7 @@ from app.schemas.forum import (
     ForumSujetCreate, ForumSujetRead, ForumSujetUpdate, ForumSujetDetail,
     ForumCommentaireCreate, ForumCommentaireRead,
 )
-from app.core.auth import get_current_user, get_current_staff_user
+from app.core.auth import get_current_user, get_current_staff_user, get_current_superuser
 
 ALLOWED_IMAGE_EXT = ["jpg", "jpeg", "png", "webp"]
 
@@ -90,9 +90,9 @@ async def create_pole(
     is_active: bool = Form(True),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
-    """Créer un pôle (staff only)"""
+    """Créer un pôle (superuser only)"""
     image_path = None
     if image and image.filename:
         image_path = await _save_image(image)
@@ -150,7 +150,7 @@ async def update_pole(
     is_active: Optional[str] = Form(None),
     image: Union[UploadFile, str, None] = File(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     result = await db.execute(
         select(PoleConcertation).where(PoleConcertation.slug == pole_slug)
@@ -199,7 +199,7 @@ async def update_pole(
 async def delete_pole(
     pole_slug: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     result = await db.execute(
         select(PoleConcertation).where(PoleConcertation.slug == pole_slug)

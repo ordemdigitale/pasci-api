@@ -33,30 +33,44 @@ async def update_current_user_profile(
 async def get_users(
    skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
    limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
-   current_user: User = Depends(get_current_superuser),
+   current_user: User = Depends(get_current_staff_user),
    db: AsyncSession = Depends(get_db)
 ):
-    """Get all users with pagination"""
-    result = await db.execute(
-        select(User)
-        .order_by(desc(User.date_joined))
-        .offset(skip)
-        .limit(limit)
-    )
-    all_users = result.scalars().all()
-    return all_users
+    """Get all users with pagination. Admin CRASC only sees OSC users from their CRASC."""
+    from app.models.crasc import Osc
+    query = select(User).order_by(desc(User.date_joined))
+
+    # Admin CRASC: filter to OSC users belonging to their CRASC
+    if not current_user.is_superuser and current_user.crasc_id:
+        osc_result = await db.execute(
+            select(Osc.id).where(Osc.crasc_id == current_user.crasc_id)
+        )
+        osc_ids = [row[0] for row in osc_result.all()]
+        query = query.where(User.osc_id.in_(osc_ids))
+
+    result = await db.execute(query.offset(skip).limit(limit))
+    return result.scalars().all()
 
 
 @users_router.get("/{user_id}", response_model=UserRead, status_code=status.HTTP_200_OK)
 async def get_user_by_id(
    user_id: UUID,
-   current_user: User = Depends(get_current_superuser),
+   current_user: User = Depends(get_current_staff_user),
    db: AsyncSession = Depends(get_db)
 ):
   """ Get a single user by ID (UUID) """
   user = await UserService.get_user_by_id(db, user_id)
   if not user:
      raise HTTPException(status_code=404, detail="User not found")
+  # Admin CRASC: restrict to OSC users from their CRASC
+  if not current_user.is_superuser and current_user.crasc_id:
+      from app.models.crasc import Osc
+      if not user.osc_id:
+          raise HTTPException(status_code=403, detail="Accès refusé.")
+      osc_result = await db.execute(select(Osc).where(Osc.id == user.osc_id))
+      osc = osc_result.scalar_one_or_none()
+      if not osc or osc.crasc_id != current_user.crasc_id:
+          raise HTTPException(status_code=403, detail="Accès refusé.")
   return user
 
 

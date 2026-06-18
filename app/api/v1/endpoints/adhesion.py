@@ -12,6 +12,7 @@ from app.database.session import get_db
 from app.models.adhesion import DemandeAdhesion
 from app.models.crasc import Osc, Crasc
 from app.models.users import User
+from app.core.auth import get_current_staff_user
 from app.schemas.adhesion import (
     DemandeAdhesionCreate,
     DemandeAdhesionRead,
@@ -28,15 +29,15 @@ def _generate_password(length: int = 12) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-async def _provision_osc_and_user(demande: DemandeAdhesion, db: AsyncSession) -> Optional[OscCredentials]:
+async def _provision_osc_and_user(demande: DemandeAdhesion, db: AsyncSession, force_crasc_id: Optional[int] = None) -> Optional[OscCredentials]:
     """
     Crée (ou retrouve) l'OSC correspondant à la demande, puis crée
     (ou met à jour) le compte utilisateur lié.
     Retourne les credentials à afficher à l'administrateur.
     """
-    # --- 1. Trouver le CRASC par nom ---
-    crasc_id: Optional[int] = None
-    if demande.crasc_nom:
+    # --- 1. Trouver le CRASC ---
+    crasc_id: Optional[int] = force_crasc_id  # Admin CRASC force son propre CRASC
+    if not crasc_id and demande.crasc_nom:
         crasc_result = await db.execute(
             select(Crasc).where(Crasc.name.ilike(f"%{demande.crasc_nom}%"))
         )
@@ -133,11 +134,22 @@ async def get_demandes(
     limit: int = Query(50, ge=1, le=200),
     statut: Optional[str] = Query(None, description="Filtrer par statut: en_attente, approuvee, rejetee"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
 ):
-    """Lister toutes les demandes d'adhésion"""
-    query = select(DemandeAdhesion).order_by(desc(DemandeAdhesion.created_at)).offset(skip).limit(limit)
+    """Lister toutes les demandes d'adhésion (staff only)"""
+    query = select(DemandeAdhesion).order_by(desc(DemandeAdhesion.created_at))
+
+    # Admin CRASC : filtrer par son CRASC via le nom
+    if not current_user.is_superuser and current_user.crasc_id:
+        crasc_result = await db.execute(select(Crasc).where(Crasc.id == current_user.crasc_id))
+        crasc = crasc_result.scalar_one_or_none()
+        if crasc:
+            query = query.where(DemandeAdhesion.crasc_nom.ilike(f"%{crasc.name}%"))
+
     if statut:
-        query = select(DemandeAdhesion).where(DemandeAdhesion.statut == statut).order_by(desc(DemandeAdhesion.created_at)).offset(skip).limit(limit)
+        query = query.where(DemandeAdhesion.statut == statut)
+
+    query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -153,7 +165,12 @@ async def get_demande(demande_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @adhesion_router.patch("/{demande_id}", response_model=DemandeAdhesionReadWithCredentials, status_code=status.HTTP_200_OK)
-async def update_demande(demande_id: int, data: DemandeAdhesionUpdate, db: AsyncSession = Depends(get_db)):
+async def update_demande(
+    demande_id: int,
+    data: DemandeAdhesionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     """
     Mettre à jour le statut d'une demande (approuver / rejeter).
     Lors de l'approbation, crée automatiquement l'OSC et le compte utilisateur associé.
@@ -173,7 +190,10 @@ async def update_demande(demande_id: int, data: DemandeAdhesionUpdate, db: Async
     credentials: Optional[OscCredentials] = None
     if demande.statut == "approuvee" and previous_statut != "approuvee":
         try:
-            credentials = await _provision_osc_and_user(demande, db)
+            # Admin CRASC : forcer son propre CRASC
+            if not current_user.is_superuser and current_user.crasc_id:
+                demande.crasc_id_override = current_user.crasc_id  # transmis à _provision_osc_and_user
+            credentials = await _provision_osc_and_user(demande, db, force_crasc_id=current_user.crasc_id if not current_user.is_superuser else None)
         except Exception as e:
             # Ne pas bloquer l'approbation si la création échoue
             import traceback
@@ -187,7 +207,11 @@ async def update_demande(demande_id: int, data: DemandeAdhesionUpdate, db: Async
 
 
 @adhesion_router.delete("/{demande_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_demande(demande_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_demande(
+    demande_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     """Supprimer une demande d'adhésion"""
     result = await db.execute(select(DemandeAdhesion).where(DemandeAdhesion.id == demande_id))
     demande = result.scalar_one_or_none()

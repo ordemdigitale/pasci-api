@@ -20,7 +20,7 @@ from app.schemas.crasc import (
 )
 from app.models.crasc import News
 from app.models.users import User
-from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff
+from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff
 
 news_router = APIRouter()
 
@@ -149,6 +149,10 @@ async def create_news(
     # Parse IDs
     crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
     osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
+
+    # Rédacteur CRASC : forcer son propre CRASC
+    if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
+        crasc_id_int = current_user.crasc_id
 
     # Handle image upload
     if thumbnail and thumbnail.filename:
@@ -365,7 +369,8 @@ async def update_news(
     news_slug: str,
     news_update: NewsUpdate = Depends(get_news_update_form),
     thumbnail: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
 ):
     """
     Update a news article
@@ -390,6 +395,14 @@ async def update_news(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Actualité non trouvée."
         )
+
+    # Rédacteur CRASC : vérifier l'appartenance
+    if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
+        if news.crasc_id != current_user.crasc_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Vous ne pouvez modifier que les actualités de votre CRASC."
+            )
 
     # Handle thumbnail upload
     if thumbnail and thumbnail.filename:
@@ -465,9 +478,13 @@ async def valider_news(
 
 
 @news_router.delete("/{news_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_news(news_slug: str, db: AsyncSession = Depends(get_db)):
+async def delete_news(
+    news_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+):
     """
-    Delete a news article by slug
+    Delete a news article by slug (staff ou rédacteur CRASC propriétaire)
     """
     result = await db.execute(select(News).where(News.slug == news_slug))
     news = result.scalar_one_or_none()
@@ -477,6 +494,14 @@ async def delete_news(news_slug: str, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Actualité '{news_slug}' non trouvée."
         )
+
+    # Rédacteur CRASC : vérifier l'appartenance
+    if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
+        if news.crasc_id != current_user.crasc_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Vous ne pouvez supprimer que les actualités de votre CRASC."
+            )
 
     await db.delete(news)
     await db.commit()

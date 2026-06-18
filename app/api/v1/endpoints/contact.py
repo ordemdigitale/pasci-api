@@ -5,8 +5,10 @@ from typing import List, Optional
 
 from app.database.session import get_db
 from app.models.contact import ContactMessage
+from app.models.users import User
 from app.schemas.contact import ContactMessageCreate, ContactMessageRead, ContactMessageUpdate
 from app.services.email import send_contact_accuse, send_contact_notif_admin
+from app.core.auth import get_current_staff_user
 
 contact_router = APIRouter()
 
@@ -58,11 +60,13 @@ async def get_contacts(
     limit: int = Query(50, ge=1, le=200),
     statut: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
 ):
-    """Lister tous les messages de contact (admin)."""
-    query = select(ContactMessage).order_by(desc(ContactMessage.created_at)).offset(skip).limit(limit)
+    """Lister tous les messages de contact (staff only)."""
+    query = select(ContactMessage).order_by(desc(ContactMessage.created_at))
     if statut:
-        query = select(ContactMessage).where(ContactMessage.statut == statut).order_by(desc(ContactMessage.created_at)).offset(skip).limit(limit)
+        query = query.where(ContactMessage.statut == statut)
+    query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 

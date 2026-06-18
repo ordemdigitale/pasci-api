@@ -5,7 +5,9 @@ from typing import List, Optional
 
 from app.database.session import get_db
 from app.models.volontaire import Volontaire
+from app.models.users import User
 from app.schemas.volontaire import VolontaireCreate, VolontaireRead, VolontaireUpdate
+from app.core.auth import get_current_staff_user
 
 volontaires_router = APIRouter()
 
@@ -26,17 +28,23 @@ async def get_volontaires(
     limit: int = Query(50, ge=1, le=200),
     statut: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
 ):
-    """Lister toutes les candidatures (admin)."""
-    query = select(Volontaire).order_by(desc(Volontaire.created_at)).offset(skip).limit(limit)
+    """Lister toutes les candidatures (staff only)."""
+    query = select(Volontaire).order_by(desc(Volontaire.created_at))
     if statut:
-        query = select(Volontaire).where(Volontaire.statut == statut).order_by(desc(Volontaire.created_at)).offset(skip).limit(limit)
+        query = query.where(Volontaire.statut == statut)
+    query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return result.scalars().all()
 
 
 @volontaires_router.get("/{volontaire_id}", response_model=VolontaireRead)
-async def get_volontaire(volontaire_id: int, db: AsyncSession = Depends(get_db)):
+async def get_volontaire(
+    volontaire_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     result = await db.execute(select(Volontaire).where(Volontaire.id == volontaire_id))
     v = result.scalar_one_or_none()
     if not v:
@@ -45,7 +53,12 @@ async def get_volontaire(volontaire_id: int, db: AsyncSession = Depends(get_db))
 
 
 @volontaires_router.patch("/{volontaire_id}", response_model=VolontaireRead)
-async def update_volontaire(volontaire_id: int, data: VolontaireUpdate, db: AsyncSession = Depends(get_db)):
+async def update_volontaire(
+    volontaire_id: int,
+    data: VolontaireUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     result = await db.execute(select(Volontaire).where(Volontaire.id == volontaire_id))
     v = result.scalar_one_or_none()
     if not v:
@@ -58,7 +71,11 @@ async def update_volontaire(volontaire_id: int, data: VolontaireUpdate, db: Asyn
 
 
 @volontaires_router.delete("/{volontaire_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_volontaire(volontaire_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_volontaire(
+    volontaire_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     result = await db.execute(select(Volontaire).where(Volontaire.id == volontaire_id))
     v = result.scalar_one_or_none()
     if not v:
