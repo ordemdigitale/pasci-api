@@ -17,6 +17,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Check if table already exists before creating
+    from sqlalchemy import inspect
+    from alembic import op as _op
+    conn = _op.get_bind()
+    inspector = inspect(conn)
+    if "faq" in inspector.get_table_names():
+        return
+
     op.create_table(
         "faq",
         sa.Column("id", sa.Integer(), nullable=False),
