@@ -126,6 +126,35 @@ CREATE TABLE IF NOT EXISTS numero_utile (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+-- 12. Colonnes manquantes sur la table osc
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS sigle VARCHAR(100);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS region_nom VARCHAR(150);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS departement VARCHAR(150);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS sous_prefecture VARCHAR(150);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS origine_organisation VARCHAR(50);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS document_formalisation_path VARCHAR(2048);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS plan_action_document_path VARCHAR(2048);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS rapports_annuels_document_path VARCHAR(2048);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS domaine_prioritaire_5 VARCHAR(200);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nb_hommes_membres INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nb_membres_handicap INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nombre_mandats_be INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nb_cdi INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nb_cdd INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nb_femmes_beneficiaires INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nb_jeunes_beneficiaires INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS nb_beneficiaires_handicap INTEGER;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS date_derniere_activite VARCHAR(30);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS date_designation_responsable VARCHAR(30);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS date_prochaine_designation VARCHAR(30);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS adhesion_crasc_statut VARCHAR(20);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS adhesion_crasc_document_path VARCHAR(2048);
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS organes_gouvernance TEXT;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS pays_couverture TEXT;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS plan_action_annee_cours BOOLEAN;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS plan_action_annee_cours_details TEXT;
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS recommandations_2 TEXT;
+
 -- ============================================================
 SELECT 'Migration terminée avec succès' AS status;
 -- ============================================================
