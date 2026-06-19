@@ -48,7 +48,7 @@ from app.models.crasc import (
 )
 from app.models.forum import PoleConcertation
 from app.services.email import send_crasc_contact
-from app.services.file_uploads import save_formalisation_file
+from app.services.file_uploads import save_formalisation_file, save_supporting_document
 
 
 crasc_router = APIRouter()
@@ -371,6 +371,9 @@ async def create_osc(
     longitude: Optional[float] = Form(None),
     type_document_formalisation: Optional[str] = Form(None),
     document_formalisation_file: Optional[UploadFile] = File(None),
+    plan_action_document_file: Optional[UploadFile] = File(None),
+    rapports_annuels_document_file: Optional[UploadFile] = File(None),
+    adhesion_crasc_document_file: Optional[UploadFile] = File(None),
     existence_siege: Optional[bool] = Form(None),
     manuel_procedures: Optional[bool] = Form(None),
     plan_action: Optional[bool] = Form(None),
@@ -435,6 +438,21 @@ async def create_osc(
     else:
         saved_path = "default.png"
     saved_document_formalisation_path = save_formalisation_file(document_formalisation_file)
+    saved_plan_action_document_path = save_supporting_document(
+        plan_action_document_file,
+        "plan_action_document_file",
+        "osc-justificatifs/plan-action",
+    )
+    saved_rapports_annuels_document_path = save_supporting_document(
+        rapports_annuels_document_file,
+        "rapports_annuels_document_file",
+        "osc-justificatifs/rapports-annuels",
+    )
+    saved_adhesion_crasc_document_path = save_supporting_document(
+        adhesion_crasc_document_file,
+        "adhesion_crasc_document_file",
+        "osc-justificatifs/adhesion-crasc",
+    )
 
     resolved_adhesion_crasc = _adhesion_crasc_to_bool(adhesion_crasc_statut, adhesion_crasc)
 
@@ -449,9 +467,12 @@ async def create_osc(
         existence_siege=existence_siege,
         manuel_procedures=manuel_procedures,
         plan_action=plan_action,
+        plan_action_document_path=saved_plan_action_document_path,
         rapports_annuels=rapports_annuels,
+        rapports_annuels_document_path=saved_rapports_annuels_document_path,
         adhesion_crasc=resolved_adhesion_crasc,
         adhesion_crasc_statut=adhesion_crasc_statut,
+        adhesion_crasc_document_path=saved_adhesion_crasc_document_path,
         niveau_regroupement=niveau_regroupement,
         categorie=categorie,
         domaine_prioritaire=domaine_prioritaire,
@@ -735,6 +756,9 @@ async def update_osc_with_form(
     osc_update: OscUpdate = Depends(get_osc_update_form),
     thumbnail: Optional[UploadFile] = File(None),
     document_formalisation_file: Optional[UploadFile] = File(None),
+    plan_action_document_file: Optional[UploadFile] = File(None),
+    rapports_annuels_document_file: Optional[UploadFile] = File(None),
+    adhesion_crasc_document_file: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -767,6 +791,27 @@ async def update_osc_with_form(
     saved_document_formalisation_path = save_formalisation_file(document_formalisation_file)
     if saved_document_formalisation_path:
         osc.document_formalisation_path = saved_document_formalisation_path
+    saved_plan_action_document_path = save_supporting_document(
+        plan_action_document_file,
+        "plan_action_document_file",
+        "osc-justificatifs/plan-action",
+    )
+    if saved_plan_action_document_path:
+        osc.plan_action_document_path = saved_plan_action_document_path
+    saved_rapports_annuels_document_path = save_supporting_document(
+        rapports_annuels_document_file,
+        "rapports_annuels_document_file",
+        "osc-justificatifs/rapports-annuels",
+    )
+    if saved_rapports_annuels_document_path:
+        osc.rapports_annuels_document_path = saved_rapports_annuels_document_path
+    saved_adhesion_crasc_document_path = save_supporting_document(
+        adhesion_crasc_document_file,
+        "adhesion_crasc_document_file",
+        "osc-justificatifs/adhesion-crasc",
+    )
+    if saved_adhesion_crasc_document_path:
+        osc.adhesion_crasc_document_path = saved_adhesion_crasc_document_path
 
     update_data = {k: v for k, v in osc_update.model_dump().items() if v is not None}
     # Staff et utilisateurs OSC ne peuvent pas changer le crasc_id

@@ -186,7 +186,9 @@ class Osc(SQLModel, table=True):
   existence_siege: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un siège")
   manuel_procedures: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un manuel de procédures")
   plan_action: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un plan d'action")
+  plan_action_document_path: Optional[str] = Field(default=None, nullable=True, max_length=2048, description="Chemin de la preuve du plan d'action")
   rapports_annuels: Optional[bool] = Field(default=None, nullable=True, description="L'OSC rédige des rapports annuels d'activités")
+  rapports_annuels_document_path: Optional[str] = Field(default=None, nullable=True, max_length=2048, description="Chemin de la preuve des rapports annuels")
   niveau_couverture: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Niveau de couverture")
   zone_couverture: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Zone de couverture")
   categorie: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Catégorie d'organisation")
@@ -223,6 +225,7 @@ class Osc(SQLModel, table=True):
   duree_mandat_be: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Durée du mandat du bureau exécutif")
   adhesion_crasc: Optional[bool] = Field(default=None, nullable=True, description="Adhésion au CRASC")
   adhesion_crasc_statut: Optional[str] = Field(default=None, nullable=True, max_length=20, description="Statut d'adhésion au CRASC")
+  adhesion_crasc_document_path: Optional[str] = Field(default=None, nullable=True, max_length=2048, description="Chemin de la preuve d'adhésion au CRASC")
   niveau_regroupement: Optional[str] = Field(
     default=None,
     nullable=True,

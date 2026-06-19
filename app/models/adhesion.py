@@ -57,9 +57,12 @@ class DemandeAdhesion(SQLModel, table=True):
     plan_action_annee_cours: Optional[bool] = Field(default=None, nullable=True)
     plan_action_annee_cours_details: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     plan_action: Optional[bool] = Field(default=None, nullable=True)
+    plan_action_document_path: Optional[str] = Field(default=None, max_length=2048, nullable=True)
     nb_activites: Optional[int] = Field(default=None, nullable=True)
     date_derniere_activite: Optional[str] = Field(default=None, max_length=30, nullable=True)
     rapports_annuels: Optional[bool] = Field(default=None, nullable=True)
+    rapports_annuels_document_path: Optional[str] = Field(default=None, max_length=2048, nullable=True)
+    adhesion_crasc_document_path: Optional[str] = Field(default=None, max_length=2048, nullable=True)
     recommandations: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     recommandations_2: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     statut: str = Field(default="en_attente", max_length=20, nullable=False)  # en_attente | approuvee | rejetee

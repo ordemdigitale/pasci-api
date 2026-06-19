@@ -140,7 +140,9 @@ class OscBase(BaseModel):
   existence_siege: Optional[bool] = None
   manuel_procedures: Optional[bool] = None
   plan_action: Optional[bool] = None
+  plan_action_document_path: Optional[str] = None
   rapports_annuels: Optional[bool] = None
+  rapports_annuels_document_path: Optional[str] = None
   niveau_couverture: Optional[str] = None
   zone_couverture: Optional[str] = None
   categorie: Optional[str] = None
@@ -177,6 +179,7 @@ class OscBase(BaseModel):
   duree_mandat_be: Optional[str] = None
   adhesion_crasc: Optional[bool] = None
   adhesion_crasc_statut: Optional[AdhesionCrascStatut] = None
+  adhesion_crasc_document_path: Optional[str] = None
   niveau_regroupement: Optional[NiveauRegroupement] = None
   reseau_appartenance: Optional[str] = None
   organes_gouvernance: Optional[str] = None
@@ -247,6 +250,27 @@ class OscBase(BaseModel):
       return f"{settings.API_BASE_URL}/static/{self.document_formalisation_path}"
     return None
 
+  @computed_field
+  @property
+  def plan_action_document_url(self) -> Optional[str]:
+    if self.plan_action_document_path:
+      return f"{settings.API_BASE_URL}/static/{self.plan_action_document_path}"
+    return None
+
+  @computed_field
+  @property
+  def rapports_annuels_document_url(self) -> Optional[str]:
+    if self.rapports_annuels_document_path:
+      return f"{settings.API_BASE_URL}/static/{self.rapports_annuels_document_path}"
+    return None
+
+  @computed_field
+  @property
+  def adhesion_crasc_document_url(self) -> Optional[str]:
+    if self.adhesion_crasc_document_path:
+      return f"{settings.API_BASE_URL}/static/{self.adhesion_crasc_document_path}"
+    return None
+
 class OscCreate(OscBase):
   pass
 
@@ -299,7 +323,9 @@ class OscUpdate(BaseModel):
   existence_siege: Optional[bool] = None
   manuel_procedures: Optional[bool] = None
   plan_action: Optional[bool] = None
+  plan_action_document_path: Optional[str] = None
   rapports_annuels: Optional[bool] = None
+  rapports_annuels_document_path: Optional[str] = None
   niveau_couverture: Optional[str] = None
   zone_couverture: Optional[str] = None
   categorie: Optional[str] = None
@@ -336,6 +362,7 @@ class OscUpdate(BaseModel):
   duree_mandat_be: Optional[str] = None
   adhesion_crasc: Optional[bool] = None
   adhesion_crasc_statut: Optional[AdhesionCrascStatut] = None
+  adhesion_crasc_document_path: Optional[str] = None
   niveau_regroupement: Optional[NiveauRegroupement] = None
   reseau_appartenance: Optional[str] = None
   organes_gouvernance: Optional[str] = None

@@ -53,9 +53,12 @@ class DemandeAdhesionCreate(BaseModel):
     plan_action_annee_cours: Optional[bool] = None
     plan_action_annee_cours_details: Optional[str] = None
     plan_action: Optional[bool] = None
+    plan_action_document_path: Optional[str] = None
     nb_activites: Optional[int] = None
     date_derniere_activite: Optional[str] = None
     rapports_annuels: Optional[bool] = None
+    rapports_annuels_document_path: Optional[str] = None
+    adhesion_crasc_document_path: Optional[str] = None
     recommandations: Optional[str] = None
     recommandations_2: Optional[str] = None
 
@@ -110,9 +113,12 @@ class DemandeAdhesionRead(BaseModel):
     plan_action_annee_cours: Optional[bool] = None
     plan_action_annee_cours_details: Optional[str] = None
     plan_action: Optional[bool] = None
+    plan_action_document_path: Optional[str] = None
     nb_activites: Optional[int] = None
     date_derniere_activite: Optional[str] = None
     rapports_annuels: Optional[bool] = None
+    rapports_annuels_document_path: Optional[str] = None
+    adhesion_crasc_document_path: Optional[str] = None
     recommandations: Optional[str] = None
     recommandations_2: Optional[str] = None
     statut: str

@@ -13,7 +13,7 @@ from app.models.adhesion import DemandeAdhesion
 from app.models.crasc import Osc, Crasc
 from app.models.users import User
 from app.core.auth import get_current_staff_user
-from app.services.file_uploads import save_formalisation_file
+from app.services.file_uploads import save_formalisation_file, save_supporting_document
 from app.schemas.adhesion import (
     DemandeAdhesionCreate,
     DemandeAdhesionRead,
@@ -24,6 +24,25 @@ from app.schemas.adhesion import (
 
 adhesion_router = APIRouter()
 
+DEMANDE_DOCUMENT_UPLOADS = {
+    "document_formalisation_file": (
+        "document_formalisation_path",
+        lambda file: save_formalisation_file(file),
+    ),
+    "plan_action_document_file": (
+        "plan_action_document_path",
+        lambda file: save_supporting_document(file, "plan_action_document_file", "osc-justificatifs/plan-action"),
+    ),
+    "rapports_annuels_document_file": (
+        "rapports_annuels_document_path",
+        lambda file: save_supporting_document(file, "rapports_annuels_document_file", "osc-justificatifs/rapports-annuels"),
+    ),
+    "adhesion_crasc_document_file": (
+        "adhesion_crasc_document_path",
+        lambda file: save_supporting_document(file, "adhesion_crasc_document_file", "osc-justificatifs/adhesion-crasc"),
+    ),
+}
+
 
 async def _read_demande_payload(request: Request) -> DemandeAdhesionCreate:
     content_type = request.headers.get("content-type", "")
@@ -32,11 +51,15 @@ async def _read_demande_payload(request: Request) -> DemandeAdhesionCreate:
 
     form = await request.form()
     payload = {}
-    document_formalisation_path: Optional[str] = None
+    saved_documents: dict[str, str] = {}
 
     for key, value in form.multi_items():
-        if key == "document_formalisation_file" and hasattr(value, "filename"):
-            document_formalisation_path = save_formalisation_file(value)
+        upload_config = DEMANDE_DOCUMENT_UPLOADS.get(key)
+        if upload_config and hasattr(value, "filename"):
+            payload_key, save_file = upload_config
+            saved_path = save_file(value)
+            if saved_path:
+                saved_documents[payload_key] = saved_path
             continue
         if hasattr(value, "filename"):
             continue
@@ -44,8 +67,7 @@ async def _read_demande_payload(request: Request) -> DemandeAdhesionCreate:
             continue
         payload[key] = value
 
-    if document_formalisation_path:
-        payload["document_formalisation_path"] = document_formalisation_path
+    payload.update(saved_documents)
 
     return DemandeAdhesionCreate(**payload)
 
@@ -111,9 +133,12 @@ def _osc_payload_from_demande(demande: DemandeAdhesion, crasc_id: Optional[int])
         "plan_action_annee_cours": demande.plan_action_annee_cours,
         "plan_action_annee_cours_details": demande.plan_action_annee_cours_details,
         "plan_action": demande.plan_action,
+        "plan_action_document_path": demande.plan_action_document_path,
         "nb_activites": demande.nb_activites,
         "date_derniere_activite": demande.date_derniere_activite,
         "rapports_annuels": demande.rapports_annuels,
+        "rapports_annuels_document_path": demande.rapports_annuels_document_path,
+        "adhesion_crasc_document_path": demande.adhesion_crasc_document_path,
         "recommandations": demande.recommandations,
         "recommandations_2": demande.recommandations_2,
     }
