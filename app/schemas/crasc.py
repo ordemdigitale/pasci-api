@@ -7,7 +7,8 @@ from app.core.config import settings
 from app.services.osc_autoevaluation import COULEUR_HEX, calculer_score_autoevaluation, couleur_pour_score
 
 T = TypeVar("T")
-NiveauRegroupement = Literal["Réseau", "Fédération", "Plateforme", "Confédération"]
+NiveauRegroupement = Literal["Simple", "Réseau", "Fédération", "Plateforme", "Confédération"]
+AdhesionCrascStatut = Literal["oui", "non", "en_cours"]
 
 class PaginatedResponse(BaseModel, Generic[T]):
   items: List[T]
@@ -113,6 +114,7 @@ class OscTypeUpdate(BaseModel):
 #Osc Schemas
 class OscBase(BaseModel):
   name: str
+  sigle: Optional[str] = None
   description: Optional[str] = None
   thumbnail_path: Optional[str] = None
   type_id: Optional[int] = Field(default=None, foreign_key="osctype.id")
@@ -123,13 +125,18 @@ class OscBase(BaseModel):
   # Informations de contact pour l'annuaire
   email: Optional[str] = None
   phone: Optional[str] = None
+  region_nom: Optional[str] = None
+  departement: Optional[str] = None
+  sous_prefecture: Optional[str] = None
   ville: Optional[str] = None
+  origine_organisation: Optional[str] = None
   # Champs complémentaires
   website: Optional[str] = None
   reseaux_sociaux: Optional[str] = None
   date_creation: Optional[str] = None
   numero_recepisse: Optional[str] = None
   type_document_formalisation: Optional[str] = None
+  document_formalisation_path: Optional[str] = None
   existence_siege: Optional[bool] = None
   manuel_procedures: Optional[bool] = None
   plan_action: Optional[bool] = None
@@ -141,13 +148,23 @@ class OscBase(BaseModel):
   domaine_prioritaire_2: Optional[str] = None
   domaine_prioritaire_3: Optional[str] = None
   domaine_prioritaire_4: Optional[str] = None
+  domaine_prioritaire_5: Optional[str] = None
   nb_membres: Optional[int] = None
   nb_femmes_membres: Optional[int] = None
+  nb_hommes_membres: Optional[int] = None
   nb_membres_jeunes: Optional[int] = None
+  nb_membres_handicap: Optional[int] = None
   nb_membres_be: Optional[int] = None
+  nombre_mandats_be: Optional[int] = None
   nb_personnes_engagees: Optional[int] = None
+  nb_cdi: Optional[int] = None
+  nb_cdd: Optional[int] = None
   nb_beneficiaires: Optional[int] = None
+  nb_femmes_beneficiaires: Optional[int] = None
+  nb_jeunes_beneficiaires: Optional[int] = None
+  nb_beneficiaires_handicap: Optional[int] = None
   nb_activites: Optional[int] = None
+  date_derniere_activite: Optional[str] = None
   budget_annuel: Optional[int] = None
   type_financement: Optional[str] = None
   etat_cotisations: Optional[str] = None
@@ -155,15 +172,23 @@ class OscBase(BaseModel):
   nom_president: Optional[str] = None
   sexe_president: Optional[str] = None
   mode_designation_president: Optional[str] = None
+  date_designation_responsable: Optional[str] = None
+  date_prochaine_designation: Optional[str] = None
   duree_mandat_be: Optional[str] = None
   adhesion_crasc: Optional[bool] = None
+  adhesion_crasc_statut: Optional[AdhesionCrascStatut] = None
   niveau_regroupement: Optional[NiveauRegroupement] = None
   reseau_appartenance: Optional[str] = None
+  organes_gouvernance: Optional[str] = None
+  pays_couverture: Optional[str] = None
   secteurs_activites: Optional[str] = None
   populations_cibles: Optional[str] = None
   savoir_faire: Optional[str] = None
+  plan_action_annee_cours: Optional[bool] = None
+  plan_action_annee_cours_details: Optional[str] = None
   difficultes: Optional[str] = None
   recommandations: Optional[str] = None
+  recommandations_2: Optional[str] = None
   financement_cotisation: Optional[bool] = None
   financement_dons: Optional[bool] = None
   financement_legs: Optional[bool] = None
@@ -182,6 +207,7 @@ class OscBase(BaseModel):
       self.plan_action,
       self.rapports_annuels,
       self.adhesion_crasc,
+      self.adhesion_crasc_statut,
     )
 
   @computed_field
@@ -214,6 +240,13 @@ class OscBase(BaseModel):
       return f"{settings.API_BASE_URL}/static/{self.thumbnail_path}"
     return None
 
+  @computed_field
+  @property
+  def document_formalisation_url(self) -> Optional[str]:
+    if self.document_formalisation_path:
+      return f"{settings.API_BASE_URL}/static/{self.document_formalisation_path}"
+    return None
+
 class OscCreate(OscBase):
   pass
 
@@ -243,6 +276,7 @@ class OscReadDetail(OscBase):
     
 class OscUpdate(BaseModel):
   name: Optional[str] = None
+  sigle: Optional[str] = None
   description: Optional[str] = None
   type_id: Optional[int] = None
   crasc_id: Optional[int] = None
@@ -251,12 +285,17 @@ class OscUpdate(BaseModel):
   longitude: Optional[float] = None
   email: Optional[str] = None
   phone: Optional[str] = None
+  region_nom: Optional[str] = None
+  departement: Optional[str] = None
+  sous_prefecture: Optional[str] = None
   ville: Optional[str] = None
+  origine_organisation: Optional[str] = None
   website: Optional[str] = None
   reseaux_sociaux: Optional[str] = None
   date_creation: Optional[str] = None
   numero_recepisse: Optional[str] = None
   type_document_formalisation: Optional[str] = None
+  document_formalisation_path: Optional[str] = None
   existence_siege: Optional[bool] = None
   manuel_procedures: Optional[bool] = None
   plan_action: Optional[bool] = None
@@ -268,13 +307,23 @@ class OscUpdate(BaseModel):
   domaine_prioritaire_2: Optional[str] = None
   domaine_prioritaire_3: Optional[str] = None
   domaine_prioritaire_4: Optional[str] = None
+  domaine_prioritaire_5: Optional[str] = None
   nb_membres: Optional[int] = None
   nb_femmes_membres: Optional[int] = None
+  nb_hommes_membres: Optional[int] = None
   nb_membres_jeunes: Optional[int] = None
+  nb_membres_handicap: Optional[int] = None
   nb_membres_be: Optional[int] = None
+  nombre_mandats_be: Optional[int] = None
   nb_personnes_engagees: Optional[int] = None
+  nb_cdi: Optional[int] = None
+  nb_cdd: Optional[int] = None
   nb_beneficiaires: Optional[int] = None
+  nb_femmes_beneficiaires: Optional[int] = None
+  nb_jeunes_beneficiaires: Optional[int] = None
+  nb_beneficiaires_handicap: Optional[int] = None
   nb_activites: Optional[int] = None
+  date_derniere_activite: Optional[str] = None
   budget_annuel: Optional[int] = None
   type_financement: Optional[str] = None
   etat_cotisations: Optional[str] = None
@@ -282,15 +331,23 @@ class OscUpdate(BaseModel):
   nom_president: Optional[str] = None
   sexe_president: Optional[str] = None
   mode_designation_president: Optional[str] = None
+  date_designation_responsable: Optional[str] = None
+  date_prochaine_designation: Optional[str] = None
   duree_mandat_be: Optional[str] = None
   adhesion_crasc: Optional[bool] = None
+  adhesion_crasc_statut: Optional[AdhesionCrascStatut] = None
   niveau_regroupement: Optional[NiveauRegroupement] = None
   reseau_appartenance: Optional[str] = None
+  organes_gouvernance: Optional[str] = None
+  pays_couverture: Optional[str] = None
   secteurs_activites: Optional[str] = None
   populations_cibles: Optional[str] = None
   savoir_faire: Optional[str] = None
+  plan_action_annee_cours: Optional[bool] = None
+  plan_action_annee_cours_details: Optional[str] = None
   difficultes: Optional[str] = None
   recommandations: Optional[str] = None
+  recommandations_2: Optional[str] = None
 
 
 #News Schemas

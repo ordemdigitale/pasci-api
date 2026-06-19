@@ -139,6 +139,7 @@ class Osc(SQLModel, table=True):
     Represente une OSC (Organisation de la Société Civile) dans la base de données.
   """
   name: str = Field(index=True, unique=True)
+  sigle: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Sigle ou abréviation")
   description: Optional[str] = Field(default=None, nullable=True, max_length=500)
   thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
 
@@ -159,7 +160,11 @@ class Osc(SQLModel, table=True):
   # Informations de contact pour l'annuaire
   email: Optional[str] = Field(default=None, nullable=True, max_length=255, description="Email de contact")
   phone: Optional[str] = Field(default=None, nullable=True, max_length=50, description="Numéro de téléphone")
+  region_nom: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Région déclarée")
+  departement: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Département")
+  sous_prefecture: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Sous-préfecture")
   ville: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Ville de l'OSC")
+  origine_organisation: Optional[str] = Field(default=None, nullable=True, max_length=50, description="Lieu de naissance de l'organisation")
 
   # Informations complémentaires
   website: Optional[str] = Field(default=None, nullable=True, max_length=500, description="Site web")
@@ -172,6 +177,12 @@ class Osc(SQLModel, table=True):
     max_length=50,
     description="Niveau/type de document de formalisation de l'OSC",
   )
+  document_formalisation_path: Optional[str] = Field(
+    default=None,
+    nullable=True,
+    max_length=2048,
+    description="Chemin du justificatif de formalisation de l'OSC",
+  )
   existence_siege: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un siège")
   manuel_procedures: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un manuel de procédures")
   plan_action: Optional[bool] = Field(default=None, nullable=True, description="L'OSC dispose d'un plan d'action")
@@ -183,13 +194,23 @@ class Osc(SQLModel, table=True):
   domaine_prioritaire_2: Optional[str] = Field(default=None, nullable=True, max_length=200, description="2ème domaine prioritaire")
   domaine_prioritaire_3: Optional[str] = Field(default=None, nullable=True, max_length=200, description="3ème domaine prioritaire")
   domaine_prioritaire_4: Optional[str] = Field(default=None, nullable=True, max_length=200, description="4ème domaine prioritaire")
+  domaine_prioritaire_5: Optional[str] = Field(default=None, nullable=True, max_length=200, description="5ème domaine prioritaire")
   nb_membres: Optional[int] = Field(default=None, nullable=True, description="Nombre de membres")
   nb_femmes_membres: Optional[int] = Field(default=None, nullable=True, description="Nombre de femmes membres")
+  nb_hommes_membres: Optional[int] = Field(default=None, nullable=True, description="Nombre d'hommes membres")
   nb_membres_jeunes: Optional[int] = Field(default=None, nullable=True, description="Nombre de membres jeunes")
+  nb_membres_handicap: Optional[int] = Field(default=None, nullable=True, description="Nombre de membres en situation de handicap")
   nb_membres_be: Optional[int] = Field(default=None, nullable=True, description="Nombre de membres du bureau exécutif")
+  nombre_mandats_be: Optional[int] = Field(default=None, nullable=True, description="Nombre de mandats du BE ou DE actuel")
   nb_personnes_engagees: Optional[int] = Field(default=None, nullable=True, description="Nombre de personnes engagées")
+  nb_cdi: Optional[int] = Field(default=None, nullable=True, description="Nombre de CDI")
+  nb_cdd: Optional[int] = Field(default=None, nullable=True, description="Nombre de CDD")
   nb_beneficiaires: Optional[int] = Field(default=None, nullable=True, description="Nombre de bénéficiaires")
+  nb_femmes_beneficiaires: Optional[int] = Field(default=None, nullable=True, description="Nombre de femmes bénéficiaires")
+  nb_jeunes_beneficiaires: Optional[int] = Field(default=None, nullable=True, description="Nombre de jeunes bénéficiaires")
+  nb_beneficiaires_handicap: Optional[int] = Field(default=None, nullable=True, description="Nombre de bénéficiaires en situation de handicap")
   nb_activites: Optional[int] = Field(default=None, nullable=True, description="Nombre d'activités réalisées")
+  date_derniere_activite: Optional[str] = Field(default=None, nullable=True, max_length=30, description="Date de la dernière activité réalisée")
   budget_annuel: Optional[int] = Field(default=None, nullable=True, description="Budget annuel en F/CFA")
   type_financement: Optional[str] = Field(default=None, nullable=True, max_length=500, description="Types de financement")
   etat_cotisations: Optional[str] = Field(default=None, nullable=True, max_length=200, description="État des cotisations")
@@ -197,8 +218,11 @@ class Osc(SQLModel, table=True):
   nom_president: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Nom du président")
   sexe_president: Optional[str] = Field(default=None, nullable=True, max_length=20, description="Sexe du président")
   mode_designation_president: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Mode de désignation du président")
+  date_designation_responsable: Optional[str] = Field(default=None, nullable=True, max_length=30, description="Date de désignation du/de la responsable actuel(le)")
+  date_prochaine_designation: Optional[str] = Field(default=None, nullable=True, max_length=30, description="Prochaine date de désignation")
   duree_mandat_be: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Durée du mandat du bureau exécutif")
   adhesion_crasc: Optional[bool] = Field(default=None, nullable=True, description="Adhésion au CRASC")
+  adhesion_crasc_statut: Optional[str] = Field(default=None, nullable=True, max_length=20, description="Statut d'adhésion au CRASC")
   niveau_regroupement: Optional[str] = Field(
     default=None,
     nullable=True,
@@ -206,11 +230,16 @@ class Osc(SQLModel, table=True):
     description="Niveau de regroupement de l'OSC",
   )
   reseau_appartenance: Optional[str] = Field(default=None, nullable=True, description="Réseau d'appartenance")
+  organes_gouvernance: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Organes de gouvernance")
+  pays_couverture: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Pays de couverture")
   secteurs_activites: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Secteurs d'activités")
   populations_cibles: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Populations cibles")
   savoir_faire: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Savoir-faire / expertise")
+  plan_action_annee_cours: Optional[bool] = Field(default=None, nullable=True, description="Plan d'action pour l'année en cours")
+  plan_action_annee_cours_details: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Plan d'action et activités à venir")
   difficultes: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Difficultés rencontrées")
   recommandations: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Recommandations")
+  recommandations_2: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Deuxième recommandation")
   # Sources de financement (booléens)
   financement_cotisation: Optional[bool] = Field(default=None, nullable=True)
   financement_dons: Optional[bool] = Field(default=None, nullable=True)

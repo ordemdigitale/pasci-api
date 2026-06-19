@@ -26,7 +26,9 @@ def calculer_score_autoevaluation(
     plan_action: Optional[bool],
     rapports_annuels: Optional[bool],
     adhesion_crasc: Optional[bool],
+    adhesion_crasc_statut: Optional[str] = None,
 ) -> int:
+    adhesion_oui = adhesion_crasc_statut == "oui" if adhesion_crasc_statut else bool(adhesion_crasc)
     return min(
         20,
         FORMALISATION_POINTS.get(type_document_formalisation or "", 0)
@@ -34,7 +36,7 @@ def calculer_score_autoevaluation(
         + (3 if manuel_procedures else 0)
         + (3 if plan_action else 0)
         + (3 if rapports_annuels else 0)
-        + (1 if adhesion_crasc else 0),
+        + (1 if adhesion_oui else 0),
     )
 
 

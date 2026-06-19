@@ -3,7 +3,7 @@ import secrets
 import string
 import slugify as python_slugify
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlmodel import select, desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
@@ -13,6 +13,7 @@ from app.models.adhesion import DemandeAdhesion
 from app.models.crasc import Osc, Crasc
 from app.models.users import User
 from app.core.auth import get_current_staff_user
+from app.services.file_uploads import save_formalisation_file
 from app.schemas.adhesion import (
     DemandeAdhesionCreate,
     DemandeAdhesionRead,
@@ -24,12 +25,105 @@ from app.schemas.adhesion import (
 adhesion_router = APIRouter()
 
 
+async def _read_demande_payload(request: Request) -> DemandeAdhesionCreate:
+    content_type = request.headers.get("content-type", "")
+    if not content_type.startswith("multipart/form-data"):
+        return DemandeAdhesionCreate(**await request.json())
+
+    form = await request.form()
+    payload = {}
+    document_formalisation_path: Optional[str] = None
+
+    for key, value in form.multi_items():
+        if key == "document_formalisation_file" and hasattr(value, "filename"):
+            document_formalisation_path = save_formalisation_file(value)
+            continue
+        if hasattr(value, "filename"):
+            continue
+        if value == "":
+            continue
+        payload[key] = value
+
+    if document_formalisation_path:
+        payload["document_formalisation_path"] = document_formalisation_path
+
+    return DemandeAdhesionCreate(**payload)
+
+
 def _generate_password(length: int = 12) -> str:
     alphabet = string.ascii_letters + string.digits + "!@#$%"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-async def _provision_osc_and_user(demande: DemandeAdhesion, db: AsyncSession, force_crasc_id: Optional[int] = None) -> Optional[OscCredentials]:
+def _adhesion_crasc_to_bool(statut: Optional[str]) -> Optional[bool]:
+    if statut == "oui":
+        return True
+    if statut == "non":
+        return False
+    return None
+
+
+def _osc_payload_from_demande(demande: DemandeAdhesion, crasc_id: Optional[int]) -> dict:
+    return {
+        "name": demande.nom_organisation,
+        "sigle": demande.sigle,
+        "description": demande.description,
+        "email": demande.email,
+        "phone": demande.telephone,
+        "region_nom": demande.region,
+        "departement": demande.departement,
+        "sous_prefecture": demande.sous_prefecture,
+        "ville": demande.ville,
+        "origine_organisation": demande.origine_organisation,
+        "crasc_id": crasc_id,
+        "type_document_formalisation": demande.type_document_formalisation,
+        "document_formalisation_path": demande.document_formalisation_path,
+        "existence_siege": demande.existence_siege,
+        "categorie": demande.categorie,
+        "niveau_regroupement": demande.niveau_regroupement,
+        "domaine_prioritaire": demande.domaine_prioritaire,
+        "domaine_prioritaire_2": demande.domaine_prioritaire_2,
+        "domaine_prioritaire_3": demande.domaine_prioritaire_3,
+        "domaine_prioritaire_4": demande.domaine_prioritaire_4,
+        "domaine_prioritaire_5": demande.domaine_prioritaire_5,
+        "nb_membres": demande.nb_membres,
+        "nb_femmes_membres": demande.nb_femmes_membres,
+        "nb_hommes_membres": demande.nb_hommes_membres,
+        "nb_membres_jeunes": demande.nb_membres_jeunes,
+        "nb_membres_handicap": demande.nb_membres_handicap,
+        "nb_membres_be": demande.nb_membres_be,
+        "nombre_mandats_be": demande.nombre_mandats_be,
+        "duree_mandat_be": demande.duree_mandat_be,
+        "nb_beneficiaires": demande.nb_beneficiaires,
+        "nb_femmes_beneficiaires": demande.nb_femmes_beneficiaires,
+        "nb_jeunes_beneficiaires": demande.nb_jeunes_beneficiaires,
+        "nb_beneficiaires_handicap": demande.nb_beneficiaires_handicap,
+        "adhesion_crasc": _adhesion_crasc_to_bool(demande.adhesion_crasc_statut),
+        "adhesion_crasc_statut": demande.adhesion_crasc_statut,
+        "organes_gouvernance": demande.organes_gouvernance,
+        "pays_couverture": demande.pays_couverture,
+        "nb_personnes_engagees": demande.nb_personnes_engagees,
+        "nb_cdi": demande.nb_cdi,
+        "nb_cdd": demande.nb_cdd,
+        "date_designation_responsable": demande.date_designation_responsable,
+        "date_prochaine_designation": demande.date_prochaine_designation,
+        "manuel_procedures": demande.manuel_procedures,
+        "plan_action_annee_cours": demande.plan_action_annee_cours,
+        "plan_action_annee_cours_details": demande.plan_action_annee_cours_details,
+        "plan_action": demande.plan_action,
+        "nb_activites": demande.nb_activites,
+        "date_derniere_activite": demande.date_derniere_activite,
+        "rapports_annuels": demande.rapports_annuels,
+        "recommandations": demande.recommandations,
+        "recommandations_2": demande.recommandations_2,
+    }
+
+
+async def _provision_osc_and_user(
+    demande: DemandeAdhesion,
+    db: AsyncSession,
+    force_crasc_id: Optional[int] = None,
+) -> Optional[OscCredentials]:
     """
     Crée (ou retrouve) l'OSC correspondant à la demande, puis crée
     (ou met à jour) le compte utilisateur lié.
@@ -51,17 +145,17 @@ async def _provision_osc_and_user(demande: DemandeAdhesion, db: AsyncSession, fo
     )
     osc = osc_result.scalar_one_or_none()
 
+    osc_payload = _osc_payload_from_demande(demande, crasc_id)
     if not osc:
-        osc = Osc(
-            name=demande.nom_organisation,
-            description=demande.description,
-            email=demande.email,
-            phone=demande.telephone,
-            ville=demande.ville,
-            crasc_id=crasc_id,
-        )
+        osc = Osc(**osc_payload)
         db.add(osc)
         await db.flush()  # obtenir l'id sans commit
+    else:
+        for key, value in osc_payload.items():
+            if key == "name":
+                continue
+            if value is not None:
+                setattr(osc, key, value)
 
     # --- 3. Créer ou mettre à jour l'utilisateur ---
     user_result = await db.execute(
@@ -119,8 +213,9 @@ async def _provision_osc_and_user(demande: DemandeAdhesion, db: AsyncSession, fo
 
 
 @adhesion_router.post("", response_model=DemandeAdhesionRead, status_code=status.HTTP_201_CREATED)
-async def create_demande(data: DemandeAdhesionCreate, db: AsyncSession = Depends(get_db)):
+async def create_demande(request: Request, db: AsyncSession = Depends(get_db)):
     """Soumettre une nouvelle demande d'adhésion"""
+    data = await _read_demande_payload(request)
     demande = DemandeAdhesion(**data.model_dump())
     db.add(demande)
     await db.commit()

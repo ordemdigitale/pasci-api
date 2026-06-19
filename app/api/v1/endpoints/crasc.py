@@ -48,9 +48,18 @@ from app.models.crasc import (
 )
 from app.models.forum import PoleConcertation
 from app.services.email import send_crasc_contact
+from app.services.file_uploads import save_formalisation_file
 
 
 crasc_router = APIRouter()
+
+
+def _adhesion_crasc_to_bool(statut: Optional[str], fallback: Optional[bool] = None) -> Optional[bool]:
+    if statut == "oui":
+        return True
+    if statut == "non":
+        return False
+    return fallback
 
 
 # ─────────────────────────── CRASC ───────────────────────────
@@ -345,23 +354,61 @@ async def delete_osc_type(
 @crasc_router.post("/osc", response_model=OscRead, status_code=status.HTTP_201_CREATED)
 async def create_osc(
     name: str = Form(...),
+    sigle: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     thumbnail: Optional[UploadFile] = File(None),
     type_id: str = Form(""),
     crasc_id: str = Form(""),
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
+    region_nom: Optional[str] = Form(None),
+    departement: Optional[str] = Form(None),
+    sous_prefecture: Optional[str] = Form(None),
     ville: Optional[str] = Form(None),
+    origine_organisation: Optional[str] = Form(None),
     address: Optional[str] = Form(None),
     latitude: Optional[float] = Form(None),
     longitude: Optional[float] = Form(None),
     type_document_formalisation: Optional[str] = Form(None),
+    document_formalisation_file: Optional[UploadFile] = File(None),
     existence_siege: Optional[bool] = Form(None),
     manuel_procedures: Optional[bool] = Form(None),
     plan_action: Optional[bool] = Form(None),
     rapports_annuels: Optional[bool] = Form(None),
     adhesion_crasc: Optional[bool] = Form(None),
-    niveau_regroupement: Optional[Literal["Réseau", "Fédération", "Plateforme", "Confédération"]] = Form(None),
+    adhesion_crasc_statut: Optional[Literal["oui", "non", "en_cours"]] = Form(None),
+    niveau_regroupement: Optional[Literal["Simple", "Réseau", "Fédération", "Plateforme", "Confédération"]] = Form(None),
+    categorie: Optional[str] = Form(None),
+    domaine_prioritaire: Optional[str] = Form(None),
+    domaine_prioritaire_2: Optional[str] = Form(None),
+    domaine_prioritaire_3: Optional[str] = Form(None),
+    domaine_prioritaire_4: Optional[str] = Form(None),
+    domaine_prioritaire_5: Optional[str] = Form(None),
+    nb_membres: Optional[int] = Form(None),
+    nb_femmes_membres: Optional[int] = Form(None),
+    nb_hommes_membres: Optional[int] = Form(None),
+    nb_membres_jeunes: Optional[int] = Form(None),
+    nb_membres_handicap: Optional[int] = Form(None),
+    nb_membres_be: Optional[int] = Form(None),
+    nombre_mandats_be: Optional[int] = Form(None),
+    duree_mandat_be: Optional[str] = Form(None),
+    nb_beneficiaires: Optional[int] = Form(None),
+    nb_femmes_beneficiaires: Optional[int] = Form(None),
+    nb_jeunes_beneficiaires: Optional[int] = Form(None),
+    nb_beneficiaires_handicap: Optional[int] = Form(None),
+    organes_gouvernance: Optional[str] = Form(None),
+    pays_couverture: Optional[str] = Form(None),
+    nb_personnes_engagees: Optional[int] = Form(None),
+    nb_cdi: Optional[int] = Form(None),
+    nb_cdd: Optional[int] = Form(None),
+    date_designation_responsable: Optional[str] = Form(None),
+    date_prochaine_designation: Optional[str] = Form(None),
+    plan_action_annee_cours: Optional[bool] = Form(None),
+    plan_action_annee_cours_details: Optional[str] = Form(None),
+    nb_activites: Optional[int] = Form(None),
+    date_derniere_activite: Optional[str] = Form(None),
+    recommandations: Optional[str] = Form(None),
+    recommandations_2: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_or_superuser),
 ):
@@ -387,19 +434,56 @@ async def create_osc(
         saved_path = filename
     else:
         saved_path = "default.png"
+    saved_document_formalisation_path = save_formalisation_file(document_formalisation_file)
+
+    resolved_adhesion_crasc = _adhesion_crasc_to_bool(adhesion_crasc_statut, adhesion_crasc)
 
     db_osc = Osc(
-        name=name, description=description, thumbnail_path=saved_path,
+        name=name, sigle=sigle, description=description, thumbnail_path=saved_path,
         type_id=type_id_int, crasc_id=resolved_crasc_id,
-        email=email, phone=phone, ville=ville, address=address,
+        email=email, phone=phone, region_nom=region_nom, departement=departement,
+        sous_prefecture=sous_prefecture, ville=ville, origine_organisation=origine_organisation, address=address,
         latitude=latitude, longitude=longitude,
         type_document_formalisation=type_document_formalisation,
+        document_formalisation_path=saved_document_formalisation_path,
         existence_siege=existence_siege,
         manuel_procedures=manuel_procedures,
         plan_action=plan_action,
         rapports_annuels=rapports_annuels,
-        adhesion_crasc=adhesion_crasc,
+        adhesion_crasc=resolved_adhesion_crasc,
+        adhesion_crasc_statut=adhesion_crasc_statut,
         niveau_regroupement=niveau_regroupement,
+        categorie=categorie,
+        domaine_prioritaire=domaine_prioritaire,
+        domaine_prioritaire_2=domaine_prioritaire_2,
+        domaine_prioritaire_3=domaine_prioritaire_3,
+        domaine_prioritaire_4=domaine_prioritaire_4,
+        domaine_prioritaire_5=domaine_prioritaire_5,
+        nb_membres=nb_membres,
+        nb_femmes_membres=nb_femmes_membres,
+        nb_hommes_membres=nb_hommes_membres,
+        nb_membres_jeunes=nb_membres_jeunes,
+        nb_membres_handicap=nb_membres_handicap,
+        nb_membres_be=nb_membres_be,
+        nombre_mandats_be=nombre_mandats_be,
+        duree_mandat_be=duree_mandat_be,
+        nb_beneficiaires=nb_beneficiaires,
+        nb_femmes_beneficiaires=nb_femmes_beneficiaires,
+        nb_jeunes_beneficiaires=nb_jeunes_beneficiaires,
+        nb_beneficiaires_handicap=nb_beneficiaires_handicap,
+        organes_gouvernance=organes_gouvernance,
+        pays_couverture=pays_couverture,
+        nb_personnes_engagees=nb_personnes_engagees,
+        nb_cdi=nb_cdi,
+        nb_cdd=nb_cdd,
+        date_designation_responsable=date_designation_responsable,
+        date_prochaine_designation=date_prochaine_designation,
+        plan_action_annee_cours=plan_action_annee_cours,
+        plan_action_annee_cours_details=plan_action_annee_cours_details,
+        nb_activites=nb_activites,
+        date_derniere_activite=date_derniere_activite,
+        recommandations=recommandations,
+        recommandations_2=recommandations_2,
     )
     result = await db.execute(select(Osc).where(Osc.name == db_osc.name))
     if result.scalars().first():
@@ -426,6 +510,10 @@ async def get_all_osc(
     crasc_id: Optional[int] = Query(None),
     region_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    type_document_formalisation: Optional[str] = Query(None),
+    has_document_formalisation: Optional[bool] = Query(None),
+    sort_by: Literal["name", "type_document_formalisation", "document_formalisation"] = Query("name"),
+    sort_order: Literal["asc", "desc"] = Query("asc"),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
@@ -437,6 +525,12 @@ async def get_all_osc(
     if search:
         term = f"%{search}%"
         filters.append((Osc.name.ilike(term)) | (Osc.description.ilike(term)))
+    if type_document_formalisation:
+        filters.append(Osc.type_document_formalisation == type_document_formalisation)
+    if has_document_formalisation is True:
+        filters.append(Osc.document_formalisation_path.is_not(None))
+    elif has_document_formalisation is False:
+        filters.append(Osc.document_formalisation_path.is_(None))
 
     # Un admin CRASC ne voit que les OSCs de son CRASC
     if current_user and current_user.is_staff and not current_user.is_superuser:
@@ -455,7 +549,15 @@ async def get_all_osc(
     )
     if filters:
         query = query.where(*filters)
-    query = query.order_by(Osc.name).offset(offset).limit(size)
+    if sort_by == "type_document_formalisation":
+        order_column = Osc.type_document_formalisation
+        query = query.order_by(order_column.asc() if sort_order == "asc" else order_column.desc(), Osc.name.asc())
+    elif sort_by == "document_formalisation":
+        has_no_document = Osc.document_formalisation_path.is_(None)
+        query = query.order_by(has_no_document.asc() if sort_order == "asc" else has_no_document.desc(), Osc.name.asc())
+    else:
+        query = query.order_by(Osc.name.asc() if sort_order == "asc" else Osc.name.desc())
+    query = query.offset(offset).limit(size)
 
     result = await db.execute(query)
     items = result.scalars().all()
@@ -499,13 +601,18 @@ async def get_osc_by_slug(
 
 async def get_osc_update_form(
     name: Optional[str] = Form(None),
+    sigle: Optional[str] = Form(None),
     description: Optional[str] = Form(""),
     type_id: str = Form(""),
     crasc_id: str = Form(""),
     address: Optional[str] = Form(""),
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
+    region_nom: Optional[str] = Form(None),
+    departement: Optional[str] = Form(None),
+    sous_prefecture: Optional[str] = Form(None),
     ville: Optional[str] = Form(None),
+    origine_organisation: Optional[str] = Form(None),
     latitude: Optional[str] = Form(None),
     longitude: Optional[str] = Form(None),
     website: Optional[str] = Form(None),
@@ -524,13 +631,23 @@ async def get_osc_update_form(
     domaine_prioritaire_2: Optional[str] = Form(None),
     domaine_prioritaire_3: Optional[str] = Form(None),
     domaine_prioritaire_4: Optional[str] = Form(None),
+    domaine_prioritaire_5: Optional[str] = Form(None),
     nb_membres: Optional[str] = Form(None),
     nb_femmes_membres: Optional[str] = Form(None),
+    nb_hommes_membres: Optional[str] = Form(None),
     nb_membres_jeunes: Optional[str] = Form(None),
+    nb_membres_handicap: Optional[str] = Form(None),
     nb_membres_be: Optional[str] = Form(None),
+    nombre_mandats_be: Optional[str] = Form(None),
     nb_personnes_engagees: Optional[str] = Form(None),
+    nb_cdi: Optional[str] = Form(None),
+    nb_cdd: Optional[str] = Form(None),
     nb_beneficiaires: Optional[str] = Form(None),
+    nb_femmes_beneficiaires: Optional[str] = Form(None),
+    nb_jeunes_beneficiaires: Optional[str] = Form(None),
+    nb_beneficiaires_handicap: Optional[str] = Form(None),
     nb_activites: Optional[str] = Form(None),
+    date_derniere_activite: Optional[str] = Form(None),
     budget_annuel: Optional[str] = Form(None),
     type_financement: Optional[str] = Form(None),
     etat_cotisations: Optional[str] = Form(None),
@@ -538,24 +655,35 @@ async def get_osc_update_form(
     nom_president: Optional[str] = Form(None),
     sexe_president: Optional[str] = Form(None),
     mode_designation_president: Optional[str] = Form(None),
+    date_designation_responsable: Optional[str] = Form(None),
+    date_prochaine_designation: Optional[str] = Form(None),
     duree_mandat_be: Optional[str] = Form(None),
     adhesion_crasc: Optional[str] = Form(None),
+    adhesion_crasc_statut: Optional[str] = Form(None),
     niveau_regroupement: Optional[str] = Form(None),
     reseau_appartenance: Optional[str] = Form(None),
+    organes_gouvernance: Optional[str] = Form(None),
+    pays_couverture: Optional[str] = Form(None),
+    plan_action_annee_cours: Optional[str] = Form(None),
+    plan_action_annee_cours_details: Optional[str] = Form(None),
     secteurs_activites: Optional[str] = Form(None),
     populations_cibles: Optional[str] = Form(None),
     savoir_faire: Optional[str] = Form(None),
     difficultes: Optional[str] = Form(None),
     recommandations: Optional[str] = Form(None),
+    recommandations_2: Optional[str] = Form(None),
 ) -> OscUpdate:
     def to_int(v): return int(v) if v and v.strip() != "" else None
     def to_float(v): return float(v) if v and v.strip() != "" else None
     def to_bool(v): return True if v == "true" else (False if v == "false" else None)
+    resolved_adhesion_crasc = _adhesion_crasc_to_bool(adhesion_crasc_statut, to_bool(adhesion_crasc))
 
     return OscUpdate(
-        name=name, description=description,
+        name=name, sigle=sigle, description=description,
         type_id=to_int(type_id), crasc_id=to_int(crasc_id),
-        address=address, email=email, phone=phone, ville=ville,
+        address=address, email=email, phone=phone, region_nom=region_nom,
+        departement=departement, sous_prefecture=sous_prefecture, ville=ville,
+        origine_organisation=origine_organisation,
         latitude=to_float(latitude), longitude=to_float(longitude),
         website=website, reseaux_sociaux=reseaux_sociaux,
         date_creation=date_creation, numero_recepisse=numero_recepisse,
@@ -568,18 +696,36 @@ async def get_osc_update_form(
         categorie=categorie,
         domaine_prioritaire=domaine_prioritaire, domaine_prioritaire_2=domaine_prioritaire_2,
         domaine_prioritaire_3=domaine_prioritaire_3, domaine_prioritaire_4=domaine_prioritaire_4,
+        domaine_prioritaire_5=domaine_prioritaire_5,
         nb_membres=to_int(nb_membres), nb_femmes_membres=to_int(nb_femmes_membres),
-        nb_membres_jeunes=to_int(nb_membres_jeunes), nb_membres_be=to_int(nb_membres_be),
+        nb_hommes_membres=to_int(nb_hommes_membres),
+        nb_membres_jeunes=to_int(nb_membres_jeunes),
+        nb_membres_handicap=to_int(nb_membres_handicap),
+        nb_membres_be=to_int(nb_membres_be),
+        nombre_mandats_be=to_int(nombre_mandats_be),
         nb_personnes_engagees=to_int(nb_personnes_engagees),
-        nb_beneficiaires=to_int(nb_beneficiaires), nb_activites=to_int(nb_activites),
+        nb_cdi=to_int(nb_cdi), nb_cdd=to_int(nb_cdd),
+        nb_beneficiaires=to_int(nb_beneficiaires),
+        nb_femmes_beneficiaires=to_int(nb_femmes_beneficiaires),
+        nb_jeunes_beneficiaires=to_int(nb_jeunes_beneficiaires),
+        nb_beneficiaires_handicap=to_int(nb_beneficiaires_handicap),
+        nb_activites=to_int(nb_activites), date_derniere_activite=date_derniere_activite,
         budget_annuel=to_int(budget_annuel), type_financement=type_financement,
         etat_cotisations=etat_cotisations, montant_cotisation=to_int(montant_cotisation),
         nom_president=nom_president, sexe_president=sexe_president,
-        mode_designation_president=mode_designation_president, duree_mandat_be=duree_mandat_be,
-        adhesion_crasc=to_bool(adhesion_crasc), niveau_regroupement=niveau_regroupement,
-        reseau_appartenance=reseau_appartenance,
+        mode_designation_president=mode_designation_president,
+        date_designation_responsable=date_designation_responsable,
+        date_prochaine_designation=date_prochaine_designation,
+        duree_mandat_be=duree_mandat_be,
+        adhesion_crasc=resolved_adhesion_crasc, adhesion_crasc_statut=adhesion_crasc_statut,
+        niveau_regroupement=niveau_regroupement,
+        reseau_appartenance=reseau_appartenance, organes_gouvernance=organes_gouvernance,
+        pays_couverture=pays_couverture,
+        plan_action_annee_cours=to_bool(plan_action_annee_cours),
+        plan_action_annee_cours_details=plan_action_annee_cours_details,
         secteurs_activites=secteurs_activites, populations_cibles=populations_cibles,
         savoir_faire=savoir_faire, difficultes=difficultes, recommandations=recommandations,
+        recommandations_2=recommandations_2,
     )
 
 
@@ -588,6 +734,7 @@ async def update_osc_with_form(
     osc_slug: str,
     osc_update: OscUpdate = Depends(get_osc_update_form),
     thumbnail: Optional[UploadFile] = File(None),
+    document_formalisation_file: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -616,6 +763,10 @@ async def update_osc_with_form(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(thumbnail.file, buffer)
         osc.thumbnail_path = filename
+
+    saved_document_formalisation_path = save_formalisation_file(document_formalisation_file)
+    if saved_document_formalisation_path:
+        osc.document_formalisation_path = saved_document_formalisation_path
 
     update_data = {k: v for k, v in osc_update.model_dump().items() if v is not None}
     # Staff et utilisateurs OSC ne peuvent pas changer le crasc_id
