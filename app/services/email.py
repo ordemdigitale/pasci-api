@@ -7,7 +7,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
-import ssl
 import aiosmtplib
 from jinja2 import Environment, BaseLoader
 
@@ -210,10 +209,6 @@ async def _send(to: str, subject: str, html: str) -> None:
         msg["To"] = to
         msg.attach(MIMEText(html, "html", "utf-8"))
 
-        tls_context = ssl.create_default_context()
-        tls_context.check_hostname = False
-        tls_context.verify_mode = ssl.CERT_NONE
-
         await aiosmtplib.send(
             msg,
             hostname=settings.SMTP_HOST,
@@ -222,7 +217,6 @@ async def _send(to: str, subject: str, html: str) -> None:
             password=settings.SMTP_PASSWORD or None,
             use_tls=settings.SMTP_TLS,
             start_tls=settings.SMTP_STARTTLS,
-            tls_context=tls_context,
         )
         logger.info("Email envoyé → %s | %s", to, subject)
     except Exception as exc:
