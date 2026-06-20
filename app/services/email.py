@@ -808,3 +808,76 @@ async def send_reset_password(
         subject="Réinitialisation de votre mot de passe PASCI",
         html=html,
     )
+
+
+_WELCOME_OSC = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#2a591d;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Bienvenue sur PASCI, {{ osc_name }} !</h2>
+            <p style="margin:0 0 16px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour <strong>{{ user_name }}</strong>,<br><br>
+              Un compte a été créé pour votre organisation sur la plateforme PASCI.<br>
+              Votre identifiant de connexion est : <strong>{{ user_email }}</strong>
+            </p>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Pour accéder à votre espace, vous devez d'abord définir votre mot de passe en cliquant sur le bouton ci-dessous. Ce lien est valable <strong>24 heures</strong>.
+            </p>
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+              <tr><td style="background:#2a591d;border-radius:6px;">
+                <a href="{{ reset_url }}" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">
+                  Définir mon mot de passe →
+                </a>
+              </td></tr>
+            </table>
+            <p style="margin:0 0 16px;color:#888;font-size:12px;">
+              Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>
+              <a href="{{ reset_url }}" style="color:#2a591d;word-break:break-all;">{{ reset_url }}</a>
+            </p>
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              Cet email a été envoyé à {{ user_email }}.<br>
+              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_welcome_osc(
+    *,
+    user_name: str,
+    user_email: str,
+    osc_name: str,
+    token: str,
+) -> None:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    reset_url = f"{frontend_url}/auth/reset-password?token={token}"
+    html = _render(
+        _WELCOME_OSC,
+        user_name=user_name,
+        user_email=user_email,
+        osc_name=osc_name,
+        reset_url=reset_url,
+    )
+    await _send(
+        to=user_email,
+        subject=f"Votre compte PASCI — {osc_name}",
+        html=html,
+    )

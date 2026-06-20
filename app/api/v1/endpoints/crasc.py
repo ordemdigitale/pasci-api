@@ -1,4 +1,5 @@
-import os, shutil, uuid, slugify
+import os, shutil, uuid, slugify, secrets
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select, func
@@ -47,7 +48,7 @@ from app.models.crasc import (
    Crasc, Region, OscType, Osc, News, Evenement, CrascVideo
 )
 from app.models.forum import PoleConcertation
-from app.services.email import send_crasc_contact
+from app.services.email import send_crasc_contact, send_welcome_osc
 from app.services.file_uploads import save_formalisation_file, save_supporting_document
 
 
@@ -1160,6 +1161,7 @@ async def create_osc_user(
         if (await db.execute(select(User).where(User.username == user_data.username))).scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Ce nom d'utilisateur est déjà pris.")
 
+    token = secrets.token_urlsafe(32)
     new_user = User(
         email=user_data.email,
         username=user_data.username,
@@ -1167,11 +1169,24 @@ async def create_osc_user(
         last_name=user_data.last_name,
         is_active=True,
         osc_id=osc.id,
+        reset_token=token,
+        reset_token_expires=datetime.now(timezone.utc) + timedelta(hours=24),
     )
     new_user.set_password(user_data.password)
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
+
+    try:
+        await send_welcome_osc(
+            user_name=new_user.full_name or new_user.get_username(),
+            user_email=new_user.email,
+            osc_name=osc.name,
+            token=token,
+        )
+    except Exception:
+        pass  # Ne pas bloquer la création si l'email échoue
+
     return new_user
 
 
