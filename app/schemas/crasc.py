@@ -199,6 +199,7 @@ class OscBase(BaseModel):
   financement_fonds_propres: Optional[bool] = None
   financement_ong_intl: Optional[bool] = None
   financement_multilateral: Optional[bool] = None
+  is_visible: bool = True
 
   @computed_field
   @property

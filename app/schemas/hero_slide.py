@@ -8,6 +8,7 @@ from app.core.config import settings
 class HeroSlideRead(BaseModel):
     id: int
     image_path: str
+    type: str
     ordre: int
     is_active: bool
     created_at: datetime

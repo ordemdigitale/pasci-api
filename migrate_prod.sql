@@ -275,6 +275,12 @@ ALTER TABLE osc ADD COLUMN IF NOT EXISTS plan_action_annee_cours BOOLEAN;
 ALTER TABLE osc ADD COLUMN IF NOT EXISTS plan_action_annee_cours_details TEXT;
 ALTER TABLE osc ADD COLUMN IF NOT EXISTS recommandations_2 TEXT;
 
+-- 21. Champ type sur hero_slide (séparation slides haut / partenaires bas)
+ALTER TABLE hero_slide ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'haut';
+
+-- 22. Visibilité OSC dans l'annuaire public
+ALTER TABLE osc ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE;
+
 -- ============================================================
 SELECT 'Migration terminée avec succès' AS status;
 -- ============================================================

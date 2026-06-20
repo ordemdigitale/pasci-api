@@ -31,11 +31,14 @@ def _delete_image(image_path: Optional[str]):
 @hero_slides_router.get("", response_model=List[HeroSlideRead])
 async def get_hero_slides(
     active_only: bool = False,
+    type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = select(HeroSlide).order_by(asc(HeroSlide.ordre), asc(HeroSlide.id))
     if active_only:
         query = query.where(HeroSlide.is_active == True)
+    if type:
+        query = query.where(HeroSlide.type == type)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -43,12 +46,13 @@ async def get_hero_slides(
 @hero_slides_router.post("", response_model=HeroSlideRead, status_code=status.HTTP_201_CREATED)
 async def create_hero_slide(
     image: UploadFile = File(...),
+    type: str = Form(default="haut"),
     ordre: int = Form(default=0),
     is_active: bool = Form(default=True),
     db: AsyncSession = Depends(get_db),
 ):
     filename = _save_image(image)
-    slide = HeroSlide(image_path=filename, ordre=ordre, is_active=is_active)
+    slide = HeroSlide(image_path=filename, type=type, ordre=ordre, is_active=is_active)
     db.add(slide)
     await db.commit()
     await db.refresh(slide)
@@ -59,6 +63,7 @@ async def create_hero_slide(
 async def update_hero_slide(
     slide_id: int,
     image: Optional[UploadFile] = File(default=None),
+    type: Optional[str] = Form(default=None),
     ordre: Optional[int] = Form(default=None),
     is_active: Optional[bool] = Form(default=None),
     db: AsyncSession = Depends(get_db),
@@ -71,6 +76,8 @@ async def update_hero_slide(
     if image and image.filename:
         _delete_image(slide.image_path)
         slide.image_path = _save_image(image)
+    if type is not None:
+        slide.type = type
     if ordre is not None:
         slide.ordre = ordre
     if is_active is not None:

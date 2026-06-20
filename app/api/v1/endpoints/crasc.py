@@ -560,6 +560,10 @@ async def get_all_osc(
     elif crasc_id:
         filters.append(Osc.crasc_id == crasc_id)
 
+    # Les utilisateurs non-admin ne voient que les OSCs visibles
+    if not current_user or not (current_user.is_staff or current_user.is_superuser):
+        filters.append(Osc.is_visible == True)
+
     count_query = select(func.count()).select_from(Osc)
     if filters:
         count_query = count_query.where(*filters)
@@ -855,6 +859,24 @@ async def delete_osc(
     await db.delete(osc)
     await db.commit()
     return None
+
+
+@crasc_router.patch("/osc/{osc_slug}/visibility", response_model=OscRead)
+async def toggle_osc_visibility(
+    osc_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Bascule la visibilité publique d'une OSC (afficher/masquer dans l'annuaire)."""
+    result = await db.execute(select(Osc).where(Osc.slug == osc_slug))
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail=f"Osc {osc_slug} non trouvée.")
+    check_crasc_ownership(current_user, osc.crasc_id)
+    osc.is_visible = not osc.is_visible
+    await db.commit()
+    await db.refresh(osc)
+    return osc
 
 
 @crasc_router.patch("/osc/{osc_slug}/poles", response_model=OscReadDetail)
