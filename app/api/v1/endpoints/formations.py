@@ -616,6 +616,13 @@ async def create_formation(
 
     statut_pub = "publie" if current_user.is_staff else "en_attente"
 
+    # Synchroniser categorie avec le nom de la rubrique si rubrique_id fourni
+    if rubrique_id_int:
+        rubrique_result = await db.execute(select(FormationRubrique).where(FormationRubrique.id == rubrique_id_int))
+        rubrique_obj = rubrique_result.scalar_one_or_none()
+        if rubrique_obj:
+            categorie = rubrique_obj.name
+
     try:
         formation = Formation(
             title=title.strip(),
@@ -952,6 +959,13 @@ async def update_formation(
     update_data = formation_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(formation, key, value)
+
+    # Synchroniser categorie avec le nom de la rubrique si rubrique_id mis à jour
+    if "rubrique_id" in update_data and update_data["rubrique_id"]:
+        rubrique_result = await db.execute(select(FormationRubrique).where(FormationRubrique.id == update_data["rubrique_id"]))
+        rubrique_obj = rubrique_result.scalar_one_or_none()
+        if rubrique_obj:
+            formation.categorie = rubrique_obj.name
 
     # Update slug if title changed
     if "title" in update_data:

@@ -281,6 +281,13 @@ ALTER TABLE hero_slide ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'haut';
 -- 22. Visibilité OSC dans l'annuaire public
 ALTER TABLE osc ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE;
 
+-- 23. Synchroniser le champ categorie avec le nom de la rubrique sur les formations existantes
+UPDATE formations f
+SET categorie = fr.name
+FROM formation_rubrique fr
+WHERE f.rubrique_id = fr.id
+  AND (f.categorie IS NULL OR f.categorie != fr.name);
+
 -- ============================================================
 SELECT 'Migration terminée avec succès' AS status;
 -- ============================================================
