@@ -1,4 +1,4 @@
-import os, shutil, uuid, slugify, secrets
+import json, os, shutil, uuid, slugify, secrets
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
 from sqlalchemy.orm import selectinload, joinedload
@@ -33,6 +33,7 @@ from app.schemas.crasc import (
    OscTypeUpdate,
    OscRead,
    OscReadDetail,
+   OscModificationRequestRead,
    OscUpdate,
    NewsCreate,
    NewsRead,
@@ -47,7 +48,7 @@ from app.schemas.crasc import (
    PaginatedResponse
 )
 from app.models.crasc import (
-   Crasc, Region, OscType, Osc, News, Evenement, CrascVideo
+   Crasc, Region, OscType, Osc, OscModificationRequest, News, Evenement, CrascVideo
 )
 from app.models.forum import PoleConcertation
 from app.services.email import send_crasc_contact, send_welcome_osc
@@ -63,6 +64,99 @@ def _adhesion_crasc_to_bool(statut: Optional[str], fallback: Optional[bool] = No
     if statut == "non":
         return False
     return fallback
+
+
+def _serialize_osc_modification_request(request: OscModificationRequest) -> dict:
+    osc = request.osc
+    return {
+        "id": request.id,
+        "osc_id": request.osc_id,
+        "osc_name": osc.name if osc else None,
+        "osc_slug": osc.slug if osc else None,
+        "crasc_id": osc.crasc_id if osc else None,
+        "status": request.status,
+        "changes": request.changes or {},
+        "pole_ids": request.pole_ids,
+        "created_at": request.created_at,
+        "updated_at": request.updated_at,
+        "reviewed_at": request.reviewed_at,
+        "review_comment": request.review_comment,
+    }
+
+
+def _parse_pole_ids(raw_pole_ids: Optional[str]) -> Optional[List[int]]:
+    if raw_pole_ids is None or raw_pole_ids == "":
+        return None
+    try:
+        data = json.loads(raw_pole_ids)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Format invalide pour les pôles de concertation.")
+    if not isinstance(data, list):
+        raise HTTPException(status_code=400, detail="Les pôles de concertation doivent être une liste.")
+    try:
+        return [int(item) for item in data]
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Les identifiants de pôles sont invalides.")
+
+
+def _same_osc_value(current_value, submitted_value) -> bool:
+    if current_value is None and submitted_value == "":
+        return True
+    if submitted_value is None and current_value == "":
+        return True
+    return current_value == submitted_value
+
+
+def _save_osc_thumbnail(thumbnail: Optional[UploadFile]) -> Optional[str]:
+    if not thumbnail or not thumbnail.filename:
+        return None
+    allowed_extensions = ["jpg", "jpeg", "png", "webp"]
+    file_extension = thumbnail.filename.split(".")[-1].lower()
+    if file_extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail=f"Format invalide. Formats acceptés: {', '.join(allowed_extensions)}")
+    filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(thumbnail.file, buffer)
+    return filename
+
+
+async def _apply_osc_changes(
+    osc: Osc,
+    changes: dict,
+    pole_ids: Optional[List[int]],
+    db: AsyncSession,
+    current_user: User,
+) -> None:
+    update_data = dict(changes or {})
+    if not current_user.is_superuser:
+        update_data.pop("crasc_id", None)
+    if "name" in update_data and update_data["name"]:
+        conflict = await db.execute(select(Osc).where(Osc.name == update_data["name"], Osc.id != osc.id))
+        if conflict.scalars().first():
+            raise HTTPException(status_code=409, detail="Une OSC avec ce nom existe déjà.")
+
+    for key, value in update_data.items():
+        setattr(osc, key, value)
+
+    if "name" in update_data and update_data["name"]:
+        base_slug = slugify.slugify(osc.name)[:95]
+        new_slug = base_slug
+        n = 1
+        while True:
+            conflict = await db.execute(select(Osc).where(Osc.slug == new_slug, Osc.id != osc.id))
+            if not conflict.scalars().first():
+                break
+            n += 1
+            new_slug = f"{base_slug}-{n}"
+        osc.slug = new_slug
+
+    if pole_ids is not None:
+        if pole_ids:
+            poles_result = await db.execute(select(PoleConcertation).where(PoleConcertation.id.in_(pole_ids)))
+            osc.poles = list(poles_result.scalars().all())
+        else:
+            osc.poles = []
 
 
 # ─────────────────────────── CRASC ───────────────────────────
@@ -757,6 +851,160 @@ async def get_osc_update_form(
     )
 
 
+@crasc_router.get("/osc-modification-requests/en-attente", response_model=List[OscModificationRequestRead])
+async def get_pending_osc_modification_requests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Liste les modifications OSC en attente de validation admin."""
+    query = select(OscModificationRequest).where(OscModificationRequest.status == "en_attente").options(
+        selectinload(OscModificationRequest.osc)
+    )
+    if current_user.is_staff and not current_user.is_superuser:
+        query = query.join(Osc).where(Osc.crasc_id == current_user.crasc_id)
+    query = query.order_by(OscModificationRequest.created_at.asc())
+    result = await db.execute(query)
+    return [_serialize_osc_modification_request(request) for request in result.scalars().all()]
+
+
+@crasc_router.post("/osc/{osc_slug}/modification-requests", response_model=OscModificationRequestRead, status_code=status.HTTP_202_ACCEPTED)
+async def submit_osc_modification_request(
+    osc_slug: str,
+    osc_update: OscUpdate = Depends(get_osc_update_form),
+    thumbnail: Optional[UploadFile] = File(None),
+    document_formalisation_file: Optional[UploadFile] = File(None),
+    plan_action_document_file: Optional[UploadFile] = File(None),
+    rapports_annuels_document_file: Optional[UploadFile] = File(None),
+    adhesion_crasc_document_file: Optional[UploadFile] = File(None),
+    pole_ids: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_osc_user),
+):
+    """Crée ou remplace la demande de modification en attente d'une OSC."""
+    result = await db.execute(
+        select(Osc).where(Osc.slug == osc_slug).options(selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.poles))
+    )
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC non trouvée")
+    check_osc_ownership(current_user, osc.id)
+
+    submitted_changes = {k: v for k, v in osc_update.model_dump().items() if v is not None}
+    submitted_changes.pop("crasc_id", None)
+    changes = {
+        key: value
+        for key, value in submitted_changes.items()
+        if not _same_osc_value(getattr(osc, key, None), value)
+    }
+
+    saved_thumbnail_path = _save_osc_thumbnail(thumbnail)
+    if saved_thumbnail_path:
+        changes["thumbnail_path"] = saved_thumbnail_path
+
+    saved_document_formalisation_path = save_formalisation_file(document_formalisation_file)
+    if saved_document_formalisation_path:
+        changes["document_formalisation_path"] = saved_document_formalisation_path
+
+    saved_plan_action_document_path = save_supporting_document(
+        plan_action_document_file,
+        "plan_action_document_file",
+        "osc-justificatifs/plan-action",
+    )
+    if saved_plan_action_document_path:
+        changes["plan_action_document_path"] = saved_plan_action_document_path
+
+    saved_rapports_annuels_document_path = save_supporting_document(
+        rapports_annuels_document_file,
+        "rapports_annuels_document_file",
+        "osc-justificatifs/rapports-annuels",
+    )
+    if saved_rapports_annuels_document_path:
+        changes["rapports_annuels_document_path"] = saved_rapports_annuels_document_path
+
+    saved_adhesion_crasc_document_path = save_supporting_document(
+        adhesion_crasc_document_file,
+        "adhesion_crasc_document_file",
+        "osc-justificatifs/adhesion-crasc",
+    )
+    if saved_adhesion_crasc_document_path:
+        changes["adhesion_crasc_document_path"] = saved_adhesion_crasc_document_path
+
+    parsed_pole_ids = _parse_pole_ids(pole_ids)
+    if parsed_pole_ids is not None:
+        current_pole_ids = sorted(pole.id for pole in (osc.poles or []) if pole.id is not None)
+        if sorted(parsed_pole_ids) == current_pole_ids:
+            parsed_pole_ids = None
+    if not changes and parsed_pole_ids is None:
+        raise HTTPException(status_code=400, detail="Aucune modification à soumettre.")
+
+    pending_result = await db.execute(
+        select(OscModificationRequest).where(
+            OscModificationRequest.osc_id == osc.id,
+            OscModificationRequest.status == "en_attente",
+        ).options(selectinload(OscModificationRequest.osc))
+    )
+    request = pending_result.scalar_one_or_none()
+    if request:
+        request.changes = changes
+        request.pole_ids = parsed_pole_ids
+        request.requested_by_id = str(current_user.id)
+        request.updated_at = datetime.now(timezone.utc)
+    else:
+        request = OscModificationRequest(
+            osc_id=osc.id,
+            osc=osc,
+            changes=changes,
+            pole_ids=parsed_pole_ids,
+            requested_by_id=str(current_user.id),
+        )
+        db.add(request)
+
+    await db.commit()
+    await db.refresh(request)
+    request.osc = osc
+    return _serialize_osc_modification_request(request)
+
+
+@crasc_router.patch("/osc-modification-requests/{request_id}/review", response_model=OscModificationRequestRead)
+async def review_osc_modification_request(
+    request_id: int,
+    action: Literal["approuvee", "rejetee", "approuve", "rejete"] = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Approuve ou rejette une modification OSC soumise en modération."""
+    result = await db.execute(
+        select(OscModificationRequest).where(OscModificationRequest.id == request_id).options(
+            selectinload(OscModificationRequest.osc).selectinload(Osc.poles)
+        )
+    )
+    request = result.scalar_one_or_none()
+    if not request or not request.osc:
+        raise HTTPException(status_code=404, detail="Demande de modification introuvable.")
+    if request.status != "en_attente":
+        raise HTTPException(status_code=400, detail="Cette demande a déjà été traitée.")
+
+    if current_user.is_staff and not current_user.is_superuser:
+        check_crasc_ownership(current_user, request.osc.crasc_id)
+
+    normalized_action = "approuvee" if action == "approuve" else ("rejetee" if action == "rejete" else action)
+    if normalized_action == "approuvee":
+        await _apply_osc_changes(request.osc, request.changes, request.pole_ids, db, current_user)
+
+    request.status = normalized_action
+    request.reviewed_by_id = str(current_user.id)
+    request.reviewed_at = datetime.now(timezone.utc)
+    request.updated_at = datetime.now(timezone.utc)
+
+    try:
+        await db.commit()
+        await db.refresh(request)
+        return _serialize_osc_modification_request(request)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail={"type": "database_error", "errors": [{"field": "database", "message": str(e)}]})
+
+
 @crasc_router.patch("/osc/{osc_slug}", response_model=OscRead)
 async def update_osc_with_form(
     osc_slug: str,
@@ -778,8 +1026,11 @@ async def update_osc_with_form(
 
     # Vérification des droits
     if not (current_user.is_staff or current_user.is_superuser):
-        # L'utilisateur doit être rattaché à cette OSC
         check_osc_ownership(current_user, osc.id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Les modifications d'une OSC doivent être soumises en modération.",
+        )
 
     if current_user.is_staff and not current_user.is_superuser:
         check_crasc_ownership(current_user, osc.crasc_id)
@@ -901,6 +1152,10 @@ async def update_osc_poles(
 
     if not (current_user.is_staff or current_user.is_superuser):
         check_osc_ownership(current_user, osc.id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Les modifications des pôles d'une OSC doivent être soumises en modération.",
+        )
     if current_user.is_staff and not current_user.is_superuser:
         check_crasc_ownership(current_user, osc.crasc_id)
 

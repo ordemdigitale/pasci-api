@@ -1,9 +1,9 @@
 # models/crasc.py (Model name CRASC + related models)
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer, Table, UniqueConstraint
+from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer, Table, UniqueConstraint, JSON
 from sqlalchemy.event import listens_for
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 import slugify, re
 from app.models.tags import NewsTag
 from sqlmodel import SQLModel as _SM
@@ -269,6 +269,10 @@ class Osc(SQLModel, table=True):
     back_populates="oscs",
     sa_relationship_kwargs={"secondary": "osc_pole", "lazy": "selectin"},
   )
+  modification_requests: List["OscModificationRequest"] = Relationship(
+    back_populates="osc",
+    sa_relationship_kwargs={"passive_deletes": True},
+  )
   id: Optional[int] = Field(default=None, primary_key=True)
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
   created_at: datetime = Field(
@@ -289,6 +293,31 @@ class Osc(SQLModel, table=True):
   # Representation in admin/logs
   def __repr__(self) -> str:
     return f"<Nome de l'OSC: {self.name}>"
+
+
+class OscModificationRequest(SQLModel, table=True):
+  """Demande de modification soumise par une OSC et validée par un admin."""
+
+  __tablename__ = "osc_modification_request"
+
+  id: Optional[int] = Field(default=None, primary_key=True)
+  osc_id: int = Field(foreign_key="osc.id", nullable=False, index=True)
+  osc: Optional[Osc] = Relationship(back_populates="modification_requests")
+  status: str = Field(default="en_attente", nullable=False, max_length=30, index=True)
+  changes: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+  pole_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+  requested_by_id: Optional[str] = Field(default=None, nullable=True, max_length=80)
+  reviewed_by_id: Optional[str] = Field(default=None, nullable=True, max_length=80)
+  review_comment: Optional[str] = Field(default=None, nullable=True, max_length=500)
+  created_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+  )
+  updated_at: datetime = Field(
+    default_factory=lambda: datetime.now(timezone.utc),
+    sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
+  )
+  reviewed_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
 
 
 class News(SQLModel, table=True):

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, computed_field, field_validator
-from typing import Optional, List, Generic, TypeVar, Literal
+from typing import Any, Dict, Optional, List, Generic, TypeVar, Literal
 from datetime import datetime
 from math import isnan
 from sqlmodel import Field
@@ -298,6 +298,20 @@ class OscReadDetail(OscBase):
   poles: Optional[List[PoleMinimal]] = []
   class Config:
     from_attributes = True
+
+class OscModificationRequestRead(BaseModel):
+  id: int
+  osc_id: int
+  osc_name: Optional[str] = None
+  osc_slug: Optional[str] = None
+  crasc_id: Optional[int] = None
+  status: str
+  changes: Dict[str, Any]
+  pole_ids: Optional[List[int]] = None
+  created_at: datetime
+  updated_at: datetime
+  reviewed_at: Optional[datetime] = None
+  review_comment: Optional[str] = None
     
 class OscUpdate(BaseModel):
   name: Optional[str] = None
