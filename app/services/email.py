@@ -217,6 +217,7 @@ async def _send(to: str, subject: str, html: str) -> None:
             password=settings.SMTP_PASSWORD or None,
             use_tls=settings.SMTP_TLS,
             start_tls=settings.SMTP_STARTTLS,
+            validate_certs=False,
         )
         logger.info("Email envoyé → %s | %s", to, subject)
     except Exception as exc:
