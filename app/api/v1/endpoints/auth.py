@@ -36,7 +36,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     # Convert user.id (which is a UUID object) to a string using str()
     user_id_str = str(user.id)
     access_token = create_access_token(data={"sub": user_id_str})
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token_value = create_refresh_token(data={"sub": user_id_str})
+    return {"access_token": access_token, "refresh_token": refresh_token_value, "token_type": "bearer"}
 
 
 @auth_router.post("/register", response_model=UserRead)
@@ -60,15 +61,19 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     return user
 
 
+class RefreshTokenBody(BaseModel):
+    refresh_token: str
+
 @auth_router.post("/refresh")
-async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
+async def refresh_token(body: RefreshTokenBody, db: AsyncSession = Depends(get_db)):
+    refresh_token = body.refresh_token
     # Simple validation (you can expand with blacklist)
     from jose import jwt, JWTError
     try:
         payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid refresh token")
-        user_id = int(payload["sub"])
+        user_id = payload["sub"]
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
