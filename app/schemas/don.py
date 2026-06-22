@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
@@ -31,6 +31,7 @@ class DonRead(BaseModel):
     montant: int
     message: Optional[str] = None
     transaction_id: Optional[str] = None
+    operateur: Optional[str] = None
     statut: str
     created_at: datetime
 
@@ -38,6 +39,7 @@ class DonRead(BaseModel):
         from_attributes = True
 
 
+# Legacy — kept for backward compat
 class DonInitierResponse(BaseModel):
     don_id: int
     transaction_id: str
@@ -48,3 +50,14 @@ class DonInitierResponse(BaseModel):
 class WebhookPayload(BaseModel):
     transaction_id: Optional[str] = None
     cpm_trans_id: Optional[str] = None
+
+
+# Paiement manuel
+class DonSoumettreTransaction(BaseModel):
+    transaction_id: str
+    operateur: Optional[str] = None  # "wave" | "orange_money"
+
+
+class DonCreateResponse(BaseModel):
+    don_id: int
+    statut: str

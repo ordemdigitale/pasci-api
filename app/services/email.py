@@ -881,3 +881,315 @@ async def send_welcome_osc(
         subject=f"Votre compte PASCI — {osc_name}",
         html=html,
     )
+
+# ── Paiement manuel Wave / Orange Money ──────────────────────────────────────
+
+_INSTRUCTIONS_PAIEMENT_MANUEL = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#E05017;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Instructions de paiement</h2>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour <strong>{{ participant_name }}</strong>,<br><br>
+              Votre inscription à la formation <strong>« {{ formation_title }} »</strong> est en attente de paiement.
+              Pour confirmer votre place, effectuez un paiement de <strong>{{ montant }} FCFA</strong> via Wave ou Orange Money,
+              puis soumettez votre code de transaction.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff8f5;border:1px solid #fde8dc;border-radius:8px;margin-bottom:24px;">
+              <tr><td style="padding:24px;">
+                <p style="margin:0 0 16px;font-size:13px;color:#888;text-transform:uppercase;letter-spacing:.5px;">Informations de paiement</p>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td style="padding:8px 0;border-bottom:1px solid #fde8dc;">
+                    <p style="margin:0;font-size:14px;color:#555;">Wave</p>
+                    <p style="margin:4px 0 0;font-size:16px;font-weight:700;color:#1a1a1a;">{{ wave_number }}</p>
+                  </td></tr>
+                  <tr><td style="padding:8px 0;border-bottom:1px solid #fde8dc;">
+                    <p style="margin:0;font-size:14px;color:#555;">Orange Money</p>
+                    <p style="margin:4px 0 0;font-size:16px;font-weight:700;color:#1a1a1a;">{{ orange_money_number }}</p>
+                  </td></tr>
+                  <tr><td style="padding:8px 0;border-bottom:1px solid #fde8dc;">
+                    <p style="margin:0;font-size:14px;color:#555;">Montant</p>
+                    <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#E05017;">{{ montant }} FCFA</p>
+                  </td></tr>
+                  <tr><td style="padding:8px 0;">
+                    <p style="margin:0;font-size:14px;color:#555;">Formation</p>
+                    <p style="margin:4px 0 0;font-size:15px;font-weight:600;color:#1a1a1a;">{{ formation_title }}</p>
+                  </td></tr>
+                </table>
+              </td></tr>
+            </table>
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+              <tr><td style="background:#E05017;border-radius:6px;">
+                <a href="{{ formation_url }}#paiement" style="display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">
+                  Confirmer mon paiement →
+                </a>
+              </td></tr>
+            </table>
+            <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">
+              Après avoir effectué le paiement, revenez sur la page de la formation et soumettez votre code de transaction dans la section <strong>« Confirmer mon paiement »</strong>.
+            </p>
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              Cet email a été envoyé à {{ participant_email }}.<br>
+              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_instructions_paiement_manuel(
+    *,
+    participant_name: str,
+    participant_email: str,
+    formation_title: str,
+    formation_slug: str,
+    montant: float,
+    inscription_id: int,
+) -> None:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    html = _render(
+        _INSTRUCTIONS_PAIEMENT_MANUEL,
+        participant_name=participant_name,
+        participant_email=participant_email,
+        formation_title=formation_title,
+        montant=f"{montant:,.0f}".replace(",", " "),
+        wave_number=settings.WAVE_NUMBER,
+        orange_money_number=settings.ORANGE_MONEY_NUMBER,
+        formation_url=f"{frontend_url}/formations/{formation_slug}",
+    )
+    await _send(
+        to=participant_email,
+        subject=f"Instructions de paiement — {formation_title}",
+        html=html,
+    )
+
+
+_INSTRUCTIONS_DON_MANUEL = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#2a591d;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Instructions de paiement — Don PASCI</h2>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour <strong>{{ donor_name }}</strong>,<br><br>
+              Merci pour votre générosité ! Pour finaliser votre don de <strong>{{ montant }} FCFA</strong>,
+              effectuez un paiement via Wave ou Orange Money aux numéros ci-dessous.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:24px;">
+              <tr><td style="padding:24px;">
+                <p style="margin:0 0 16px;font-size:13px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Informations de paiement</p>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td style="padding:8px 0;border-bottom:1px solid #bbf7d0;">
+                    <p style="margin:0;font-size:14px;color:#555;">Wave</p>
+                    <p style="margin:4px 0 0;font-size:16px;font-weight:700;color:#1a1a1a;">{{ wave_number }}</p>
+                  </td></tr>
+                  <tr><td style="padding:8px 0;border-bottom:1px solid #bbf7d0;">
+                    <p style="margin:0;font-size:14px;color:#555;">Orange Money</p>
+                    <p style="margin:4px 0 0;font-size:16px;font-weight:700;color:#1a1a1a;">{{ orange_money_number }}</p>
+                  </td></tr>
+                  <tr><td style="padding:8px 0;">
+                    <p style="margin:0;font-size:14px;color:#555;">Montant du don</p>
+                    <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#2a591d;">{{ montant }} FCFA</p>
+                  </td></tr>
+                </table>
+              </td></tr>
+            </table>
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+              <tr><td style="background:#2a591d;border-radius:6px;">
+                <a href="{{ don_url }}#confirmer" style="display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">
+                  Soumettre mon code de transaction →
+                </a>
+              </td></tr>
+            </table>
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              Cet email a été envoyé à {{ donor_email }}.<br>
+              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_don_instructions(
+    *,
+    donor_name: str,
+    donor_email: str,
+    montant: int,
+    don_id: int,
+) -> None:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    html = _render(
+        _INSTRUCTIONS_DON_MANUEL,
+        donor_name=donor_name,
+        donor_email=donor_email,
+        montant=f"{montant:,}".replace(",", " "),
+        wave_number=settings.WAVE_NUMBER,
+        orange_money_number=settings.ORANGE_MONEY_NUMBER,
+        don_url=f"{frontend_url}/faire-un-don",
+    )
+    await _send(
+        to=donor_email,
+        subject="Instructions de paiement — Don PASCI",
+        html=html,
+    )
+
+
+async def send_don_soumis_admin(
+    *,
+    donor_name: str,
+    donor_email: str,
+    montant: int,
+    transaction_id: str,
+    don_id: int,
+) -> None:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    html = _render(
+        """<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr><td style="background:#E05017;padding:24px 40px;text-align:center;">
+          <h1 style="margin:0;color:#ffffff;font-size:18px;font-weight:700;">Nouveau don en attente de validation</h1>
+        </td></tr>
+        <tr><td style="padding:32px 40px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
+            <tr style="background:#f9fafb;"><td style="padding:10px 16px;font-size:12px;font-weight:700;color:#6b7280;width:40%;">Champ</td><td style="padding:10px 16px;font-size:12px;font-weight:700;color:#6b7280;">Valeur</td></tr>
+            <tr style="border-top:1px solid #f3f4f6;"><td style="padding:10px 16px;font-size:13px;color:#6b7280;">Donateur</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#111827;">{{ donor_name }}</td></tr>
+            <tr style="border-top:1px solid #f3f4f6;background:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#6b7280;">Email</td><td style="padding:10px 16px;font-size:13px;color:#111827;"><a href="mailto:{{ donor_email }}" style="color:#E05017;">{{ donor_email }}</a></td></tr>
+            <tr style="border-top:1px solid #f3f4f6;"><td style="padding:10px 16px;font-size:13px;color:#6b7280;">Montant</td><td style="padding:10px 16px;font-size:15px;font-weight:700;color:#E05017;">{{ montant }} FCFA</td></tr>
+            <tr style="border-top:1px solid #f3f4f6;background:#fafafa;"><td style="padding:10px 16px;font-size:13px;color:#6b7280;">Transaction</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#111827;font-family:monospace;">{{ transaction_id }}</td></tr>
+            <tr style="border-top:1px solid #f3f4f6;"><td style="padding:10px 16px;font-size:13px;color:#6b7280;">Don ID</td><td style="padding:10px 16px;font-size:13px;color:#111827;">#{{ don_id }}</td></tr>
+          </table>
+          <table cellpadding="0" cellspacing="0"><tr><td style="background:#2a591d;border-radius:6px;">
+            <a href="{{ admin_url }}" style="display:inline-block;padding:10px 24px;color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;">Valider dans le backoffice →</a>
+          </td></tr></table>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>""",
+        donor_name=donor_name,
+        donor_email=donor_email,
+        montant=f"{montant:,}".replace(",", " "),
+        transaction_id=transaction_id,
+        don_id=don_id,
+        admin_url=f"{frontend_url}/admin/dons",
+    )
+    await _send(
+        to=settings.ADMIN_EMAIL,
+        subject=f"[Don] Nouveau don en attente — {donor_name} — {montant} FCFA",
+        html=html,
+    )
+
+
+_PAIEMENT_REJETE = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#dc2626;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Paiement non validé</h2>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour <strong>{{ participant_name }}</strong>,<br><br>
+              Nous n'avons pas pu valider votre paiement pour la formation <strong>« {{ formation_title }} »</strong>.
+            </p>
+            {% if raison %}
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-bottom:24px;">
+              <tr><td style="padding:20px;">
+                <p style="margin:0 0 6px;font-size:12px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;">Motif</p>
+                <p style="margin:0;font-size:14px;color:#555;">{{ raison }}</p>
+              </td></tr>
+            </table>
+            {% endif %}
+            <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">
+              Si vous avez effectué un paiement, contactez-nous à
+              <a href="mailto:pdoc@plateforme-osci.org" style="color:#E05017;">pdoc@plateforme-osci.org</a>
+              en indiquant votre code de transaction.
+            </p>
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+              <tr><td style="background:#E05017;border-radius:6px;">
+                <a href="{{ formation_url }}#paiement" style="display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">
+                  Réessayer le paiement →
+                </a>
+              </td></tr>
+            </table>
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              Cet email a été envoyé à {{ participant_email }}.<br>
+              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_paiement_rejete(
+    *,
+    participant_name: str,
+    participant_email: str,
+    formation_title: str,
+    formation_slug: str,
+    raison: Optional[str] = None,
+) -> None:
+    frontend_url = settings.FRONTEND_URL.rstrip("/")
+    html = _render(
+        _PAIEMENT_REJETE,
+        participant_name=participant_name,
+        participant_email=participant_email,
+        formation_title=formation_title,
+        raison=raison or "",
+        formation_url=f"{frontend_url}/formations/{formation_slug}",
+    )
+    await _send(
+        to=participant_email,
+        subject=f"Paiement non validé — {formation_title}",
+        html=html,
+    )

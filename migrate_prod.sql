@@ -288,6 +288,9 @@ FROM formation_rubrique fr
 WHERE f.rubrique_id = fr.id
   AND (f.categorie IS NULL OR f.categorie != fr.name);
 
+-- 24. Paiement manuel dons : colonne operateur sur don
+ALTER TABLE don ADD COLUMN IF NOT EXISTS operateur VARCHAR(50);
+
 -- ============================================================
 SELECT 'Migration terminée avec succès' AS status;
 -- ============================================================

@@ -33,8 +33,21 @@ from app.services.email import (
     send_inscription_confirmation,
     send_paiement_confirme,
     send_certificat_emis,
+    send_instructions_paiement_manuel,
+    send_paiement_rejete,
 )
 from app.core.config import settings
+from pydantic import BaseModel as PydanticBaseModel
+
+
+class SoumettreTransactionBody(PydanticBaseModel):
+    transaction_id: str
+    operateur: Optional[str] = None
+
+
+class RejeterPaiementBody(PydanticBaseModel):
+    raison: Optional[str] = None
+
 
 formations_router = APIRouter()
 
@@ -912,6 +925,141 @@ async def marquer_inscription_completee(
     return inscription
 
 
+# ─────────────────────────────────────────────────────────────
+# PAIEMENT MANUEL — inscriptions
+# ─────────────────────────────────────────────────────────────
+
+@formations_router.get("/inscriptions/en-attente", response_model=List[FormationInscriptionRead])
+async def inscriptions_en_attente(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Liste toutes les inscriptions en attente de validation paiement (admin)."""
+    result = await db.execute(
+        select(FormationInscription)
+        .where(FormationInscription.payment_status.in_(["pending", "soumis"]))
+        .order_by(FormationInscription.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+@formations_router.post("/inscriptions/{inscription_id}/soumettre-paiement", response_model=FormationInscriptionRead)
+async def soumettre_paiement_inscription(
+    inscription_id: int,
+    data: SoumettreTransactionBody,
+    db: AsyncSession = Depends(get_db),
+):
+    """Soumettre un code de transaction Wave/OM pour une inscription (pas d'auth requise)."""
+    result = await db.execute(
+        select(FormationInscription).where(FormationInscription.id == inscription_id)
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription non trouvée.")
+    if inscription.payment_status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ce paiement ne peut pas être soumis (statut actuel : {inscription.payment_status})."
+        )
+    dup = await db.execute(
+        select(FormationInscription).where(
+            FormationInscription.payment_transaction_id == data.transaction_id
+        )
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Ce code de transaction est déjà utilisé.")
+
+    inscription.payment_status = "soumis"
+    inscription.payment_transaction_id = data.transaction_id
+    inscription.payment_operator = data.operateur
+    await db.commit()
+    await db.refresh(inscription)
+    return inscription
+
+
+@formations_router.patch("/inscriptions/{inscription_id}/valider-paiement", response_model=FormationInscriptionRead)
+async def valider_paiement_inscription(
+    inscription_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Valider le paiement d'une inscription (admin)."""
+    result = await db.execute(
+        select(FormationInscription).where(FormationInscription.id == inscription_id)
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription non trouvée.")
+
+    inscription.payment_status = "confirmed"
+    inscription.payment_date = datetime.now(timezone.utc)
+
+    form_result = await db.execute(
+        select(Formation).where(Formation.id == inscription.formation_id)
+    )
+    formation = form_result.scalar_one_or_none()
+    if formation:
+        formation.current_participants += 1
+        if formation.max_participants and formation.current_participants >= formation.max_participants:
+            formation.is_full = True
+
+    await db.commit()
+    await db.refresh(inscription)
+
+    if formation:
+        payment_date_str = inscription.payment_date.strftime("%d/%m/%Y à %H:%M") if inscription.payment_date else None
+        background_tasks.add_task(
+            send_paiement_confirme,
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            formation_title=formation.title,
+            formation_slug=formation.slug,
+            amount=float(inscription.payment_amount or 0),
+            transaction_id=inscription.payment_transaction_id,
+            payment_date=payment_date_str,
+        )
+
+    return inscription
+
+
+@formations_router.patch("/inscriptions/{inscription_id}/rejeter-paiement", response_model=FormationInscriptionRead)
+async def rejeter_paiement_inscription(
+    inscription_id: int,
+    data: RejeterPaiementBody,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Rejeter le paiement d'une inscription (admin)."""
+    result = await db.execute(
+        select(FormationInscription).where(FormationInscription.id == inscription_id)
+    )
+    inscription = result.scalar_one_or_none()
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription non trouvée.")
+
+    inscription.payment_status = "failed"
+    await db.commit()
+    await db.refresh(inscription)
+
+    form_result = await db.execute(
+        select(Formation).where(Formation.id == inscription.formation_id)
+    )
+    formation = form_result.scalar_one_or_none()
+    if formation:
+        background_tasks.add_task(
+            send_paiement_rejete,
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            formation_title=formation.title,
+            formation_slug=formation.slug,
+            raison=data.raison,
+        )
+
+    return inscription
+
+
 @formations_router.patch("/{formation_slug}", response_model=FormationReadWithRelations, status_code=status.HTTP_200_OK)
 async def update_formation(
     formation_slug: str,
@@ -1166,6 +1314,18 @@ async def inscrire_participant(
             start_date=start_date_str,
             location=formation.location,
             trainer=formation.trainer,
+        )
+
+    # Email d'instructions de paiement pour les formations payantes
+    if formation.type == "payante":
+        background_tasks.add_task(
+            send_instructions_paiement_manuel,
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            formation_title=formation.title,
+            formation_slug=formation_slug,
+            montant=float(formation.price or 0),
+            inscription_id=inscription.id,
         )
 
     return inscription
