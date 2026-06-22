@@ -993,7 +993,7 @@ async def valider_paiement_inscription(
         raise HTTPException(status_code=404, detail="Inscription non trouvée.")
 
     inscription.payment_status = "confirmed"
-    inscription.payment_date = datetime.now(timezone.utc)
+    inscription.payment_date = datetime.utcnow()
 
     form_result = await db.execute(
         select(Formation).where(Formation.id == inscription.formation_id)
@@ -1443,7 +1443,7 @@ async def cinetpay_webhook(
 
     if paiement_status == "SUCCESS":
         inscription.payment_status = "confirmed"
-        inscription.payment_date = datetime.now(timezone.utc)
+        inscription.payment_date = datetime.utcnow()
         inscription.payment_operator = verification.get("operator", "")
 
         # Incrémenter le compteur de participants
@@ -1498,7 +1498,7 @@ async def simuler_paiement_confirme(
         raise HTTPException(status_code=404, detail="Inscription non trouvée.")
 
     inscription.payment_status = "confirmed"
-    inscription.payment_date = datetime.now(timezone.utc)
+    inscription.payment_date = datetime.utcnow()
     inscription.payment_operator = "SIMULATION"
 
     form_result = await db.execute(

@@ -20,11 +20,12 @@ class Don(SQLModel, table=True):
     montant: int = Field(nullable=False)  # en FCFA
     message: Optional[str] = Field(default=None, sa_column=Column(TEXT))
 
-    # Paiement CinetPay
+    # Paiement manuel
     transaction_id: Optional[str] = Field(default=None, max_length=100)
+    operateur: Optional[str] = Field(default=None, max_length=50)  # wave | orange_money
     notify_token: Optional[str] = Field(default=None, max_length=255)
     payment_url: Optional[str] = Field(default=None, max_length=500)
-    statut: str = Field(default="en_attente", max_length=20)  # en_attente | success | failed
+    statut: str = Field(default="en_attente", max_length=20)  # en_attente | soumis | success | rejete
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
