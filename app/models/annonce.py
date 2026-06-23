@@ -12,6 +12,10 @@ class Annonce(SQLModel, table=True):
     texte: str = Field(nullable=False, max_length=500)
     is_active: bool = Field(default=True)
     ordre: int = Field(default=0)
+    date_fin: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),

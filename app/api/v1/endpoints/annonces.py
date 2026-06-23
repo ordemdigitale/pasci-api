@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Query
-from sqlmodel import asc, select
+from sqlmodel import asc, select, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List
+from datetime import datetime, timezone
 
 from app.database.session import get_db
 from app.schemas.annonce import AnnonceCreate, AnnonceRead, AnnonceUpdate
@@ -17,7 +18,10 @@ async def get_annonces(
 ):
     query = select(Annonce).order_by(asc(Annonce.ordre), asc(Annonce.id))
     if active_only:
-        query = query.where(Annonce.is_active == True)
+        now = datetime.now(timezone.utc)
+        query = query.where(Annonce.is_active == True).where(
+            or_(Annonce.date_fin == None, Annonce.date_fin > now)
+        )
     result = await db.execute(query)
     return result.scalars().all()
 
