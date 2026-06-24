@@ -7,7 +7,7 @@ from app.database.session import get_db
 from app.models.volontaire import Volontaire
 from app.models.users import User
 from app.schemas.volontaire import VolontaireCreate, VolontaireRead, VolontaireUpdate
-from app.core.auth import get_current_staff_user
+from app.core.auth import get_current_superuser
 
 volontaires_router = APIRouter()
 
@@ -28,7 +28,7 @@ async def get_volontaires(
     limit: int = Query(50, ge=1, le=200),
     statut: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     """Lister toutes les candidatures (staff only)."""
     query = select(Volontaire).order_by(desc(Volontaire.created_at))
@@ -43,7 +43,7 @@ async def get_volontaires(
 async def get_volontaire(
     volontaire_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     result = await db.execute(select(Volontaire).where(Volontaire.id == volontaire_id))
     v = result.scalar_one_or_none()
@@ -57,7 +57,7 @@ async def update_volontaire(
     volontaire_id: int,
     data: VolontaireUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     result = await db.execute(select(Volontaire).where(Volontaire.id == volontaire_id))
     v = result.scalar_one_or_none()
@@ -74,7 +74,7 @@ async def update_volontaire(
 async def delete_volontaire(
     volontaire_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     result = await db.execute(select(Volontaire).where(Volontaire.id == volontaire_id))
     v = result.scalar_one_or_none()

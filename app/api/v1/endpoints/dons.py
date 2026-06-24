@@ -7,7 +7,7 @@ from app.database.session import get_db
 from app.models.don import Don
 from app.schemas.don import DonCreate, DonRead, DonCreateResponse, DonSoumettreTransaction
 from app.services.email import send_merci_don, send_don_instructions, send_don_soumis_admin
-from app.core.auth import get_current_staff_user
+from app.core.auth import get_current_staff_user, get_current_superuser
 from app.models.users import User
 
 dons_router = APIRouter()
@@ -95,7 +95,7 @@ async def confirmer_don(
     don_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     """Confirmer un don (admin) — envoie l'email de remerciement."""
     result = await db.execute(select(Don).where(Don.id == don_id))
@@ -123,7 +123,7 @@ async def confirmer_don(
 async def rejeter_don(
     don_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     """Rejeter un don (admin)."""
     result = await db.execute(select(Don).where(Don.id == don_id))
@@ -143,7 +143,7 @@ async def get_dons(
     limit: int = Query(50, ge=1, le=200),
     statut: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     """Lister tous les dons (admin)."""
     if statut:
@@ -158,7 +158,7 @@ async def get_dons(
 async def get_don(
     don_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     result = await db.execute(select(Don).where(Don.id == don_id))
     don = result.scalar_one_or_none()
@@ -171,7 +171,7 @@ async def get_don(
 async def delete_don(
     don_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_superuser),
 ):
     result = await db.execute(select(Don).where(Don.id == don_id))
     don = result.scalar_one_or_none()
