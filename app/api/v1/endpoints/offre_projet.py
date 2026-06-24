@@ -248,11 +248,10 @@ async def list_projets_en_attente(
     current_user: User = Depends(get_current_staff_user),
 ):
     """Liste toutes les offres de projets en attente de validation (staff only)."""
-    result = await db.execute(
-        select(OffreProjet)
-        .where(OffreProjet.statut_publication == "en_attente")
-        .order_by(OffreProjet.created_at.asc())
-    )
+    query = select(OffreProjet).where(OffreProjet.statut_publication == "en_attente").order_by(OffreProjet.created_at.asc())
+    if not current_user.is_superuser:
+        query = query.where(OffreProjet.crasc_id == current_user.crasc_id)
+    result = await db.execute(query)
     return result.scalars().all()
 
 

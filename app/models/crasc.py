@@ -340,6 +340,7 @@ class CrascVideo(SQLModel, table=True):
   url: str = Field(max_length=500, nullable=False)
   description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
   ordre: int = Field(default=0, nullable=False)
+  statut_publication: str = Field(default="publie", max_length=20, nullable=False)
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
     sa_column=Column(DateTime(timezone=True), server_default=func.now())

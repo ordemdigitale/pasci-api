@@ -1183,11 +1183,10 @@ async def list_formations_en_attente(
     current_user: User = Depends(get_current_staff_user),
 ):
     """Liste toutes les formations en attente de validation (staff only)."""
-    result = await db.execute(
-        select(Formation)
-        .where(Formation.statut_publication == "en_attente")
-        .order_by(Formation.created_at.asc())
-    )
+    query = select(Formation).where(Formation.statut_publication == "en_attente").order_by(Formation.created_at.asc())
+    if not current_user.is_superuser:
+        query = query.where(Formation.crasc_id == current_user.crasc_id)
+    result = await db.execute(query)
     return result.scalars().all()
 
 

@@ -433,6 +433,7 @@ class CrascVideoRead(BaseModel):
   url: str
   description: Optional[str] = None
   ordre: int = 0
+  statut_publication: str = "publie"
   created_at: Optional[datetime] = None
   class Config:
     from_attributes = True

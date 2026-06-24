@@ -445,12 +445,10 @@ async def list_news_en_attente(
     current_user: User = Depends(get_current_staff_user),
 ):
     """Liste toutes les actualités en attente de validation (staff only)."""
-    result = await db.execute(
-        select(News)
-        .where(News.statut_publication == "en_attente")
-        .options(selectinload(News.crasc), selectinload(News.osc))
-        .order_by(News.created_at.asc())
-    )
+    query = select(News).where(News.statut_publication == "en_attente").options(selectinload(News.crasc), selectinload(News.osc)).order_by(News.created_at.asc())
+    if not current_user.is_superuser:
+        query = query.where(News.crasc_id == current_user.crasc_id)
+    result = await db.execute(query)
     return result.scalars().all()
 
 

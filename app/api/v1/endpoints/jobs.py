@@ -69,11 +69,8 @@ async def list_jobs_en_attente(
     current_user: User = Depends(get_current_staff_user),
 ):
     """Liste toutes les offres d'emploi en attente de validation (staff only)."""
-    result = await db.execute(
-        select(Jobs)
-        .where(Jobs.statut_publication == "en_attente")
-        .order_by(Jobs.created_at.asc())
-    )
+    query = select(Jobs).where(Jobs.statut_publication == "en_attente").order_by(Jobs.created_at.asc())
+    result = await db.execute(query)
     return result.scalars().all()
 
 

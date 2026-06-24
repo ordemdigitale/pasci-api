@@ -11,6 +11,7 @@ from app.core.auth import (
     get_current_user,
     get_current_superuser,
     get_current_staff_or_superuser,
+    get_current_redacteur_crasc_or_staff,
     get_optional_current_user,
     get_current_osc_user,
     check_crasc_ownership,
@@ -1359,26 +1360,60 @@ async def list_crasc_videos(
     crasc_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lister les vidéos d'un CRASC (public)."""
-    query = select(CrascVideo).order_by(CrascVideo.ordre, CrascVideo.created_at)
+    """Lister les vidéos publiées d'un CRASC (public)."""
+    query = select(CrascVideo).where(CrascVideo.statut_publication == "publie").order_by(CrascVideo.ordre, CrascVideo.created_at)
     if crasc_id:
         query = query.where(CrascVideo.crasc_id == crasc_id)
     result = await db.execute(query)
     return result.scalars().all()
 
 
+@crasc_router.get("/video/admin/en-attente", response_model=List[CrascVideoRead], status_code=status.HTTP_200_OK)
+async def list_crasc_videos_en_attente(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Lister les vidéos en attente de validation."""
+    query = select(CrascVideo).where(CrascVideo.statut_publication == "en_attente").order_by(CrascVideo.created_at)
+    if not current_user.is_superuser:
+        query = query.where(CrascVideo.crasc_id == current_user.crasc_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@crasc_router.patch("/video/{video_id}/valider", response_model=CrascVideoRead, status_code=status.HTTP_200_OK)
+async def valider_crasc_video(
+    video_id: int,
+    action: str = Query(..., description="publie ou rejete"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Approuver ou rejeter une vidéo soumise par un rédacteur."""
+    video = await db.get(CrascVideo, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Vidéo non trouvée.")
+    if action not in ("publie", "rejete"):
+        raise HTTPException(status_code=400, detail="Action invalide. Utilisez 'publie' ou 'rejete'.")
+    check_crasc_ownership(current_user, video.crasc_id)
+    video.statut_publication = action
+    await db.commit()
+    await db.refresh(video)
+    return video
+
+
 @crasc_router.post("/video", response_model=CrascVideoRead, status_code=status.HTTP_201_CREATED)
 async def create_crasc_video(
     data: CrascVideoCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_or_superuser),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
 ):
     """Ajouter une vidéo à un CRASC."""
     crasc = await db.get(Crasc, data.crasc_id)
     if not crasc:
         raise HTTPException(status_code=404, detail="CRASC non trouvé.")
     check_crasc_ownership(current_user, data.crasc_id)
-    video = CrascVideo(**data.model_dump())
+    statut = "publie" if (current_user.is_staff or current_user.is_superuser) else "en_attente"
+    video = CrascVideo(**data.model_dump(), statut_publication=statut)
     db.add(video)
     await db.commit()
     await db.refresh(video)
@@ -1389,7 +1424,7 @@ async def create_crasc_video(
 async def delete_crasc_video(
     video_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_or_superuser),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
 ):
     """Supprimer une vidéo d'un CRASC."""
     video = await db.get(CrascVideo, video_id)
