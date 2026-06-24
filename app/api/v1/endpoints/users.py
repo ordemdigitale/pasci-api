@@ -6,6 +6,7 @@ from typing import List
 from sqlmodel import select, desc
 
 from app.core.auth import get_current_user, get_current_superuser, get_current_staff_user
+from sqlalchemy import or_
 from app.database.session import get_db
 from app.models.users import User
 from app.schemas.users import UserCreate, UserUpdate, UserRead, UserUpdateAdmin, ChangePassword
@@ -36,17 +37,22 @@ async def get_users(
    current_user: User = Depends(get_current_staff_user),
    db: AsyncSession = Depends(get_db)
 ):
-    """Get all users with pagination. Admin CRASC only sees OSC users from their CRASC."""
+    """Get all users with pagination. Admin CRASC sees rédacteurs + OSC users of their CRASC."""
     from app.models.crasc import Osc
     query = select(User).order_by(desc(User.date_joined))
 
-    # Admin CRASC: filter to OSC users belonging to their CRASC
+    # Admin CRASC: rédacteurs CRASC (crasc_id direct) + utilisateurs OSC de leur CRASC
     if not current_user.is_superuser and current_user.crasc_id:
         osc_result = await db.execute(
             select(Osc.id).where(Osc.crasc_id == current_user.crasc_id)
         )
         osc_ids = [row[0] for row in osc_result.all()]
-        query = query.where(User.osc_id.in_(osc_ids))
+        query = query.where(
+            or_(
+                User.crasc_id == current_user.crasc_id,
+                User.osc_id.in_(osc_ids),
+            )
+        )
 
     result = await db.execute(query.offset(skip).limit(limit))
     return result.scalars().all()
