@@ -6,6 +6,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Optional, List
 from app.core.config import settings
 from app.database.session import get_db
+from app.core.auth import get_current_superuser
+from app.models.users import User
 from app.schemas.ptf import(
   PtfCreate,
   PtfRead,
@@ -68,9 +70,10 @@ async def create_ptf(
   domaines: Optional[str] = Form(None),
   thumbnail: Optional[UploadFile] = File(None),
   cover: Optional[UploadFile] = File(None),
-  db: AsyncSession = Depends(get_db)
+  db: AsyncSession = Depends(get_db),
+  current_user: User = Depends(get_current_superuser),
 ) -> Ptf:
-  
+
   # Check for duplicate PTF name first (before saving files)
   result = await db.execute(select(Ptf).where(Ptf.name == name))
   if result.scalars().first():
@@ -179,7 +182,8 @@ async def update_ptf(
   cover: Optional[UploadFile] = File(None),
   remove_thumbnail: Optional[str] = Form(None),
   remove_cover: Optional[str] = Form(None),
-  db: AsyncSession = Depends(get_db)
+  db: AsyncSession = Depends(get_db),
+  current_user: User = Depends(get_current_superuser),
 ):
   """Update a PTF by slug"""
   # Fetch existing PTF
@@ -251,7 +255,7 @@ async def update_ptf(
 
 ## delete: DELETE
 @ptf_router.delete("/{ptf_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_ptf(ptf_slug: str, db: AsyncSession = Depends(get_db)):
+async def delete_ptf(ptf_slug: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_superuser)):
   """Delete a PTF by slug"""
   # Find PTF by slug
   result = await db.execute(select(Ptf).where(Ptf.slug == ptf_slug))
