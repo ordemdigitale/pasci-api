@@ -3,8 +3,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.formparsers import MultiPartParser
 
-# Augmenter la limite d'upload à 50 Mo (défaut Starlette = 1 Mo)
-MultiPartParser.max_part_size = 50 * 1024 * 1024
+# Augmenter la limite d'upload à 10 Mo (défaut Starlette = 1 Mo)
+MultiPartParser.max_part_size = 10 * 1024 * 1024
+MultiPartParser.max_file_size = 10 * 1024 * 1024
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
