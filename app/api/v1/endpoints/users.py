@@ -80,8 +80,17 @@ async def create_user(
    db: AsyncSession = Depends(get_db),
    current_user: User = Depends(get_current_staff_user)
 ) -> User:
-    """Create a new user (staff only)"""
-    return await UserService.create_user(db, user)
+    """Create a new user. Admin CRASC can only create rédacteurs for their own CRASC."""
+    new_user = await UserService.create_user(db, user)
+    # Admin CRASC: force role to rédacteur CRASC only, attached to their CRASC
+    if not current_user.is_superuser:
+        new_user.is_redacteur = True
+        new_user.is_staff = False
+        new_user.is_superuser = False
+        new_user.crasc_id = current_user.crasc_id
+        await db.commit()
+        await db.refresh(new_user)
+    return new_user
 
 
 @users_router.put("/{user_id}", response_model=UserRead)
@@ -91,7 +100,14 @@ async def update_user_by_admin(
    db: AsyncSession = Depends(get_db),
    current_user: User = Depends(get_current_staff_user)
 ):
-    """Update any user (staff only, can update permissions)"""
+    """Update any user. Admin CRASC cannot escalate privileges (is_staff/is_superuser)."""
+    if not current_user.is_superuser:
+        # Strip privilege-escalation fields
+        user_update.is_superuser = None
+        user_update.is_staff = None
+        # Ensure crasc_id cannot be changed to another CRASC
+        if user_update.crasc_id is not None and user_update.crasc_id != current_user.crasc_id:
+            raise HTTPException(status_code=403, detail="Vous ne pouvez pas assigner un autre CRASC.")
     return await UserService.update_user_admin(db, user_id, user_update)
 
 
