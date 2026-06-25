@@ -42,6 +42,7 @@ from app.schemas.crasc import (
    EvenementRead,
    EvenementUpdate,
    CrascVideoCreate,
+   CrascVideoUpdate,
    CrascVideoRead,
    PaginatedResponse
 )
@@ -1415,6 +1416,26 @@ async def create_crasc_video(
     statut = "publie" if (current_user.is_staff or current_user.is_superuser) else "en_attente"
     video = CrascVideo(**data.model_dump(), statut_publication=statut)
     db.add(video)
+    await db.commit()
+    await db.refresh(video)
+    return video
+
+
+@crasc_router.patch("/video/{video_id}", response_model=CrascVideoRead, status_code=status.HTTP_200_OK)
+async def update_crasc_video(
+    video_id: int,
+    data: CrascVideoUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+):
+    """Modifier les informations d'une vidéo CRASC."""
+    video = await db.get(CrascVideo, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Vidéo non trouvée.")
+    check_crasc_ownership(current_user, video.crasc_id)
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(video, key, value)
     await db.commit()
     await db.refresh(video)
     return video

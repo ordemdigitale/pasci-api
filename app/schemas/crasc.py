@@ -426,6 +426,12 @@ class CrascVideoCreate(BaseModel):
   description: Optional[str] = None
   ordre: int = 0
 
+class CrascVideoUpdate(BaseModel):
+  titre: Optional[str] = None
+  url: Optional[str] = None
+  description: Optional[str] = None
+  ordre: Optional[int] = None
+
 class CrascVideoRead(BaseModel):
   id: int
   crasc_id: int
