@@ -827,25 +827,43 @@ _WELCOME_OSC = """
         </tr>
         <tr>
           <td style="padding:40px;">
-            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Bienvenue sur PASCI, {{ osc_name }} !</h2>
-            <p style="margin:0 0 16px;color:#555;font-size:15px;line-height:1.6;">
-              Bonjour <strong>{{ user_name }}</strong>,<br><br>
-              Un compte a été créé pour votre organisation sur la plateforme PASCI.<br>
-              Votre identifiant de connexion est : <strong>{{ user_email }}</strong>
+            <p style="margin:0 0 24px;color:#333;font-size:15px;line-height:1.7;">
+              Cher.e.s responsable.s d'OSC, veuillez valider le processus de confirmation ou de modification des informations de votre OSC via le code reçu du CRASC.
             </p>
-            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
-              Pour accéder à votre espace, vous devez d'abord définir votre mot de passe en cliquant sur le bouton ci-dessous. Ce lien est valable <strong>24 heures</strong>.
+
+            <!-- Identifiants -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ee;border:1px solid #c6dfc0;border-radius:8px;margin-bottom:28px;">
+              <tr><td style="padding:24px;">
+                <p style="margin:0 0 16px;font-size:13px;color:#2a591d;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">Vos identifiants de connexion</p>
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td style="padding:8px 0;border-bottom:1px solid #c6dfc0;">
+                    <p style="margin:0;font-size:13px;color:#666;">Identifiant (email)</p>
+                    <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#1a1a1a;">{{ username }}</p>
+                  </td></tr>
+                  <tr><td style="padding:8px 0;">
+                    <p style="margin:0;font-size:13px;color:#666;">Mot de passe temporaire</p>
+                    <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#1a1a1a;letter-spacing:1px;">{{ password }}</p>
+                  </td></tr>
+                </table>
+              </td></tr>
+            </table>
+
+            <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6;">
+              Nous vous recommandons de modifier votre mot de passe après la première connexion.
             </p>
-            <table cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+
+            <!-- Bouton de connexion -->
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
               <tr><td style="background:#2a591d;border-radius:6px;">
-                <a href="{{ reset_url }}" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">
-                  Définir mon mot de passe →
+                <a href="{{ login_url }}" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">
+                  Accéder à mon espace OSC →
                 </a>
               </td></tr>
             </table>
+
             <p style="margin:0 0 16px;color:#888;font-size:12px;">
               Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>
-              <a href="{{ reset_url }}" style="color:#2a591d;word-break:break-all;">{{ reset_url }}</a>
+              <a href="{{ login_url }}" style="color:#2a591d;word-break:break-all;">{{ login_url }}</a>
             </p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ user_email }}.<br>
@@ -867,15 +885,19 @@ async def send_welcome_osc(
     user_email: str,
     osc_name: str,
     token: str,
+    username: str,
+    password: str,
 ) -> None:
     frontend_url = settings.FRONTEND_URL.rstrip("/")
-    reset_url = f"{frontend_url}/auth/reset-password?token={token}"
+    login_url = f"{frontend_url}/admin/login"
     html = _render(
         _WELCOME_OSC,
         user_name=user_name,
         user_email=user_email,
         osc_name=osc_name,
-        reset_url=reset_url,
+        login_url=login_url,
+        username=username,
+        password=password,
     )
     await _send(
         to=user_email,

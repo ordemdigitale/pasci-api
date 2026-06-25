@@ -1185,6 +1185,9 @@ async def create_osc_user(
         if (await db.execute(select(User).where(User.username == user_data.username))).scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Ce nom d'utilisateur est déjà pris.")
 
+    # Générer un mot de passe automatiquement si non fourni
+    plain_password = user_data.password if user_data.password else secrets.token_urlsafe(12)
+
     token = secrets.token_urlsafe(32)
     new_user = User(
         email=user_data.email,
@@ -1196,7 +1199,7 @@ async def create_osc_user(
         reset_token=token,
         reset_token_expires=datetime.now(timezone.utc) + timedelta(hours=24),
     )
-    new_user.set_password(user_data.password)
+    new_user.set_password(plain_password)
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
@@ -1207,6 +1210,8 @@ async def create_osc_user(
             user_email=new_user.email,
             osc_name=osc.name,
             token=token,
+            username=new_user.email,
+            password=plain_password,
         )
     except Exception:
         pass  # Ne pas bloquer la création si l'email échoue

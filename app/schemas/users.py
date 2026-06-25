@@ -30,7 +30,7 @@ class OscUserCreate(BaseModel):
   """Schema pour créer le compte utilisateur d'une OSC."""
   email: str
   username: Optional[str] = None
-  password: str
+  password: Optional[str] = None  # Généré automatiquement si absent
   first_name: Optional[str] = None
   last_name: Optional[str] = None
 
