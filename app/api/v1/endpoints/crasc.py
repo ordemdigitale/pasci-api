@@ -20,6 +20,7 @@ from app.core.auth import (
 )
 from app.database.session import get_db
 from app.models.users import User
+from app.services.notifications import create_notification
 from app.schemas.users import UserRead, CrascAdminCreate, OscUserCreate
 from app.schemas.crasc import (
    CrascRead,
@@ -1037,6 +1038,15 @@ async def submit_osc_modification_request(
     await db.commit()
     await db.refresh(request)
     request.osc = osc
+    await create_notification(
+        db,
+        user_id=current_user.id,
+        title="Demande en cours de traitement",
+        message=f"Votre demande de modification pour {osc.name} a été envoyée en modération. Elle est en cours de traitement par l'administration.",
+        type="osc_modification",
+        link_url="/admin/mon-osc",
+    )
+    await db.commit()
     return _serialize_osc_modification_request(request)
 
 
@@ -1070,6 +1080,35 @@ async def review_osc_modification_request(
     request.reviewed_by_id = str(current_user.id)
     request.reviewed_at = datetime.now(timezone.utc)
     request.updated_at = datetime.now(timezone.utc)
+
+    target_users: list[User] = []
+    if request.requested_by_id:
+        try:
+            requester = await db.get(User, uuid.UUID(request.requested_by_id))
+            if requester:
+                target_users.append(requester)
+        except ValueError:
+            pass
+    if not target_users:
+        users_result = await db.execute(
+            select(User).where(User.osc_id == request.osc_id, User.is_active == True)
+        )
+        target_users = users_result.scalars().all()
+    notification_title = "Modification OSC approuvée" if normalized_action == "approuvee" else "Modification OSC rejetée"
+    notification_message = (
+        f"Votre demande de modification pour {request.osc.name} a été approuvée."
+        if normalized_action == "approuvee"
+        else f"Votre demande de modification pour {request.osc.name} a été rejetée."
+    )
+    for target_user in target_users:
+        await create_notification(
+            db,
+            user_id=target_user.id,
+            title=notification_title,
+            message=notification_message,
+            type="osc_modification",
+            link_url="/admin/mon-osc",
+        )
 
     try:
         await db.commit()
@@ -1772,6 +1811,8 @@ async def update_crasc_video(
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(video, key, value)
+    if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
+        video.statut_publication = "en_attente"
     await db.commit()
     await db.refresh(video)
     return video
@@ -1781,7 +1822,7 @@ async def update_crasc_video(
 async def delete_crasc_video(
     video_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+    current_user: User = Depends(get_current_staff_or_superuser),
 ):
     """Supprimer une vidéo d'un CRASC."""
     video = await db.get(CrascVideo, video_id)

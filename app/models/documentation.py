@@ -51,6 +51,7 @@ class Documentation(SQLModel, table=True):
         max_length=2048,
         description="Chemin de l'image de couverture."
     )
+    statut_publication: str = Field(default="publie", max_length=20)
     
     # Relations optionnelles
     crasc_id: Optional[int] = Field(

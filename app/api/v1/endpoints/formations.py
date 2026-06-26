@@ -27,7 +27,7 @@ from app.schemas.formation import (
     FormationAvisCreate, FormationAvisRead,
     CatalogueFormationRead,
 )
-from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff
+from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
 from app.services.cinetpay import cinetpay_service
 from app.services.email import (
     send_inscription_confirmation,
@@ -78,7 +78,7 @@ async def upload_catalogue(
     description: Optional[str] = Form(None),
     fichier: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+    current_user: User = Depends(get_current_staff_user),
 ):
     """Uploader un nouveau catalogue de formation (PDF). Réservé au staff et rédacteurs CRASC."""
     if not fichier.content_type or "pdf" not in fichier.content_type:
@@ -101,7 +101,7 @@ async def upload_catalogue(
 async def delete_catalogue(
     catalogue_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+    current_user: User = Depends(get_current_staff_user),
 ):
     """Supprimer un catalogue."""
     cat = await db.get(CatalogueFormation, catalogue_id)
@@ -121,7 +121,7 @@ async def toggle_catalogue(
     catalogue_id: int,
     is_active: bool = Form(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+    current_user: User = Depends(get_current_staff_user),
 ):
     """Activer/désactiver un catalogue."""
     cat = await db.get(CatalogueFormation, catalogue_id)
@@ -767,7 +767,8 @@ async def get_upcoming_formations(
 @formations_router.get("/{formation_slug}", response_model=FormationReadWithRelations, status_code=status.HTTP_200_OK)
 async def get_formation(
     formation_slug: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Get a single formation by slug with related CRASC and OSC
@@ -786,6 +787,16 @@ async def get_formation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Formation non trouvée."
         )
+    can_view_pending = bool(
+        current_user
+        and (
+            current_user.is_staff
+            or current_user.is_superuser
+            or (current_user.is_redacteur and current_user.crasc_id == formation.crasc_id)
+        )
+    )
+    if formation.statut_publication != "publie" and not can_view_pending:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Formation non trouvée.")
 
     return formation
 
@@ -1065,7 +1076,8 @@ async def update_formation(
     formation_slug: str,
     formation_update: FormationUpdate = Depends(get_formation_update_form),
     thumbnail: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
 ):
     """
     Update a formation
@@ -1087,6 +1099,12 @@ async def update_formation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Formation non trouvée."
         )
+    is_redacteur_only = current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser
+    if is_redacteur_only and formation.crasc_id != current_user.crasc_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous ne pouvez modifier que les formations de votre CRASC.",
+        )
 
     # Handle thumbnail upload
     if thumbnail and thumbnail.filename:
@@ -1107,6 +1125,9 @@ async def update_formation(
     update_data = formation_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(formation, key, value)
+    if is_redacteur_only:
+        formation.statut_publication = "en_attente"
+        formation.is_published = False
 
     # Synchroniser categorie avec le nom de la rubrique si rubrique_id mis à jour
     if "rubrique_id" in update_data and update_data["rubrique_id"]:
@@ -1150,11 +1171,9 @@ async def update_formation(
 async def delete_formation(
     formation_slug: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+    current_user: User = Depends(get_current_staff_user),
 ):
-    """
-    Delete a formation by slug (staff ou rédacteur CRASC propriétaire)
-    """
+    """Delete a formation by slug (staff only)."""
     result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
     formation = result.scalar_one_or_none()
 
@@ -1163,14 +1182,6 @@ async def delete_formation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Formation '{formation_slug}' non trouvée."
         )
-
-    # Rédacteur CRASC : vérifier qu'il supprime une formation de son CRASC
-    if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
-        if formation.crasc_id != current_user.crasc_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Vous ne pouvez supprimer que les formations de votre CRASC."
-            )
 
     await db.delete(formation)
     await db.commit()
@@ -1205,6 +1216,7 @@ async def valider_formation(
     if not formation:
         raise HTTPException(status_code=404, detail="Formation non trouvée.")
     formation.statut_publication = action
+    formation.is_published = action == "publie"
     await db.commit()
     await db.refresh(formation)
     return formation

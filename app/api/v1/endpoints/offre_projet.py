@@ -15,7 +15,7 @@ from app.database.session import get_db
 from app.models.offre_projet import OffreProjet
 from app.models.users import User
 from app.schemas.offre_projet import OffreProjetCreate, OffreProjetRead, OffreProjetUpdate
-from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff
+from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_optional_current_user
 
 offre_projet_router = APIRouter()
 
@@ -61,12 +61,20 @@ async def get_active_projets(
 
 
 @offre_projet_router.get("/{slug}", response_model=OffreProjetRead)
-async def get_projet_by_slug(slug: str, db: AsyncSession = Depends(get_db)) -> OffreProjet:
+async def get_projet_by_slug(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+) -> OffreProjet:
     """Get a single projet by slug"""
     query = select(OffreProjet).options(selectinload(OffreProjet.ptf)).where(OffreProjet.slug == slug)
     result = await db.execute(query)
     projet = result.scalar_one_or_none()
     if not projet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Projet with slug '{slug}' not found")
+    if projet.statut_publication != "publie" and not (
+        current_user and (current_user.is_staff or current_user.is_superuser)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Projet with slug '{slug}' not found")
     return projet
 
@@ -160,7 +168,8 @@ async def update_projet(
     partenaires: Optional[str] = Form(None),
     ptf_id: Optional[int] = Form(None),
     image: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
 ) -> OffreProjet:
     """Update an existing projet"""
 
@@ -249,8 +258,6 @@ async def list_projets_en_attente(
 ):
     """Liste toutes les offres de projets en attente de validation (staff only)."""
     query = select(OffreProjet).where(OffreProjet.statut_publication == "en_attente").order_by(OffreProjet.created_at.asc())
-    if not current_user.is_superuser:
-        query = query.where(OffreProjet.crasc_id == current_user.crasc_id)
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -276,7 +283,11 @@ async def valider_projet(
 
 
 @offre_projet_router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_projet(slug: str, db: AsyncSession = Depends(get_db)):
+async def delete_projet(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     """Delete a projet"""
 
     # Get projet

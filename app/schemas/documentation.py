@@ -20,6 +20,7 @@ class DocumentationBase(BaseModel):
     file_type: Optional[str] = None
     file_size: Optional[int] = None
     thumbnail_path: Optional[str] = None
+    statut_publication: str = "publie"
     crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id")
     osc_id: Optional[int] = Field(default=None, foreign_key="osc.id")
     created_at: Optional[datetime] = None

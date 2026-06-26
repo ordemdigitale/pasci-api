@@ -8,7 +8,7 @@ from app.database.session import get_db
 from app.models.jobs import Jobs
 from app.models.users import User
 from app.schemas.jobs import JobsCreate, JobsRead, JobsUpdate
-from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff
+from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_optional_current_user
 import slugify
 
 jobs_router = APIRouter()
@@ -96,16 +96,29 @@ async def valider_job(
 
 
 @jobs_router.get("/{job_slug}", response_model=JobsRead, status_code=status.HTTP_200_OK)
-async def get_single_job(job_slug: str, db: AsyncSession = Depends(get_db)):
+async def get_single_job(
+    job_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+):
     result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
     job = result.scalars().first()
     if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvé.")
+    if job.statut_publication != "publie" and not (
+        current_user and (current_user.is_staff or current_user.is_superuser)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvé.")
     return job
 
 
 @jobs_router.patch("/{job_slug}", response_model=JobsRead, status_code=status.HTTP_200_OK)
-async def update_job(job_slug: str, job_update: JobsUpdate, db: AsyncSession = Depends(get_db)):
+async def update_job(
+    job_slug: str,
+    job_update: JobsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
     job = result.scalars().first()
     if not job:
@@ -121,7 +134,11 @@ async def update_job(job_slug: str, job_update: JobsUpdate, db: AsyncSession = D
 
 
 @jobs_router.delete("/{job_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_job(job_slug: str, db: AsyncSession = Depends(get_db)):
+async def delete_job(
+    job_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
     job = result.scalar_one_or_none()
     if not job:

@@ -291,6 +291,24 @@ WHERE f.rubrique_id = fr.id
 -- 24. Paiement manuel dons : colonne operateur sur don
 ALTER TABLE don ADD COLUMN IF NOT EXISTS operateur VARCHAR(50);
 
+-- 25. Notifications internes + modération des ressources documentaires
+ALTER TABLE documentation ADD COLUMN IF NOT EXISTS statut_publication VARCHAR(20) DEFAULT 'publie';
+
+CREATE TABLE IF NOT EXISTS notification (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(50) NOT NULL DEFAULT 'info',
+    link_url VARCHAR(500),
+    is_read BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    read_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS ix_notification_user_id ON notification(user_id);
+CREATE INDEX IF NOT EXISTS ix_notification_is_read ON notification(is_read);
+
 -- ============================================================
 SELECT 'Migration terminée avec succès' AS status;
 -- ============================================================

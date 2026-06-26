@@ -23,6 +23,7 @@ import app.models.forum
 import app.models.annonce
 import app.models.hero_slide
 import app.models.site_config
+import app.models.notification
 
 logger = logging.getLogger(__name__)
 

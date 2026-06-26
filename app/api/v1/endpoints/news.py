@@ -20,7 +20,7 @@ from app.schemas.crasc import (
 )
 from app.models.crasc import News
 from app.models.users import User
-from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff
+from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
 
 news_router = APIRouter()
 
@@ -316,7 +316,8 @@ async def get_recent_news(
 @news_router.get("/{news_slug}", response_model=NewsReadDetail, status_code=status.HTTP_200_OK)
 async def get_single_news(
     news_slug: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Get a single news article by slug
@@ -334,6 +335,16 @@ async def get_single_news(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Actualité non trouvée."
         )
+    can_view_pending = bool(
+        current_user
+        and (
+            current_user.is_staff
+            or current_user.is_superuser
+            or (current_user.is_redacteur and current_user.crasc_id == news.crasc_id)
+        )
+    )
+    if news.statut_publication != "publie" and not can_view_pending:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Actualité non trouvée.")
 
     return news
 
@@ -397,6 +408,7 @@ async def update_news(
         )
 
     # Rédacteur CRASC : vérifier l'appartenance
+    is_redacteur_only = current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser
     if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
         if news.crasc_id != current_user.crasc_id:
             raise HTTPException(
@@ -413,6 +425,8 @@ async def update_news(
     update_data = news_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(news, key, value)
+    if is_redacteur_only:
+        news.statut_publication = "en_attente"
 
     # Update slug if title changed
     if "title" in update_data:
@@ -479,10 +493,10 @@ async def valider_news(
 async def delete_news(
     news_slug: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+    current_user: User = Depends(get_current_staff_user),
 ):
     """
-    Delete a news article by slug (staff ou rédacteur CRASC propriétaire)
+    Delete a news article by slug (staff only)
     """
     result = await db.execute(select(News).where(News.slug == news_slug))
     news = result.scalar_one_or_none()
@@ -492,14 +506,6 @@ async def delete_news(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Actualité '{news_slug}' non trouvée."
         )
-
-    # Rédacteur CRASC : vérifier l'appartenance
-    if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
-        if news.crasc_id != current_user.crasc_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Vous ne pouvez supprimer que les actualités de votre CRASC."
-            )
 
     await db.delete(news)
     await db.commit()

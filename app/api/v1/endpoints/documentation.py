@@ -13,6 +13,7 @@ from sqlmodel import desc, select, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
+from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_optional_current_user
 from app.database.session import get_db
 from app.schemas.documentation import (
     DocumentationRead,
@@ -20,6 +21,7 @@ from app.schemas.documentation import (
     DocumentationUpdate
 )
 from app.models.documentation import Documentation
+from app.models.users import User
 
 documentation_router = APIRouter()
 
@@ -200,7 +202,8 @@ async def create_documentation(
     thumbnail: Optional[UploadFile] = File(None),
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_or_staff),
 ):
     """
     Create a new documentation entry
@@ -259,7 +262,8 @@ async def create_documentation(
         file_size=file_size,
         crasc_id=crasc_id_int,
         osc_id=osc_id_int,
-        thumbnail_path=saved_path
+        thumbnail_path=saved_path,
+        statut_publication="publie" if (current_user.is_staff or current_user.is_superuser) else "en_attente",
     )
 
     # Check for duplicate title
@@ -307,7 +311,9 @@ async def get_all_documentation(
     search: Optional[str] = Query(None, description="Rechercher dans titre/description"),
     sort_by: str = Query("created_at", description="Champ de tri (created_at, title)"),
     sort_order: str = Query("desc", description="Ordre de tri (asc, desc)"),
-    db: AsyncSession = Depends(get_db)
+    include_all: bool = Query(False, description="Inclure les documents non publiés (admin uniquement)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Get all documentation entries with filtering and pagination
@@ -327,6 +333,11 @@ async def get_all_documentation(
         selectinload(Documentation.crasc),
         selectinload(Documentation.osc)
     )
+    if include_all:
+        if not current_user or not (current_user.is_staff or current_user.is_superuser):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès réservé aux administrateurs.")
+    else:
+        query = query.where(Documentation.statut_publication == "publie")
 
     # Apply filters
     if type:
@@ -375,16 +386,37 @@ async def get_categories(db: AsyncSession = Depends(get_db)):
     """
     Get all unique categories from documentation
     """
-    query = select(Documentation.category).distinct().where(Documentation.category.is_not(None))
+    query = select(Documentation.category).distinct().where(
+        Documentation.category.is_not(None),
+        Documentation.statut_publication == "publie",
+    )
     result = await db.execute(query)
     categories = [cat for cat in result.scalars().all() if cat]
     return sorted(categories)
 
 
+@documentation_router.get("/admin/en-attente", response_model=List[DocumentationReadDetail])
+async def list_documentation_en_attente(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    query = (
+        select(Documentation)
+        .where(Documentation.statut_publication == "en_attente")
+        .options(selectinload(Documentation.crasc), selectinload(Documentation.osc))
+        .order_by(Documentation.created_at.asc())
+    )
+    if not current_user.is_superuser:
+        query = query.where(Documentation.crasc_id == current_user.crasc_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
 @documentation_router.get("/{doc_slug}", response_model=DocumentationReadDetail, status_code=status.HTTP_200_OK)
 async def get_single_documentation(
     doc_slug: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Get a single documentation entry by slug
@@ -402,7 +434,37 @@ async def get_single_documentation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document non trouvé."
         )
+    if doc.statut_publication != "publie" and not (
+        current_user and (current_user.is_staff or current_user.is_superuser)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document non trouvé.")
 
+    return doc
+
+
+@documentation_router.patch("/{doc_slug}/valider", response_model=DocumentationReadDetail)
+async def valider_documentation(
+    doc_slug: str,
+    action: str = Query(..., description="publie ou rejete"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    if action not in ("publie", "rejete"):
+        raise HTTPException(status_code=400, detail="Action invalide. Utilisez 'publie' ou 'rejete'.")
+    result = await db.execute(
+        select(Documentation)
+        .where(Documentation.slug == doc_slug)
+        .options(selectinload(Documentation.crasc), selectinload(Documentation.osc))
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document non trouvé.")
+    if current_user.is_staff and not current_user.is_superuser and doc.crasc_id != current_user.crasc_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vous n'avez pas accès à ce document.")
+    doc.statut_publication = action
+    doc.updated_at = datetime.now()
+    await db.commit()
+    await db.refresh(doc)
     return doc
 
 
@@ -445,7 +507,8 @@ async def update_documentation(
     doc_update: DocumentationUpdate = Depends(get_documentation_update_form),
     file: Optional[UploadFile] = File(None),
     thumbnail: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
 ):
     """
     Update a documentation entry
@@ -472,6 +535,8 @@ async def update_documentation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document non trouvé."
         )
+    if current_user.is_staff and not current_user.is_superuser and doc.crasc_id != current_user.crasc_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vous n'avez pas accès à ce document.")
 
     # Handle document file upload
     if file and file.filename:
@@ -536,7 +601,8 @@ async def update_documentation(
 @documentation_router.get("/{doc_slug}/download")
 async def download_documentation(
     doc_slug: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """
     Download a documentation file
@@ -554,6 +620,10 @@ async def download_documentation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document non trouvé."
         )
+    if doc.statut_publication != "publie" and not (
+        current_user and (current_user.is_staff or current_user.is_superuser)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document non trouvé.")
 
     if not doc.file_path:
         raise HTTPException(
@@ -586,7 +656,11 @@ async def download_documentation(
 
 
 @documentation_router.delete("/{doc_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_documentation(doc_slug: str, db: AsyncSession = Depends(get_db)):
+async def delete_documentation(
+    doc_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     """
     Delete a documentation entry by slug
     Also deletes associated files
@@ -599,6 +673,8 @@ async def delete_documentation(doc_slug: str, db: AsyncSession = Depends(get_db)
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document '{doc_slug}' non trouvé."
         )
+    if current_user.is_staff and not current_user.is_superuser and doc.crasc_id != current_user.crasc_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vous n'avez pas accès à ce document.")
 
     # Delete associated files
     if doc.file_path:
