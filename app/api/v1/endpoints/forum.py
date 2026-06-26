@@ -4,6 +4,7 @@ import os, shutil, uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, desc, func
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Union
@@ -25,7 +26,7 @@ from app.models.users import User
 from app.schemas.forum import (
     PoleConcertationCreate, PoleConcertationRead, PoleConcertationUpdate,
     PoleSondageCreate, PoleSondageRead, PoleSondageUpdate, PoleSondageVoteCreate,
-    PoleSondageOptionRead,
+    PoleSondageOptionRead, PoleMembreRead,
     ForumSujetCreate, ForumSujetRead, ForumSujetUpdate, ForumSujetDetail,
     ForumCommentaireCreate, ForumCommentaireRead,
 )
@@ -56,6 +57,7 @@ forum_router = APIRouter()
 
 POLE_LOAD_OPTIONS = (
     selectinload(PoleConcertation.oscs).selectinload(Osc.region),
+    selectinload(PoleConcertation.oscs).selectinload(Osc.type),
 )
 SONDAGE_LOAD_OPTIONS = (
     selectinload(PoleSondage.options).selectinload(PoleSondageOption.votes),
@@ -354,6 +356,47 @@ async def delete_pole(
     return None
 
 
+@forum_router.get("/poles/{pole_slug}/membres", response_model=List[PoleMembreRead])
+async def list_pole_membres(
+    pole_slug: str,
+    type_name: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste les OSC membres d'un pôle, avec filtre optionnel par type."""
+    pole = await _get_pole_by_slug(db, pole_slug)
+    if not pole:
+        raise HTTPException(status_code=404, detail="Pôle non trouvé.")
+
+    normalized_type = type_name.strip().lower() if type_name else None
+    membres = []
+    for osc in sorted(pole.oscs or [], key=lambda item: (item.name or "").lower()):
+        osc_type_name = osc.type.name if getattr(osc, "type", None) else None
+        candidates = [
+            (osc_type_name or "").strip().lower(),
+            (osc.categorie or "").strip().lower(),
+        ]
+        if normalized_type and normalized_type not in candidates:
+            continue
+        thumbnail_url = None
+        if osc.thumbnail_path and osc.thumbnail_path != "default.png":
+            thumbnail_url = f"{settings.API_BASE_URL}/static/{osc.thumbnail_path}"
+        membres.append(
+            PoleMembreRead(
+                id=osc.id,
+                name=osc.name,
+                slug=osc.slug,
+                sigle=osc.sigle,
+                type_id=osc.type_id,
+                type_name=osc_type_name,
+                categorie=osc.categorie,
+                region_nom=osc.region_nom,
+                ville=osc.ville,
+                thumbnail_url=thumbnail_url,
+            )
+        )
+    return membres
+
+
 # ─────────────────────────────────────────────────────
 # SONDAGES / VOTES
 # ─────────────────────────────────────────────────────
@@ -516,6 +559,7 @@ async def list_sujets(
     pole_slug: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Liste les sujets d'un pôle (public)"""
@@ -526,9 +570,18 @@ async def list_sujets(
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
 
+    statement = select(ForumSujet).where(ForumSujet.pole_id == pole.id)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        statement = statement.where(
+            or_(
+                ForumSujet.title.ilike(term),
+                ForumSujet.content.ilike(term),
+                ForumSujet.author_name.ilike(term),
+            )
+        )
     result = await db.execute(
-        select(ForumSujet)
-        .where(ForumSujet.pole_id == pole.id)
+        statement
         .order_by(desc(ForumSujet.is_pinned), desc(ForumSujet.created_at))
         .offset(skip)
         .limit(limit)

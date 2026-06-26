@@ -115,6 +115,19 @@ class PoleSondageVoteCreate(BaseModel):
     option_id: int
 
 
+class PoleMembreRead(BaseModel):
+    id: int
+    name: str
+    slug: Optional[str] = None
+    sigle: Optional[str] = None
+    type_id: Optional[int] = None
+    type_name: Optional[str] = None
+    categorie: Optional[str] = None
+    region_nom: Optional[str] = None
+    ville: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+
+
 # ──────────────── Forum Sujet ────────────────
 
 class ForumSujetCreate(BaseModel):
