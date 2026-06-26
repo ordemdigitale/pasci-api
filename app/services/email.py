@@ -828,7 +828,7 @@ _WELCOME_OSC = """
         <tr>
           <td style="padding:40px;">
             <p style="margin:0 0 24px;color:#333;font-size:15px;line-height:1.7;">
-              Cher.e.s responsable.s d'OSC, veuillez valider le processus de confirmation ou de modification des informations de votre OSC via le code reçu du CRASC.
+              Chers responsables d'OSC, veuillez confirmer ou mettre à jour les informations de votre organisation à l'aide du code reçu du CRASC.
             </p>
 
             <!-- Identifiants -->
