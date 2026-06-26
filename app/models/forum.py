@@ -24,6 +24,7 @@ class PoleConcertation(SQLModel, table=True):
     nb_osc_membres: Optional[int] = Field(default=None, nullable=True)
     regions_influence: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list
     realisations: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list
+    projets_en_cours: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list
     agenda: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))  # JSON list of {date, titre, description}
     is_active: bool = Field(default=True)
     created_at: datetime = Field(

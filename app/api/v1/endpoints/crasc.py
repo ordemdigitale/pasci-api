@@ -1,6 +1,7 @@
 import json, os, shutil, uuid, slugify, secrets
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -628,6 +629,10 @@ async def get_all_osc(
     crasc_id: Optional[int] = Query(None),
     region_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    region_nom: Optional[str] = Query(None),
+    sous_prefecture: Optional[str] = Query(None),
+    domaine_activite: Optional[str] = Query(None),
+    categorie: Optional[str] = Query(None),
     type_document_formalisation: Optional[str] = Query(None),
     has_document_formalisation: Optional[bool] = Query(None),
     sort_by: Literal[
@@ -656,7 +661,50 @@ async def get_all_osc(
         filters.append(Osc.region_id == region_id)
     if search:
         term = f"%{search}%"
-        filters.append((Osc.name.ilike(term)) | (Osc.description.ilike(term)))
+        search_conditions = [
+            Osc.name.ilike(term),
+            Osc.description.ilike(term),
+            Osc.region_nom.ilike(term),
+            Osc.sous_prefecture.ilike(term),
+            Osc.categorie.ilike(term),
+            Osc.secteurs_activites.ilike(term),
+            Osc.domaine_prioritaire.ilike(term),
+            Osc.domaine_prioritaire_2.ilike(term),
+            Osc.domaine_prioritaire_3.ilike(term),
+            Osc.domaine_prioritaire_4.ilike(term),
+            Osc.domaine_prioritaire_5.ilike(term),
+        ]
+        normalized_search = search.strip().lower()
+        category_aliases = {
+            "odj": "organisation_jeune",
+            "organisation de jeune": "organisation_jeune",
+            "jeune": "organisation_jeune",
+            "odf": "organisation_femme",
+            "organisation de femme": "organisation_femme",
+            "femme": "organisation_femme",
+            "mixte": "organisation_mixte",
+            "mix": "organisation_mixte",
+        }
+        for alias, category_value in category_aliases.items():
+            if alias in normalized_search:
+                search_conditions.append(Osc.categorie == category_value)
+        filters.append(or_(*search_conditions))
+    if region_nom:
+        filters.append(Osc.region_nom.ilike(f"%{region_nom}%"))
+    if sous_prefecture:
+        filters.append(Osc.sous_prefecture.ilike(f"%{sous_prefecture}%"))
+    if domaine_activite:
+        term = f"%{domaine_activite}%"
+        filters.append(or_(
+            Osc.secteurs_activites.ilike(term),
+            Osc.domaine_prioritaire.ilike(term),
+            Osc.domaine_prioritaire_2.ilike(term),
+            Osc.domaine_prioritaire_3.ilike(term),
+            Osc.domaine_prioritaire_4.ilike(term),
+            Osc.domaine_prioritaire_5.ilike(term),
+        ))
+    if categorie:
+        filters.append(Osc.categorie == categorie)
     if type_document_formalisation:
         filters.append(Osc.type_document_formalisation == type_document_formalisation)
     if has_document_formalisation is True:
@@ -1543,6 +1591,7 @@ async def create_evenement(
         date_debut=evenement_in.date_debut,
         date_fin=evenement_in.date_fin,
         lieu=evenement_in.lieu,
+        statut=evenement_in.statut,
         crasc_id=resolved_crasc_id,
     )
     db.add(db_evt)

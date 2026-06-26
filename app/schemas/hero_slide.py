@@ -8,6 +8,8 @@ from app.core.config import settings
 class HeroSlideRead(BaseModel):
     id: int
     image_path: str
+    title: Optional[str] = None
+    description: Optional[str] = None
     type: str
     ordre: int
     is_active: bool
@@ -25,5 +27,7 @@ class HeroSlideRead(BaseModel):
 
 
 class HeroSlideUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
     ordre: Optional[int] = None
     is_active: Optional[bool] = None

@@ -9,6 +9,7 @@ from app.services.osc_autoevaluation import COULEUR_HEX, calculer_score_autoeval
 T = TypeVar("T")
 NiveauRegroupement = Literal["Simple", "Réseau", "Fédération", "Plateforme", "Confédération"]
 AdhesionCrascStatut = Literal["oui", "non", "en_cours"]
+EvenementStatut = Literal["realise", "en_cours", "non_realise"]
 
 class PaginatedResponse(BaseModel, Generic[T]):
   items: List[T]
@@ -466,6 +467,7 @@ class EvenementBase(BaseModel):
   date_debut: datetime
   date_fin: Optional[datetime] = None
   lieu: Optional[str] = None
+  statut: EvenementStatut = "en_cours"
   crasc_id: Optional[int] = None
 
 class EvenementCreate(EvenementBase):
@@ -483,3 +485,5 @@ class EvenementUpdate(BaseModel):
   date_debut: Optional[datetime] = None
   date_fin: Optional[datetime] = None
   lieu: Optional[str] = None
+  statut: Optional[EvenementStatut] = None
+  crasc_id: Optional[int] = None

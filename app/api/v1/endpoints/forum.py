@@ -1,8 +1,10 @@
 # app/api/v1/endpoints/forum.py | Forum endpoints
+import json
 import os, shutil, uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import List, Optional, Union
 import slugify as slugify_lib
 import time
@@ -10,6 +12,7 @@ import time
 from app.core.config import settings
 from app.database.session import get_db
 from app.models.forum import PoleConcertation, ForumSujet, ForumCommentaire
+from app.models.crasc import Osc
 from app.models.users import User
 from app.schemas.forum import (
     PoleConcertationCreate, PoleConcertationRead, PoleConcertationUpdate,
@@ -41,6 +44,49 @@ def _delete_image(image_path: Optional[str]):
 
 forum_router = APIRouter()
 
+POLE_LOAD_OPTIONS = (
+    selectinload(PoleConcertation.oscs).selectinload(Osc.region),
+)
+
+
+def _json_list(values: List[str]) -> str:
+    return json.dumps(values, ensure_ascii=False)
+
+
+def _regions_from_pole(pole: PoleConcertation) -> List[str]:
+    seen = set()
+    regions = []
+    for osc in pole.oscs or []:
+        region_name = (osc.region_nom or "").strip()
+        if not region_name and getattr(osc, "region", None):
+            region_name = (osc.region.name or "").strip()
+        if region_name and region_name.lower() not in seen:
+            seen.add(region_name.lower())
+            regions.append(region_name)
+    return sorted(regions, key=str.lower)
+
+
+async def _pole_response(db: AsyncSession, pole: PoleConcertation) -> PoleConcertationRead:
+    count_result = await db.execute(
+        select(func.count(ForumSujet.id)).where(ForumSujet.pole_id == pole.id)
+    )
+    osc_count = len(pole.oscs or [])
+    pole_data = PoleConcertationRead.model_validate(pole)
+    pole_data.sujets_count = count_result.scalar() or 0
+    pole_data.nb_osc_membres = osc_count
+    pole_data.nb_membres_actifs = osc_count
+    pole_data.regions_influence = _json_list(_regions_from_pole(pole))
+    return pole_data
+
+
+async def _get_pole_by_slug(db: AsyncSession, pole_slug: str) -> Optional[PoleConcertation]:
+    result = await db.execute(
+        select(PoleConcertation)
+        .options(*POLE_LOAD_OPTIONS)
+        .where(PoleConcertation.slug == pole_slug)
+    )
+    return result.scalars().first()
+
 
 # ─────────────────────────────────────────────────────
 # PÔLES
@@ -55,6 +101,7 @@ async def list_poles(
     """Liste tous les pôles de concertation (public)"""
     result = await db.execute(
         select(PoleConcertation)
+        .options(*POLE_LOAD_OPTIONS)
         .where(PoleConcertation.is_active == True)
         .order_by(PoleConcertation.name)
         .offset(skip)
@@ -62,18 +109,7 @@ async def list_poles(
     )
     poles = result.scalars().all()
 
-    # Compute sujets_count for each pole
-    output = []
-    for pole in poles:
-        count_result = await db.execute(
-            select(func.count(ForumSujet.id)).where(ForumSujet.pole_id == pole.id)
-        )
-        sujets_count = count_result.scalar() or 0
-        pole_data = PoleConcertationRead.model_validate(pole)
-        pole_data.sujets_count = sujets_count
-        output.append(pole_data)
-
-    return output
+    return [await _pole_response(db, pole) for pole in poles]
 
 
 @forum_router.post("/poles", response_model=PoleConcertationRead, status_code=status.HTTP_201_CREATED)
@@ -86,6 +122,7 @@ async def create_pole(
     nb_osc_membres: Optional[int] = Form(None),
     regions_influence: Optional[str] = Form(None),
     realisations: Optional[str] = Form(None),
+    projets_en_cours: Optional[str] = Form(None),
     agenda: Optional[str] = Form(None),
     is_active: bool = Form(True),
     image: Optional[UploadFile] = File(None),
@@ -107,32 +144,23 @@ async def create_pole(
         nb_osc_membres=nb_osc_membres,
         regions_influence=regions_influence,
         realisations=realisations,
+        projets_en_cours=projets_en_cours,
         agenda=agenda,
         is_active=is_active,
     )
     db.add(db_pole)
     await db.commit()
-    await db.refresh(db_pole)
-    pole_data = PoleConcertationRead.model_validate(db_pole)
-    pole_data.sujets_count = 0
-    return pole_data
+    created = await _get_pole_by_slug(db, db_pole.slug)
+    return await _pole_response(db, created or db_pole)
 
 
 @forum_router.get("/poles/{pole_slug}", response_model=PoleConcertationRead)
 async def get_pole(pole_slug: str, db: AsyncSession = Depends(get_db)):
     """Détail d'un pôle (public)"""
-    result = await db.execute(
-        select(PoleConcertation).where(PoleConcertation.slug == pole_slug)
-    )
-    pole = result.scalars().first()
+    pole = await _get_pole_by_slug(db, pole_slug)
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
-    count_result = await db.execute(
-        select(func.count(ForumSujet.id)).where(ForumSujet.pole_id == pole.id)
-    )
-    pole_data = PoleConcertationRead.model_validate(pole)
-    pole_data.sujets_count = count_result.scalar() or 0
-    return pole_data
+    return await _pole_response(db, pole)
 
 
 @forum_router.patch("/poles/{pole_slug}", response_model=PoleConcertationRead)
@@ -146,16 +174,14 @@ async def update_pole(
     nb_osc_membres: Optional[str] = Form(None),
     regions_influence: Optional[str] = Form(None),
     realisations: Optional[str] = Form(None),
+    projets_en_cours: Optional[str] = Form(None),
     agenda: Optional[str] = Form(None),
     is_active: Optional[str] = Form(None),
     image: Union[UploadFile, str, None] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_superuser),
 ):
-    result = await db.execute(
-        select(PoleConcertation).where(PoleConcertation.slug == pole_slug)
-    )
-    pole = result.scalars().first()
+    pole = await _get_pole_by_slug(db, pole_slug)
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
 
@@ -183,16 +209,16 @@ async def update_pole(
         pole.regions_influence = regions_influence or None
     if realisations is not None:
         pole.realisations = realisations or None
+    if projets_en_cours is not None:
+        pole.projets_en_cours = projets_en_cours or None
     if agenda is not None:
         pole.agenda = agenda or None
     if is_active is not None:
         pole.is_active = is_active.lower() in ("true", "1", "yes")
 
     await db.commit()
-    await db.refresh(pole)
-    pole_data = PoleConcertationRead.model_validate(pole)
-    pole_data.sujets_count = 0
-    return pole_data
+    updated = await _get_pole_by_slug(db, pole.slug)
+    return await _pole_response(db, updated or pole)
 
 
 @forum_router.delete("/poles/{pole_slug}", status_code=status.HTTP_204_NO_CONTENT)

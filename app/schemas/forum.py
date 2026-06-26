@@ -18,6 +18,7 @@ class PoleConcertationBase(BaseModel):
     nb_osc_membres: Optional[int] = None
     regions_influence: Optional[str] = None  # JSON string
     realisations: Optional[str] = None  # JSON string
+    projets_en_cours: Optional[str] = None  # JSON string
     agenda: Optional[str] = None  # JSON string
     is_active: bool = True
 
@@ -31,6 +32,7 @@ class PoleConcertationRead(PoleConcertationBase):
     slug: str
     created_at: datetime
     sujets_count: Optional[int] = 0
+    nb_membres_actifs: Optional[int] = 0
 
     @property
     def objectifs_list(self) -> List[str]:
@@ -55,6 +57,7 @@ class PoleConcertationUpdate(BaseModel):
     nb_osc_membres: Optional[int] = None
     regions_influence: Optional[str] = None
     realisations: Optional[str] = None
+    projets_en_cours: Optional[str] = None
     agenda: Optional[str] = None
     is_active: Optional[bool] = None
 

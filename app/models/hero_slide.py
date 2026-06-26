@@ -10,6 +10,8 @@ class HeroSlide(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     image_path: str = Field(nullable=False, max_length=500)
+    title: Optional[str] = Field(default=None, nullable=True, max_length=200)
+    description: Optional[str] = Field(default=None, nullable=True, max_length=1000)
     type: str = Field(default="haut", max_length=20, description="'haut' = slider CRASC, 'bas' = partenaires")
     ordre: int = Field(default=0)
     is_active: bool = Field(default=True)

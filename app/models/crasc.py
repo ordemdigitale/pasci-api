@@ -393,6 +393,7 @@ class Evenement(SQLModel, table=True):
     description="Date et heure de fin (optionnelle)."
   )
   lieu: Optional[str] = Field(default=None, nullable=True, max_length=255, description="Lieu de l'événement.")
+  statut: str = Field(default="en_cours", nullable=False, max_length=20, description="Statut de réalisation.")
 
   crasc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="crasc.id", ondelete="CASCADE")
   crasc: Optional[Crasc] = Relationship(back_populates="evenements")
