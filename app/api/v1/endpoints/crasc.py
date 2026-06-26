@@ -630,7 +630,21 @@ async def get_all_osc(
     search: Optional[str] = Query(None),
     type_document_formalisation: Optional[str] = Query(None),
     has_document_formalisation: Optional[bool] = Query(None),
-    sort_by: Literal["name", "type_document_formalisation", "document_formalisation"] = Query("name"),
+    sort_by: Literal[
+        "name",
+        "region_nom",
+        "departement",
+        "sous_prefecture",
+        "categorie",
+        "niveau_regroupement",
+        "domaine_prioritaire",
+        "domaine_prioritaire_2",
+        "domaine_prioritaire_3",
+        "domaine_prioritaire_4",
+        "domaine_prioritaire_5",
+        "type_document_formalisation",
+        "document_formalisation",
+    ] = Query("name"),
     sort_order: Literal["asc", "desc"] = Query("asc"),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
@@ -671,14 +685,27 @@ async def get_all_osc(
     )
     if filters:
         query = query.where(*filters)
-    if sort_by == "type_document_formalisation":
-        order_column = Osc.type_document_formalisation
-        query = query.order_by(order_column.asc() if sort_order == "asc" else order_column.desc(), Osc.name.asc())
-    elif sort_by == "document_formalisation":
+    if sort_by == "document_formalisation":
         has_no_document = Osc.document_formalisation_path.is_(None)
         query = query.order_by(has_no_document.asc() if sort_order == "asc" else has_no_document.desc(), Osc.name.asc())
-    else:
+    elif sort_by == "name":
         query = query.order_by(Osc.name.asc() if sort_order == "asc" else Osc.name.desc())
+    else:
+        sort_columns = {
+            "region_nom": Osc.region_nom,
+            "departement": Osc.departement,
+            "sous_prefecture": Osc.sous_prefecture,
+            "categorie": Osc.categorie,
+            "niveau_regroupement": Osc.niveau_regroupement,
+            "domaine_prioritaire": Osc.domaine_prioritaire,
+            "domaine_prioritaire_2": Osc.domaine_prioritaire_2,
+            "domaine_prioritaire_3": Osc.domaine_prioritaire_3,
+            "domaine_prioritaire_4": Osc.domaine_prioritaire_4,
+            "domaine_prioritaire_5": Osc.domaine_prioritaire_5,
+            "type_document_formalisation": Osc.type_document_formalisation,
+        }
+        order_column = sort_columns[sort_by]
+        query = query.order_by(order_column.asc() if sort_order == "asc" else order_column.desc(), Osc.name.asc())
     query = query.offset(offset).limit(size)
 
     result = await db.execute(query)
