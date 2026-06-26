@@ -201,16 +201,26 @@ async def _get_sondage_by_id(db: AsyncSession, sondage_id: int) -> Optional[Pole
 async def list_poles(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    include_inactive: bool = Query(False),
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """Liste tous les pôles de concertation (public)"""
-    result = await db.execute(
+    if include_inactive and not (current_user and (current_user.is_staff or current_user.is_superuser)):
+        raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs.")
+
+    statement = (
         select(PoleConcertation)
         .options(*POLE_LOAD_OPTIONS)
-        .where(PoleConcertation.is_active == True)
         .order_by(PoleConcertation.name)
         .offset(skip)
         .limit(limit)
+    )
+    if not include_inactive:
+        statement = statement.where(PoleConcertation.is_active == True)
+
+    result = await db.execute(
+        statement
     )
     poles = result.scalars().all()
 
