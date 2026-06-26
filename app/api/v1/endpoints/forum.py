@@ -1,6 +1,7 @@
 # app/api/v1/endpoints/forum.py | Forum endpoints
 import json
 import os, shutil, uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,15 +12,24 @@ import time
 
 from app.core.config import settings
 from app.database.session import get_db
-from app.models.forum import PoleConcertation, ForumSujet, ForumCommentaire
+from app.models.forum import (
+    PoleConcertation,
+    PoleSondage,
+    PoleSondageOption,
+    PoleSondageVote,
+    ForumSujet,
+    ForumCommentaire,
+)
 from app.models.crasc import Osc
 from app.models.users import User
 from app.schemas.forum import (
     PoleConcertationCreate, PoleConcertationRead, PoleConcertationUpdate,
+    PoleSondageCreate, PoleSondageRead, PoleSondageUpdate, PoleSondageVoteCreate,
+    PoleSondageOptionRead,
     ForumSujetCreate, ForumSujetRead, ForumSujetUpdate, ForumSujetDetail,
     ForumCommentaireCreate, ForumCommentaireRead,
 )
-from app.core.auth import get_current_user, get_current_staff_user, get_current_superuser
+from app.core.auth import get_current_user, get_current_staff_user, get_current_superuser, get_optional_current_user
 
 ALLOWED_IMAGE_EXT = ["jpg", "jpeg", "png", "webp"]
 
@@ -46,6 +56,11 @@ forum_router = APIRouter()
 
 POLE_LOAD_OPTIONS = (
     selectinload(PoleConcertation.oscs).selectinload(Osc.region),
+)
+SONDAGE_LOAD_OPTIONS = (
+    selectinload(PoleSondage.options).selectinload(PoleSondageOption.votes),
+    selectinload(PoleSondage.votes),
+    selectinload(PoleSondage.pole).selectinload(PoleConcertation.oscs),
 )
 
 
@@ -84,6 +99,96 @@ async def _get_pole_by_slug(db: AsyncSession, pole_slug: str) -> Optional[PoleCo
         select(PoleConcertation)
         .options(*POLE_LOAD_OPTIONS)
         .where(PoleConcertation.slug == pole_slug)
+    )
+    return result.scalars().first()
+
+
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _is_sondage_closed(sondage: PoleSondage) -> bool:
+    closes_at = _as_utc(sondage.closes_at)
+    return sondage.status != "ouvert" or bool(closes_at and closes_at <= datetime.now(timezone.utc))
+
+
+def _user_can_access_pole(user: User, pole: PoleConcertation) -> bool:
+    if user.is_superuser or user.is_staff:
+        return True
+    if not user.osc_id:
+        return False
+    return any(osc.id == user.osc_id for osc in (pole.oscs or []))
+
+
+def _user_vote_option_id(sondage: PoleSondage, user: Optional[User]) -> Optional[int]:
+    if not user:
+        return None
+    for vote in sondage.votes or []:
+        if vote.user_id == user.id:
+            return vote.option_id
+    return None
+
+
+def _can_show_sondage_results(
+    sondage: PoleSondage,
+    user: Optional[User],
+    user_vote_option_id: Optional[int],
+) -> bool:
+    if user and (user.is_superuser or user.is_staff):
+        return True
+    if sondage.results_visibility == "always":
+        return True
+    if sondage.results_visibility == "after_vote" and user_vote_option_id is not None:
+        return True
+    if sondage.results_visibility == "after_close" and _is_sondage_closed(sondage):
+        return True
+    return False
+
+
+def _sondage_response(sondage: PoleSondage, user: Optional[User] = None) -> PoleSondageRead:
+    user_option_id = _user_vote_option_id(sondage, user)
+    can_show_results = _can_show_sondage_results(sondage, user, user_option_id)
+    total_votes = len(sondage.votes or [])
+
+    options = []
+    for option in sorted(sondage.options or [], key=lambda opt: (opt.ordre, opt.id or 0)):
+        votes_count = len(option.votes or [])
+        percentage = round((votes_count / total_votes) * 100, 1) if total_votes else 0
+        options.append(
+            PoleSondageOptionRead(
+                id=option.id,
+                label=option.label,
+                ordre=option.ordre,
+                votes_count=votes_count if can_show_results else 0,
+                percentage=percentage if can_show_results else 0,
+            )
+        )
+
+    return PoleSondageRead(
+        id=sondage.id,
+        pole_id=sondage.pole_id,
+        question=sondage.question,
+        description=sondage.description,
+        status="ferme" if _is_sondage_closed(sondage) else sondage.status,
+        results_visibility=sondage.results_visibility,
+        closes_at=sondage.closes_at,
+        created_at=sondage.created_at,
+        total_votes=total_votes if can_show_results else 0,
+        user_vote_option_id=user_option_id,
+        can_show_results=can_show_results,
+        options=options,
+    )
+
+
+async def _get_sondage_by_id(db: AsyncSession, sondage_id: int) -> Optional[PoleSondage]:
+    result = await db.execute(
+        select(PoleSondage)
+        .options(*SONDAGE_LOAD_OPTIONS)
+        .where(PoleSondage.id == sondage_id)
     )
     return result.scalars().first()
 
@@ -237,6 +342,159 @@ async def delete_pole(
     await db.delete(pole)
     await db.commit()
     return None
+
+
+# ─────────────────────────────────────────────────────
+# SONDAGES / VOTES
+# ─────────────────────────────────────────────────────
+
+@forum_router.get("/poles/{pole_slug}/sondages", response_model=List[PoleSondageRead])
+async def list_sondages(
+    pole_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    """Liste les sondages d'un pôle avec les résultats visibles selon le contexte."""
+    pole = await _get_pole_by_slug(db, pole_slug)
+    if not pole:
+        raise HTTPException(status_code=404, detail="Pôle non trouvé.")
+
+    result = await db.execute(
+        select(PoleSondage)
+        .options(*SONDAGE_LOAD_OPTIONS)
+        .where(PoleSondage.pole_id == pole.id)
+        .order_by(desc(PoleSondage.created_at))
+    )
+    sondages = result.scalars().all()
+    return [_sondage_response(sondage, current_user) for sondage in sondages]
+
+
+@forum_router.post("/poles/{pole_slug}/sondages", response_model=PoleSondageRead, status_code=status.HTTP_201_CREATED)
+async def create_sondage(
+    pole_slug: str,
+    payload: PoleSondageCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    """Créer un sondage dans un pôle (superuser only)."""
+    pole = await _get_pole_by_slug(db, pole_slug)
+    if not pole:
+        raise HTTPException(status_code=404, detail="Pôle non trouvé.")
+
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="La question du sondage est obligatoire.")
+    options = [option.strip() for option in payload.options if option.strip()]
+    if len(options) < 2:
+        raise HTTPException(status_code=400, detail="Un sondage doit contenir au moins deux choix.")
+
+    sondage = PoleSondage(
+        pole_id=pole.id,
+        question=question,
+        description=payload.description.strip() if payload.description else None,
+        status=payload.status,
+        results_visibility=payload.results_visibility,
+        closes_at=payload.closes_at,
+        created_by=current_user.id,
+    )
+    db.add(sondage)
+    await db.flush()
+
+    for index, label in enumerate(options):
+        db.add(PoleSondageOption(sondage_id=sondage.id, label=label, ordre=index))
+
+    await db.commit()
+    created = await _get_sondage_by_id(db, sondage.id)
+    return _sondage_response(created or sondage, current_user)
+
+
+@forum_router.patch("/sondages/{sondage_id}", response_model=PoleSondageRead)
+async def update_sondage(
+    sondage_id: int,
+    payload: PoleSondageUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    """Modifier les métadonnées d'un sondage (superuser only)."""
+    sondage = await _get_sondage_by_id(db, sondage_id)
+    if not sondage:
+        raise HTTPException(status_code=404, detail="Sondage non trouvé.")
+
+    if payload.question is not None:
+        question = payload.question.strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="La question du sondage est obligatoire.")
+        sondage.question = question
+    if payload.description is not None:
+        sondage.description = payload.description.strip() or None
+    if payload.status is not None:
+        sondage.status = payload.status
+    if payload.results_visibility is not None:
+        sondage.results_visibility = payload.results_visibility
+    if payload.closes_at is not None:
+        sondage.closes_at = payload.closes_at
+
+    await db.commit()
+    updated = await _get_sondage_by_id(db, sondage_id)
+    return _sondage_response(updated or sondage, current_user)
+
+
+@forum_router.delete("/sondages/{sondage_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sondage(
+    sondage_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    sondage = await db.get(PoleSondage, sondage_id)
+    if not sondage:
+        raise HTTPException(status_code=404, detail="Sondage non trouvé.")
+    await db.delete(sondage)
+    await db.commit()
+    return None
+
+
+@forum_router.post("/sondages/{sondage_id}/vote", response_model=PoleSondageRead)
+async def vote_sondage(
+    sondage_id: int,
+    payload: PoleSondageVoteCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Voter pour une option. Un utilisateur ne garde qu'un vote par sondage."""
+    sondage = await _get_sondage_by_id(db, sondage_id)
+    if not sondage:
+        raise HTTPException(status_code=404, detail="Sondage non trouvé.")
+    if not sondage.pole or not _user_can_access_pole(current_user, sondage.pole):
+        raise HTTPException(status_code=403, detail="Vous n'avez pas accès à ce sondage.")
+    if _is_sondage_closed(sondage):
+        raise HTTPException(status_code=400, detail="Ce sondage est fermé.")
+
+    option_ids = {option.id for option in sondage.options or []}
+    if payload.option_id not in option_ids:
+        raise HTTPException(status_code=400, detail="Choix invalide pour ce sondage.")
+
+    result = await db.execute(
+        select(PoleSondageVote).where(
+            PoleSondageVote.sondage_id == sondage.id,
+            PoleSondageVote.user_id == current_user.id,
+        )
+    )
+    vote = result.scalar_one_or_none()
+    if vote:
+        vote.option_id = payload.option_id
+    else:
+        db.add(
+            PoleSondageVote(
+                sondage_id=sondage.id,
+                option_id=payload.option_id,
+                user_id=current_user.id,
+                osc_id=current_user.osc_id,
+            )
+        )
+
+    await db.commit()
+    updated = await _get_sondage_by_id(db, sondage.id)
+    return _sondage_response(updated or sondage, current_user)
 
 
 # ─────────────────────────────────────────────────────
