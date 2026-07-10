@@ -7,13 +7,29 @@ from typing import List, Optional
 from app.database.session import get_db
 from app.schemas.hero_slide import HeroSlideRead, HeroSlideUpdate
 from app.models.hero_slide import HeroSlide
+from app.models.users import User
+from app.core.auth import get_current_staff_user
 from app.core.config import settings
 
 hero_slides_router = APIRouter()
 
+ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "webp"}
+ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
 
 def _save_image(upload: UploadFile) -> str:
     ext = upload.filename.rsplit(".", 1)[-1].lower() if upload.filename and "." in upload.filename else "jpg"
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise HTTPException(status_code=400, detail="Format invalide. Utilisez JPG, PNG ou WebP.")
+    if upload.content_type and upload.content_type not in ALLOWED_IMAGE_MIME:
+        raise HTTPException(status_code=400, detail="Type de fichier invalide. Utilisez JPG, PNG ou WebP.")
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    upload.file.seek(0, os.SEEK_END)
+    file_size = upload.file.tell()
+    upload.file.seek(0)
+    if file_size > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="L'image ne doit pas dépasser 5MB.")
     filename = f"{uuid.uuid4()}.{ext}"
     path = os.path.join(settings.UPLOAD_DIR, filename)
     with open(path, "wb") as f:
@@ -52,6 +68,7 @@ async def create_hero_slide(
     ordre: int = Form(default=0),
     is_active: bool = Form(default=True),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
 ):
     filename = _save_image(image)
     slide = HeroSlide(
@@ -78,6 +95,7 @@ async def update_hero_slide(
     ordre: Optional[int] = Form(default=None),
     is_active: Optional[bool] = Form(default=None),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
 ):
     result = await db.execute(select(HeroSlide).where(HeroSlide.id == slide_id))
     slide = result.scalars().first()
@@ -104,7 +122,11 @@ async def update_hero_slide(
 
 
 @hero_slides_router.delete("/{slide_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_hero_slide(slide_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_hero_slide(
+    slide_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
     result = await db.execute(select(HeroSlide).where(HeroSlide.id == slide_id))
     slide = result.scalar_one_or_none()
     if not slide:

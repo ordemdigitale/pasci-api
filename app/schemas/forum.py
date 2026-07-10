@@ -1,9 +1,11 @@
 # app/schemas/forum.py | Schemas for forum feature
 from datetime import datetime
 from typing import Literal, Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from uuid import UUID
 import json
+
+from app.core.config import settings
 
 
 # ──────────────── Pôle de concertation ────────────────
@@ -33,6 +35,15 @@ class PoleConcertationRead(PoleConcertationBase):
     created_at: datetime
     sujets_count: Optional[int] = 0
     nb_membres_actifs: Optional[int] = 0
+
+    @computed_field
+    @property
+    def image_url(self) -> Optional[str]:
+        if not self.image_path:
+            return None
+        if self.image_path.startswith("http") or self.image_path.startswith("/"):
+            return self.image_path
+        return f"{settings.API_BASE_URL}/static/{self.image_path}"
 
     @property
     def objectifs_list(self) -> List[str]:

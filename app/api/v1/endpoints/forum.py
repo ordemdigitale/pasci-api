@@ -1,6 +1,6 @@
 # app/api/v1/endpoints/forum.py | Forum endpoints
 import json
-import os, shutil, uuid
+import os, uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, desc, func
@@ -33,13 +33,20 @@ from app.schemas.forum import (
 from app.core.auth import get_current_user, get_current_staff_user, get_current_superuser, get_optional_current_user
 
 ALLOWED_IMAGE_EXT = ["jpg", "jpeg", "png", "webp"]
+ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 async def _save_image(upload: UploadFile) -> str:
     """Save an uploaded image to UPLOAD_DIR and return the filename."""
     ext = (upload.filename or "").rsplit(".", 1)[-1].lower()
     if ext not in ALLOWED_IMAGE_EXT:
         raise HTTPException(status_code=400, detail=f"Format invalide. Formats acceptés: {ALLOWED_IMAGE_EXT}")
+    if upload.content_type and upload.content_type not in ALLOWED_IMAGE_MIME:
+        raise HTTPException(status_code=400, detail="Type de fichier invalide. Utilisez JPG, PNG ou WebP.")
     contents = await upload.read()
+    if len(contents) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="L'image ne doit pas dépasser 5MB.")
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     filename = f"{uuid.uuid4()}.{ext}"
     path = os.path.join(settings.UPLOAD_DIR, filename)
     with open(path, "wb") as f:
