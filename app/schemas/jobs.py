@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 from uuid import UUID
 import json
 
@@ -11,6 +11,7 @@ class JobsBase(BaseModel):
     description: str
     location: str
     type: str
+    offre_url: Optional[str] = Field(default=None, max_length=500)
     is_expired: bool = False
     publication_date: Optional[datetime] = None
     expiration_date: Optional[datetime] = None
@@ -20,7 +21,8 @@ class JobsBase(BaseModel):
 
 
 class JobsCreate(JobsBase):
-    pass
+    offre_url: str = Field(..., min_length=1, max_length=500)
+    expiration_date: datetime
 
 
 class JobsRead(JobsBase):
@@ -69,6 +71,7 @@ class JobsUpdate(BaseModel):
     description: Optional[str] = None
     location: Optional[str] = None
     type: Optional[str] = None
+    offre_url: Optional[str] = Field(default=None, max_length=500)
     is_expired: Optional[bool] = False
     publication_date: Optional[datetime] = None
     expiration_date: Optional[datetime] = None

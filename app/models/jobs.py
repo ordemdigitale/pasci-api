@@ -13,6 +13,7 @@ class Jobs(SQLModel, table=True):
     description: str = Field(sa_column=Column(String, nullable=True), description="Job description")
     location: str = Field(max_length=100, nullable=False, description="Job location")
     type: str = Field(max_length=200, nullable=False, description="Job type")
+    offre_url: Optional[str] = Field(default=None, nullable=True, max_length=500, description="Lien pour plus d'informations ou candidature")
     is_expired: bool = Field(default=False, description="Indicates if the job posting is expired")
     slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
     # brouillon | en_attente | publie | rejete
