@@ -16,11 +16,30 @@ class ConfigUpdate(BaseModel):
     value: str
 
 
+class PaymentNumbersRead(BaseModel):
+    wave_number: str
+    orange_money_number: str
+
+
+async def get_config_value(db: AsyncSession, key: str, fallback: str) -> str:
+    result = await db.execute(select(SiteConfig).where(SiteConfig.key == key))
+    row = result.scalars().first()
+    return row.value if row and row.value else fallback
+
+
 @site_config_router.get("", response_model=Dict[str, str])
 async def get_all_config(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SiteConfig))
     rows = result.scalars().all()
     return {r.key: r.value or "" for r in rows}
+
+
+@site_config_router.get("/payment-numbers", response_model=PaymentNumbersRead)
+async def get_payment_numbers(db: AsyncSession = Depends(get_db)):
+    return PaymentNumbersRead(
+        wave_number=await get_config_value(db, "payment_wave_number", settings.WAVE_NUMBER),
+        orange_money_number=await get_config_value(db, "payment_orange_money_number", settings.ORANGE_MONEY_NUMBER),
+    )
 
 
 @site_config_router.put("/{key}")

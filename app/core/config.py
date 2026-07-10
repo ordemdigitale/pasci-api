@@ -58,8 +58,8 @@ class Settings(BaseSettings):
   SMTP_STARTTLS: bool = False               # True si port 587
 
   # Paiement manuel (Wave / Orange Money)
-  WAVE_NUMBER: str = "+225 07 00 00 00 00"
-  ORANGE_MONEY_NUMBER: str = "+225 05 00 00 00 00"
+  WAVE_NUMBER: str = "+225 07 09 51 88 75"
+  ORANGE_MONEY_NUMBER: str = "+225 07 09 51 88 75"
   ADMIN_EMAIL: str = "admin@plateforme-osci.org"
 
   # CinetPay — paiement en ligne (API v1)
