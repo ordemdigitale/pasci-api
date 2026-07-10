@@ -34,6 +34,7 @@ async def global_search(
     news_query = (
         select(News)
         .where(
+            News.statut_publication == "publie",
             or_(
                 News.title.ilike(search_term),
                 News.content.ilike(search_term)
@@ -48,6 +49,7 @@ async def global_search(
     osc_query = (
         select(Osc)
         .where(
+            Osc.is_visible == True,
             or_(
                 Osc.name.ilike(search_term),
                 Osc.description.ilike(search_term)
@@ -62,6 +64,7 @@ async def global_search(
     jobs_query = (
         select(Jobs)
         .where(
+            Jobs.statut_publication == "publie",
             or_(
                 Jobs.title.ilike(search_term),
                 Jobs.description.ilike(search_term)
@@ -131,6 +134,7 @@ async def search_news(
     query = (
         select(News)
         .where(
+            News.statut_publication == "publie",
             or_(
                 News.title.ilike(search_term),
                 News.content.ilike(search_term)
@@ -148,6 +152,7 @@ async def search_news(
     count_query = (
         select(func.count(News.id))
         .where(
+            News.statut_publication == "publie",
             or_(
                 News.title.ilike(search_term),
                 News.content.ilike(search_term)
@@ -259,6 +264,7 @@ async def search_jobs(
 
     # Base query with search conditions
     query = select(Jobs).where(
+        Jobs.statut_publication == "publie",
         or_(
             Jobs.title.ilike(search_term),
             Jobs.description.ilike(search_term)
@@ -278,6 +284,7 @@ async def search_jobs(
 
     # Count total matches
     count_query = select(func.count(Jobs.id)).where(
+        Jobs.statut_publication == "publie",
         or_(
             Jobs.title.ilike(search_term),
             Jobs.description.ilike(search_term)
@@ -327,6 +334,7 @@ async def search_suggestions(
     # Get news titles
     news_query = (
         select(News.title, News.slug)
+        .where(News.statut_publication == "publie")
         .where(News.title.ilike(search_term))
         .limit(limit)
     )
@@ -336,6 +344,7 @@ async def search_suggestions(
     # Get OSC names
     osc_query = (
         select(Osc.name, Osc.slug)
+        .where(Osc.is_visible == True)
         .where(Osc.name.ilike(search_term))
         .limit(limit)
     )
@@ -345,6 +354,7 @@ async def search_suggestions(
     # Get job titles
     jobs_query = (
         select(Jobs.title, Jobs.slug)
+        .where(Jobs.statut_publication == "publie")
         .where(Jobs.title.ilike(search_term))
         .where(Jobs.is_expired == False)
         .limit(limit)
