@@ -70,15 +70,23 @@ def _json_list(values: List[str]) -> str:
     return json.dumps(values, ensure_ascii=False)
 
 
+def _region_dedupe_key(region_name: str) -> str:
+    return slugify_lib.slugify(region_name or "").casefold()
+
+
 def _regions_from_pole(pole: PoleConcertation) -> List[str]:
     seen = set()
     regions = []
     for osc in pole.oscs or []:
-        region_name = (osc.region_nom or "").strip()
-        if not region_name and getattr(osc, "region", None):
+        region_name = ""
+        if getattr(osc, "region", None):
             region_name = (osc.region.name or "").strip()
-        if region_name and region_name.lower() not in seen:
-            seen.add(region_name.lower())
+        if not region_name:
+            region_name = (osc.region_nom or "").strip()
+
+        region_key = _region_dedupe_key(region_name)
+        if region_name and region_key and region_key not in seen:
+            seen.add(region_key)
             regions.append(region_name)
     return sorted(regions, key=str.lower)
 
