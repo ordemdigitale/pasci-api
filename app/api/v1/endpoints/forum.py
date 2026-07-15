@@ -259,9 +259,9 @@ async def create_pole(
     is_active: bool = Form(True),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_staff_user),
 ):
-    """Créer un pôle (superuser only)"""
+    """Créer un pôle (staff ou superuser)"""
     image_path = None
     if image and image.filename:
         image_path = await _save_image(image)
