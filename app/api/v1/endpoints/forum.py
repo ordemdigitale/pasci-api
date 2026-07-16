@@ -309,6 +309,7 @@ async def update_pole(
     projets_en_cours: Optional[str] = Form(None),
     agenda: Optional[str] = Form(None),
     is_active: Optional[str] = Form(None),
+    remove_image: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
@@ -318,7 +319,10 @@ async def update_pole(
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
 
-    if image and hasattr(image, 'filename') and image.filename:
+    if remove_image and remove_image.lower() in ("true", "1", "yes"):
+        _delete_image(pole.image_path)
+        pole.image_path = None
+    elif image and hasattr(image, 'filename') and image.filename:
         _delete_image(pole.image_path)
         pole.image_path = await _save_image(image)
 
