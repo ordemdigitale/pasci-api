@@ -311,8 +311,9 @@ async def update_pole(
     is_active: Optional[str] = Form(None),
     image: Union[UploadFile, str, None] = File(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_staff_user),
 ):
+    """Modifier un pôle (staff ou superuser)"""
     pole = await _get_pole_by_slug(db, pole_slug)
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
@@ -357,7 +358,7 @@ async def update_pole(
 async def delete_pole(
     pole_slug: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_staff_user),
 ):
     result = await db.execute(
         select(PoleConcertation).where(PoleConcertation.slug == pole_slug)
