@@ -167,12 +167,10 @@ async def _apply_osc_changes(
 async def create_crasc(
    name: str = Form(...),
    description: Optional[str] = Form(None),
-   osc_count: str = Form(""),
    db: AsyncSession = Depends(get_db),
    current_user: User = Depends(get_current_superuser),
 ):
-   osc_count_int = int(osc_count) if osc_count and osc_count != "" else None
-   crasc_create = Crasc(name=name, description=description, osc_count=osc_count_int)
+   crasc_create = Crasc(name=name, description=description, osc_count=0)
    result = await db.execute(select(Crasc).where(Crasc.name == crasc_create.name))
    if result.scalars().first():
       raise HTTPException(
@@ -201,11 +199,25 @@ async def get_crascs(
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
     """Liste les CRASCs. Un admin CRASC ne voit que le sien."""
-    query = select(Crasc).offset(skip).limit(limit).order_by(Crasc.name)
+    osc_count_sub = (
+        select(func.count(Osc.id))
+        .where(Osc.crasc_id == Crasc.id)
+        .correlate(Crasc)
+        .scalar_subquery()
+    )
+    query = (
+        select(Crasc, osc_count_sub.label("dynamic_osc_count"))
+        .offset(skip).limit(limit).order_by(Crasc.name)
+    )
     if current_user and current_user.is_staff and not current_user.is_superuser:
         query = query.where(Crasc.id == current_user.crasc_id)
     result = await db.execute(query)
-    return result.scalars().all()
+    rows = result.all()
+    crascs = []
+    for crasc, dynamic_count in rows:
+        crasc.osc_count = dynamic_count
+        crascs.append(crasc)
+    return crascs
 
 
 @crasc_router.get("/crasc/{crasc_slug}", response_model=CrascReadDetail, status_code=status.HTTP_200_OK)
@@ -230,6 +242,11 @@ async def get_crasc(
         raise HTTPException(status_code=404, detail="CRASC non trouvé.")
     if current_user and current_user.is_staff and not current_user.is_superuser:
         check_crasc_ownership(current_user, crasc.id)
+    # Comptage dynamique des OSC
+    count_result = await db.execute(
+        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id)
+    )
+    crasc.osc_count = count_result.scalar_one()
     return crasc
 
 
@@ -249,12 +266,18 @@ async def update_crasc(
     if not crasc:
         raise HTTPException(status_code=404, detail="CRASC non trouvé.")
     update_data = crasc_update.model_dump(exclude_unset=True)
+    update_data.pop("osc_count", None)
     for key, value in update_data.items():
         setattr(crasc, key, value)
     if "name" in update_data:
         crasc.slug = slugify.slugify(crasc.name)
     await db.commit()
     await db.refresh(crasc)
+    # Comptage dynamique des OSC
+    count_result = await db.execute(
+        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id)
+    )
+    crasc.osc_count = count_result.scalar_one()
     return crasc
 
 
