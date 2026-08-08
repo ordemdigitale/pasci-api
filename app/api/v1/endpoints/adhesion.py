@@ -240,7 +240,13 @@ async def _provision_osc_and_user(
 @adhesion_router.post("", response_model=DemandeAdhesionRead, status_code=status.HTTP_201_CREATED)
 async def create_demande(request: Request, db: AsyncSession = Depends(get_db)):
     """Soumettre une nouvelle demande d'adhésion"""
-    data = await _read_demande_payload(request)
+    try:
+        data = await _read_demande_payload(request)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Données invalides : {e}",
+        )
     demande = DemandeAdhesion(**data.model_dump())
     db.add(demande)
     await db.commit()
