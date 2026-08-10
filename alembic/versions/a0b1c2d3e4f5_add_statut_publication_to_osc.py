@@ -1,6 +1,6 @@
 """add statut_publication to osc
 
-Revision ID: f4a5b6c7d8e9
+Revision ID: a0b1c2d3e4f5
 Revises: e3f4a5b6c7d8
 Create Date: 2026-08-10
 """
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "f4a5b6c7d8e9"
+revision: str = "a0b1c2d3e4f5"
 down_revision: Union[str, None] = "e3f4a5b6c7d8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
