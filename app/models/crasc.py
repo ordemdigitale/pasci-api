@@ -252,6 +252,8 @@ class Osc(SQLModel, table=True):
   financement_ong_intl: Optional[bool] = Field(default=None, nullable=True)
   financement_multilateral: Optional[bool] = Field(default=None, nullable=True)
   is_visible: bool = Field(default=True, description="Afficher l'OSC dans l'annuaire public")
+  # en_attente | publie | rejete
+  statut_publication: str = Field(default="en_attente", max_length=20, description="Statut de publication de l'OSC")
 
   news_items: List["News"] = Relationship(
     back_populates="osc",

@@ -201,6 +201,7 @@ class OscBase(BaseModel):
   financement_ong_intl: Optional[bool] = None
   financement_multilateral: Optional[bool] = None
   is_visible: bool = True
+  statut_publication: str = "en_attente"
 
   @computed_field
   @property

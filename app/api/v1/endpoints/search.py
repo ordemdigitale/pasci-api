@@ -196,10 +196,11 @@ async def search_osc(
     """
     search_term = f"%{q}%"
 
-    # Base query with search conditions
+    # Base query with search conditions (only published OSCs)
     query = (
         select(Osc)
         .where(
+            Osc.statut_publication == "publie",
             or_(
                 Osc.name.ilike(search_term),
                 Osc.description.ilike(search_term),
@@ -218,6 +219,7 @@ async def search_osc(
     count_query = (
         select(func.count(Osc.id))
         .where(
+            Osc.statut_publication == "publie",
             or_(
                 Osc.name.ilike(search_term),
                 Osc.description.ilike(search_term),

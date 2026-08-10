@@ -627,6 +627,7 @@ async def create_osc(
         date_derniere_activite=date_derniere_activite,
         recommandations=recommandations,
         recommandations_2=recommandations_2,
+        statut_publication="en_attente",
     )
     result = await db.execute(select(Osc).where(Osc.name == db_osc.name))
     if result.scalars().first():
@@ -643,6 +644,45 @@ async def create_osc(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail={"type": "database_error", "errors": [{"field": "database", "message": str(e)}]})
+
+
+@crasc_router.get("/osc/admin/en-attente", response_model=List[OscReadDetail], status_code=status.HTTP_200_OK)
+async def list_osc_en_attente(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Liste toutes les OSC en attente de validation (staff only)."""
+    query = select(Osc).where(Osc.statut_publication == "en_attente").options(
+        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items), selectinload(Osc.poles)
+    ).order_by(Osc.created_at.asc())
+    if not current_user.is_superuser:
+        query = query.where(Osc.crasc_id == current_user.crasc_id)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@crasc_router.patch("/osc/{osc_slug}/valider", response_model=OscReadDetail, status_code=status.HTTP_200_OK)
+async def valider_osc(
+    osc_slug: str,
+    action: str = Query(..., description="publie ou rejete"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """Approuver ou rejeter une OSC (staff only)."""
+    if action not in ("publie", "rejete"):
+        raise HTTPException(status_code=400, detail="Action invalide. Utilisez 'publie' ou 'rejete'.")
+    result = await db.execute(
+        select(Osc).where(Osc.slug == osc_slug).options(
+            selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items), selectinload(Osc.poles)
+        )
+    )
+    osc = result.scalar_one_or_none()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC non trouvée.")
+    osc.statut_publication = action
+    await db.commit()
+    await db.refresh(osc)
+    return osc
 
 
 @crasc_router.get("/osc", response_model=PaginatedResponse[OscReadDetail], status_code=status.HTTP_200_OK)
@@ -742,9 +782,10 @@ async def get_all_osc(
     elif crasc_id:
         filters.append(Osc.crasc_id == crasc_id)
 
-    # Les utilisateurs non-admin ne voient que les OSCs visibles
+    # Les utilisateurs non-admin ne voient que les OSCs visibles et publiées
     if not current_user or not (current_user.is_staff or current_user.is_superuser):
         filters.append(Osc.is_visible == True)
+        filters.append(Osc.statut_publication == "publie")
 
     count_query = select(func.count()).select_from(Osc)
     if filters:
@@ -814,6 +855,9 @@ async def get_osc_by_slug(
     result = await db.execute(query)
     osc = result.scalar_one_or_none()
     if not osc:
+        raise HTTPException(status_code=404, detail="OSC non trouvée")
+    # Les utilisateurs non-admin ne peuvent pas voir les OSC non publiées
+    if osc.statut_publication != "publie" and (not current_user or not (current_user.is_staff or current_user.is_superuser)):
         raise HTTPException(status_code=404, detail="OSC non trouvée")
     if current_user and current_user.is_staff and not current_user.is_superuser:
         check_crasc_ownership(current_user, osc.crasc_id)
