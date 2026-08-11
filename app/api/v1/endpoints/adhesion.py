@@ -141,7 +141,7 @@ def _osc_payload_from_demande(demande: DemandeAdhesion, crasc_id: Optional[int])
         "adhesion_crasc_document_path": demande.adhesion_crasc_document_path,
         "recommandations": demande.recommandations,
         "recommandations_2": demande.recommandations_2,
-        "statut_publication": "en_attente",
+        "statut_publication": "publie",
     }
 
 
