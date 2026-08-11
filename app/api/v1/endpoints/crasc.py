@@ -201,7 +201,7 @@ async def get_crascs(
     """Liste les CRASCs. Un admin CRASC ne voit que le sien."""
     osc_count_sub = (
         select(func.count(Osc.id))
-        .where(Osc.crasc_id == Crasc.id)
+        .where(Osc.crasc_id == Crasc.id, Osc.statut_publication != "rejete")
         .correlate(Crasc)
         .scalar_subquery()
     )
@@ -242,9 +242,9 @@ async def get_crasc(
         raise HTTPException(status_code=404, detail="CRASC non trouvé.")
     if current_user and current_user.is_staff and not current_user.is_superuser:
         check_crasc_ownership(current_user, crasc.id)
-    # Comptage dynamique des OSC
+    # Comptage dynamique des OSC (exclut les rejetées)
     count_result = await db.execute(
-        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id)
+        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id, Osc.statut_publication != "rejete")
     )
     crasc.osc_count = count_result.scalar_one()
     return crasc
@@ -273,9 +273,9 @@ async def update_crasc(
         crasc.slug = slugify.slugify(crasc.name)
     await db.commit()
     await db.refresh(crasc)
-    # Comptage dynamique des OSC
+    # Comptage dynamique des OSC (exclut les rejetées)
     count_result = await db.execute(
-        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id)
+        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id, Osc.statut_publication != "rejete")
     )
     crasc.osc_count = count_result.scalar_one()
     return crasc
