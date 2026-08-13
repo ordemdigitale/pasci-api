@@ -30,8 +30,8 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)) -> Dict[str, A
     region_result = await db.execute(select(func.count(Region.id)))
     total_regions = region_result.scalar_one()
 
-    # Count OSC (published + en_attente, excludes rejected)
-    osc_result = await db.execute(select(func.count(Osc.id)).where(Osc.statut_publication != "rejete"))
+    # Count OSC (visible and not rejected)
+    osc_result = await db.execute(select(func.count(Osc.id)).where(Osc.statut_publication != "rejete", Osc.is_visible == True))
     total_osc = osc_result.scalar_one()
 
     # Count OSC Types
@@ -112,7 +112,7 @@ async def get_osc_by_region(
             func.count(Osc.id).label("osc_count")
         )
         .outerjoin(Crasc, Region.crasc_id == Crasc.id)
-        .outerjoin(Osc, (Osc.crasc_id == Crasc.id) & (Osc.statut_publication != "rejete"))
+        .outerjoin(Osc, (Osc.crasc_id == Crasc.id) & (Osc.statut_publication != "rejete") & (Osc.is_visible == True))
         .group_by(Region.id, Region.name, Region.slug)
         .order_by(desc("osc_count"))
     )
@@ -147,7 +147,7 @@ async def get_osc_by_type(
             OscType.slug,
             func.count(Osc.id).label("osc_count")
         )
-        .outerjoin(Osc, (Osc.type_id == OscType.id) & (Osc.statut_publication != "rejete"))
+        .outerjoin(Osc, (Osc.type_id == OscType.id) & (Osc.statut_publication != "rejete") & (Osc.is_visible == True))
         .group_by(OscType.id, OscType.name, OscType.slug)
         .order_by(desc("osc_count"))
     )
@@ -182,7 +182,7 @@ async def get_osc_by_crasc(
             Crasc.slug,
             func.count(Osc.id).label("osc_count")
         )
-        .outerjoin(Osc, (Osc.crasc_id == Crasc.id) & (Osc.statut_publication != "rejete"))
+        .outerjoin(Osc, (Osc.crasc_id == Crasc.id) & (Osc.statut_publication != "rejete") & (Osc.is_visible == True))
         .group_by(Crasc.id, Crasc.name, Crasc.slug)
         .order_by(desc("osc_count"))
     )
