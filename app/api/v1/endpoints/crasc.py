@@ -782,10 +782,9 @@ async def get_all_osc(
     elif crasc_id:
         filters.append(Osc.crasc_id == crasc_id)
 
-    # Les utilisateurs non-admin ne voient que les OSCs visibles et publiées
-    if not current_user or not (current_user.is_staff or current_user.is_superuser):
-        filters.append(Osc.is_visible == True)
-        filters.append(Osc.statut_publication == "publie")
+    # Seules les OSCs publiées et visibles sont comptées (identique partout)
+    filters.append(Osc.is_visible == True)
+    filters.append(Osc.statut_publication == "publie")
 
     count_query = select(func.count()).select_from(Osc)
     if filters:
