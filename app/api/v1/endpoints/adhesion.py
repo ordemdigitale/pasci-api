@@ -1,4 +1,5 @@
 # api/v1/endpoints/adhesion.py
+import logging
 import secrets
 import string
 import slugify as python_slugify
@@ -21,6 +22,8 @@ from app.schemas.adhesion import (
     DemandeAdhesionReadWithCredentials,
     OscCredentials,
 )
+
+logger = logging.getLogger(__name__)
 
 adhesion_router = APIRouter()
 
@@ -141,7 +144,9 @@ def _osc_payload_from_demande(demande: DemandeAdhesion, crasc_id: Optional[int])
         "adhesion_crasc_document_path": demande.adhesion_crasc_document_path,
         "recommandations": demande.recommandations,
         "recommandations_2": demande.recommandations_2,
-        "statut_publication": "en_attente",
+        # L'approbation de la demande d'adhésion EST l'acte de modération :
+        # l'OSC est publiée immédiatement, sans repasser par /admin/moderation.
+        "statut_publication": "publie",
     }
 
 
@@ -174,6 +179,18 @@ async def _provision_osc_and_user(
     osc_payload = _osc_payload_from_demande(demande, crasc_id)
     if not osc:
         osc = Osc(**osc_payload)
+        # Le slug est généré depuis le nom : s'assurer qu'il reste unique
+        # (deux noms différents peuvent produire le même slug).
+        base_slug = osc.slug or python_slugify.slugify(demande.nom_organisation)[:95]
+        slug = base_slug
+        counter = 1
+        while True:
+            existing_slug = await db.execute(select(Osc).where(Osc.slug == slug))
+            if not existing_slug.scalars().first():
+                break
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+        osc.slug = slug
         db.add(osc)
         await db.flush()  # obtenir l'id sans commit
     else:
@@ -318,13 +335,23 @@ async def update_demande(
     if demande.statut == "approuvee" and previous_statut != "approuvee":
         try:
             # Admin CRASC : forcer son propre CRASC
-            if not current_user.is_superuser and current_user.crasc_id:
-                demande.crasc_id_override = current_user.crasc_id  # transmis à _provision_osc_and_user
-            credentials = await _provision_osc_and_user(demande, db, force_crasc_id=current_user.crasc_id if not current_user.is_superuser else None)
+            credentials = await _provision_osc_and_user(
+                demande,
+                db,
+                force_crasc_id=None if current_user.is_superuser else current_user.crasc_id,
+            )
         except Exception as e:
-            # Ne pas bloquer l'approbation si la création échoue
-            import traceback
-            traceback.print_exc()
+            # La création de l'OSC a échoué : ne pas laisser la demande "approuvée"
+            # sans OSC visible — on remet le statut précédent et on remonte l'erreur.
+            logger.exception("Provisionnement OSC échoué pour la demande %s", demande_id)
+            await db.rollback()
+            await db.refresh(demande)
+            demande.statut = previous_statut
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Impossible de créer l'OSC : {e}. La demande n'a pas été approuvée.",
+            )
 
     response_data = demande.__dict__.copy()
     response_data["credentials"] = credentials
