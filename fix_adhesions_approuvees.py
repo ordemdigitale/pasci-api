@@ -62,7 +62,12 @@ from app.models.crasc import Osc  # noqa: E402
 from app.api.v1.endpoints.adhesion import _normaliser_nom, _provision_osc_and_user  # noqa: E402
 
 
-async def run(apply: bool, credentials_path: str | None, tout: bool) -> int:
+async def run(
+    apply: bool,
+    credentials_path: str | None,
+    tout: bool,
+    exclure: set[int],
+) -> int:
     published: list[str] = []
     published_hors_demande: list[str] = []
     provisioned: list[tuple[str, str, str, str]] = []
@@ -81,6 +86,10 @@ async def run(apply: bool, credentials_path: str | None, tout: bool) -> int:
         print(f"Demandes approuvées : {len(demandes)}\n")
 
         for demande in demandes:
+            if demande.id in exclure:
+                print(f"[EXCLUE]     {demande.nom_organisation}  (demande #{demande.id})")
+                continue
+
             # Comparaison normalisée, identique à celle du provisionnement
             osc = (
                 await db.execute(
@@ -176,5 +185,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Publie aussi les OSC en_attente créées hors demande d'adhésion",
     )
+    parser.add_argument(
+        "--exclure",
+        default="",
+        help="IDs de demandes à ignorer, séparés par des virgules (données à corriger)",
+    )
     args = parser.parse_args()
-    sys.exit(asyncio.run(run(args.apply, args.credentials, args.tout)))
+    exclure = {int(v) for v in args.exclure.split(",") if v.strip()}
+    sys.exit(asyncio.run(run(args.apply, args.credentials, args.tout, exclure)))

@@ -103,7 +103,9 @@ def _adhesion_crasc_to_bool(statut: Optional[str]) -> Optional[bool]:
 
 def _osc_payload_from_demande(demande: DemandeAdhesion, crasc_id: Optional[int]) -> dict:
     return {
-        "name": demande.nom_organisation,
+        # .strip() : plusieurs demandes ont des espaces en fin de nom, qui se
+        # retrouvaient tels quels dans l'annuaire
+        "name": (demande.nom_organisation or "").strip(),
         "sigle": demande.sigle,
         "description": demande.description,
         "email": demande.email,
