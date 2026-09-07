@@ -627,7 +627,8 @@ async def create_osc(
         date_derniere_activite=date_derniere_activite,
         recommandations=recommandations,
         recommandations_2=recommandations_2,
-        statut_publication="en_attente",
+        # Créée par un admin : publiée directement, sans passer par /admin/moderation.
+        statut_publication="publie",
     )
     result = await db.execute(select(Osc).where(Osc.name == db_osc.name))
     if result.scalars().first():
@@ -637,6 +638,17 @@ async def create_osc(
         )
     try:
         osc_create = Osc(**db_osc.model_dump())
+        # Deux noms distincts peuvent produire le même slug : garantir l'unicité
+        base_slug = osc_create.slug or slugify.slugify(db_osc.name)[:95]
+        candidate_slug = base_slug
+        counter = 1
+        while True:
+            existing_slug = await db.execute(select(Osc).where(Osc.slug == candidate_slug))
+            if not existing_slug.scalars().first():
+                break
+            candidate_slug = f"{base_slug}-{counter}"
+            counter += 1
+        osc_create.slug = candidate_slug
         db.add(osc_create)
         await db.commit()
         await db.refresh(osc_create)

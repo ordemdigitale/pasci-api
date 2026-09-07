@@ -20,9 +20,15 @@ Ce script traite les deux cas sur les données existantes :
   - Cas 2 : demande approuvée sans OSC correspondante  →  OSC + compte
             utilisateur (re)créés via la même fonction que l'API.
 
+  - Option --tout : publie AUSSI les OSC restées en "en_attente" qui ne
+            viennent pas d'une demande (créées à la main via l'admin), la
+            modération des nouvelles OSC ayant été supprimée. Les OSC
+            explicitement "rejete" ne sont jamais touchées.
+
 Usage :
     python fix_adhesions_approuvees.py                # dry-run (n'écrit rien)
     python fix_adhesions_approuvees.py --apply        # applique les changements
+    python fix_adhesions_approuvees.py --apply --tout # + vide la file de modération OSC
     python fix_adhesions_approuvees.py --apply --credentials creds.csv
                                                       # + export des identifiants créés
 """
@@ -45,8 +51,9 @@ from app.models.crasc import Osc  # noqa: E402
 from app.api.v1.endpoints.adhesion import _provision_osc_and_user  # noqa: E402
 
 
-async def run(apply: bool, credentials_path: str | None) -> int:
+async def run(apply: bool, credentials_path: str | None, tout: bool) -> int:
     published: list[str] = []
+    published_hors_demande: list[str] = []
     provisioned: list[tuple[str, str, str, str]] = []
     failed: list[tuple[str, str]] = []
     already_ok = 0
@@ -100,6 +107,24 @@ async def run(apply: bool, credentials_path: str | None) -> int:
             if apply:
                 osc.statut_publication = "publie"
 
+        # ── Option --tout : vider la file de modération des nouvelles OSC ────
+        if tout:
+            noms_demandes = {d.nom_organisation for d in demandes}
+            restantes = (
+                await db.execute(
+                    select(Osc)
+                    .where(Osc.statut_publication == "en_attente")
+                    .order_by(Osc.created_at)
+                )
+            ).scalars().all()
+            for osc in restantes:
+                if osc.name in noms_demandes:
+                    continue  # déjà traité au-dessus
+                print(f"[À PUBLIER*] {osc.name}  (créée hors demande d'adhésion)")
+                published_hors_demande.append(osc.name)
+                if apply:
+                    osc.statut_publication = "publie"
+
         if apply:
             await db.commit()
 
@@ -107,6 +132,8 @@ async def run(apply: bool, credentials_path: str | None) -> int:
     print(f"Déjà publiées (rien à faire) : {already_ok}")
     print(f"OSC passées à 'publie'       : {len(published)}")
     print(f"OSC créées (cas 2)           : {len(provisioned)}")
+    if tout:
+        print(f"OSC publiées hors demande    : {len(published_hors_demande)}")
     if failed:
         print(f"Échecs                       : {len(failed)}")
         for name, err in failed:
@@ -128,5 +155,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Applique les changements en base")
     parser.add_argument("--credentials", default=None, help="Fichier CSV d'export des identifiants créés")
+    parser.add_argument(
+        "--tout",
+        action="store_true",
+        help="Publie aussi les OSC en_attente créées hors demande d'adhésion",
+    )
     args = parser.parse_args()
-    sys.exit(asyncio.run(run(args.apply, args.credentials)))
+    sys.exit(asyncio.run(run(args.apply, args.credentials, args.tout)))
