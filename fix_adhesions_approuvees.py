@@ -43,12 +43,23 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
+import importlib  # noqa: E402
+import pkgutil  # noqa: E402
+
+from sqlalchemy import func  # noqa: E402
 from sqlmodel import select  # noqa: E402
+
+import app.models as _models_pkg  # noqa: E402
+
+# Charger TOUS les modèles : sans ça, SQLAlchemy échoue à configurer les
+# mappers (relations 'Formation', 'News'… non résolues) au premier select.
+for _module in pkgutil.iter_modules(_models_pkg.__path__):
+    importlib.import_module(f"app.models.{_module.name}")
 
 from app.database.session import AsyncSessionLocal  # noqa: E402
 from app.models.adhesion import DemandeAdhesion  # noqa: E402
 from app.models.crasc import Osc  # noqa: E402
-from app.api.v1.endpoints.adhesion import _provision_osc_and_user  # noqa: E402
+from app.api.v1.endpoints.adhesion import _normaliser_nom, _provision_osc_and_user  # noqa: E402
 
 
 async def run(apply: bool, credentials_path: str | None, tout: bool) -> int:
@@ -70,8 +81,13 @@ async def run(apply: bool, credentials_path: str | None, tout: bool) -> int:
         print(f"Demandes approuvées : {len(demandes)}\n")
 
         for demande in demandes:
+            # Comparaison normalisée, identique à celle du provisionnement
             osc = (
-                await db.execute(select(Osc).where(Osc.name == demande.nom_organisation))
+                await db.execute(
+                    select(Osc)
+                    .where(func.lower(func.btrim(Osc.name)) == _normaliser_nom(demande.nom_organisation))
+                    .order_by(Osc.id)
+                )
             ).scalars().first()
 
             # ── Cas 2 : aucune OSC → (re)provisionner ────────────────────────
@@ -109,7 +125,7 @@ async def run(apply: bool, credentials_path: str | None, tout: bool) -> int:
 
         # ── Option --tout : vider la file de modération des nouvelles OSC ────
         if tout:
-            noms_demandes = {d.nom_organisation for d in demandes}
+            noms_demandes = {_normaliser_nom(d.nom_organisation) for d in demandes}
             restantes = (
                 await db.execute(
                     select(Osc)
@@ -118,7 +134,7 @@ async def run(apply: bool, credentials_path: str | None, tout: bool) -> int:
                 )
             ).scalars().all()
             for osc in restantes:
-                if osc.name in noms_demandes:
+                if _normaliser_nom(osc.name) in noms_demandes:
                     continue  # déjà traité au-dessus
                 print(f"[À PUBLIER*] {osc.name}  (créée hors demande d'adhésion)")
                 published_hors_demande.append(osc.name)

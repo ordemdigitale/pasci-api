@@ -5,6 +5,7 @@ import string
 import slugify as python_slugify
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func
 from sqlmodel import select, desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
@@ -73,6 +74,18 @@ async def _read_demande_payload(request: Request) -> DemandeAdhesionCreate:
     payload.update(saved_documents)
 
     return DemandeAdhesionCreate(**payload)
+
+
+def _normaliser_nom(nom: Optional[str]) -> str:
+    """
+    Clé de comparaison des noms d'organisation.
+
+    Les noms saisis dans les demandes diffèrent souvent de ceux déjà en base
+    par la casse ou des espaces en trop ("Entente et Développement " vs
+    "Entente et Développement"). Sans cette normalisation, le rattrapage
+    crée une deuxième fiche pour une OSC déjà présente dans l'annuaire.
+    """
+    return (nom or "").strip().lower()
 
 
 def _generate_password(length: int = 12) -> str:
@@ -171,10 +184,15 @@ async def _provision_osc_and_user(
             crasc_id = crasc.id
 
     # --- 2. Créer ou retrouver l'OSC ---
+    # Comparaison insensible à la casse et aux espaces : évite de créer un
+    # doublon d'une OSC déjà présente dans l'annuaire. .first() et non
+    # scalar_one_or_none() car la base contient déjà des noms en double.
     osc_result = await db.execute(
-        select(Osc).where(Osc.name == demande.nom_organisation)
+        select(Osc)
+        .where(func.lower(func.btrim(Osc.name)) == _normaliser_nom(demande.nom_organisation))
+        .order_by(Osc.id)
     )
-    osc = osc_result.scalar_one_or_none()
+    osc = osc_result.scalars().first()
 
     osc_payload = _osc_payload_from_demande(demande, crasc_id)
     if not osc:
@@ -325,11 +343,19 @@ async def get_demandes_sans_osc(
     if not demandes:
         return []
 
-    noms = [demande.nom_organisation for demande in demandes]
-    noms_existants = set(
-        (await db.execute(select(Osc.name).where(Osc.name.in_(noms)))).scalars().all()
-    )
-    return [d for d in demandes if d.nom_organisation not in noms_existants]
+    # Même comparaison normalisée que le provisionnement, sinon la liste
+    # annonce des demandes qui ne feront en réalité que republier une OSC
+    # déjà présente dans l'annuaire.
+    noms = [_normaliser_nom(demande.nom_organisation) for demande in demandes]
+    noms_existants = {
+        _normaliser_nom(nom)
+        for nom in (
+            await db.execute(
+                select(Osc.name).where(func.lower(func.btrim(Osc.name)).in_(noms))
+            )
+        ).scalars().all()
+    }
+    return [d for d in demandes if _normaliser_nom(d.nom_organisation) not in noms_existants]
 
 
 @adhesion_router.post("/{demande_id}/provisionner", response_model=OscCredentials, status_code=status.HTTP_200_OK)
