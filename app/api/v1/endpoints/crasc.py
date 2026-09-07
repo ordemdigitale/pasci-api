@@ -673,6 +673,48 @@ async def list_osc_en_attente(
     return result.scalars().all()
 
 
+@crasc_router.patch("/osc/admin/publier-en-attente", status_code=status.HTTP_200_OK)
+async def publier_osc_en_attente(
+    ids: Optional[str] = Query(
+        None,
+        description="IDs d'OSC séparés par des virgules. Vide = toutes les OSC en attente.",
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_or_superuser),
+):
+    """
+    Publie plusieurs OSC en attente en une seule fois (rattrapage).
+
+    Les OSC concernées passent en statut_publication="publie" et is_visible=True
+    afin d'apparaître réellement dans l'annuaire public. Les OSC déjà publiées
+    ou explicitement rejetées ne sont jamais touchées.
+    """
+    query = select(Osc).where(Osc.statut_publication == "en_attente")
+    if not current_user.is_superuser:
+        query = query.where(Osc.crasc_id == current_user.crasc_id)
+
+    if ids:
+        try:
+            id_list = [int(value) for value in ids.split(",") if value.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Paramètre 'ids' invalide.")
+        if not id_list:
+            raise HTTPException(status_code=400, detail="Aucun identifiant fourni.")
+        query = query.where(Osc.id.in_(id_list))
+
+    oscs = (await db.execute(query)).scalars().all()
+    for osc in oscs:
+        osc.statut_publication = "publie"
+        osc.is_visible = True
+    await db.commit()
+
+    return {
+        "published": len(oscs),
+        "ids": [osc.id for osc in oscs],
+        "names": [osc.name for osc in oscs],
+    }
+
+
 @crasc_router.patch("/osc/{osc_slug}/valider", response_model=OscReadDetail, status_code=status.HTTP_200_OK)
 async def valider_osc(
     osc_slug: str,
@@ -692,6 +734,9 @@ async def valider_osc(
     if not osc:
         raise HTTPException(status_code=404, detail="OSC non trouvée.")
     osc.statut_publication = action
+    if action == "publie":
+        # Sans is_visible, l'OSC resterait absente de l'annuaire malgré la publication
+        osc.is_visible = True
     await db.commit()
     await db.refresh(osc)
     return osc

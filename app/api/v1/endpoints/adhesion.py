@@ -298,6 +298,78 @@ async def get_demandes(
     return result.scalars().all()
 
 
+@adhesion_router.get("/admin/sans-osc", response_model=List[DemandeAdhesionRead], status_code=status.HTTP_200_OK)
+async def get_demandes_sans_osc(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """
+    Demandes approuvées dont l'OSC n'a jamais été créée.
+
+    Cas laissé par l'ancien bug de provisionnement : la demande passait
+    "approuvee" mais l'exception était avalée, donc ni OSC ni compte
+    utilisateur. Ces demandes doivent être re-provisionnées.
+    """
+    query = select(DemandeAdhesion).where(DemandeAdhesion.statut == "approuvee")
+
+    # Admin CRASC : limité à son propre CRASC
+    if not current_user.is_superuser and current_user.crasc_id:
+        crasc_result = await db.execute(select(Crasc).where(Crasc.id == current_user.crasc_id))
+        crasc = crasc_result.scalar_one_or_none()
+        if crasc:
+            query = query.where(DemandeAdhesion.crasc_nom.ilike(f"%{crasc.name}%"))
+
+    demandes = (
+        await db.execute(query.order_by(desc(DemandeAdhesion.created_at)))
+    ).scalars().all()
+    if not demandes:
+        return []
+
+    noms = [demande.nom_organisation for demande in demandes]
+    noms_existants = set(
+        (await db.execute(select(Osc.name).where(Osc.name.in_(noms)))).scalars().all()
+    )
+    return [d for d in demandes if d.nom_organisation not in noms_existants]
+
+
+@adhesion_router.post("/{demande_id}/provisionner", response_model=OscCredentials, status_code=status.HTTP_200_OK)
+async def provisionner_demande(
+    demande_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """
+    (Re)crée l'OSC et le compte utilisateur d'une demande déjà approuvée.
+
+    Sert au rattrapage des demandes approuvées restées sans OSC. Si l'OSC
+    existe déjà, elle est mise à jour et publiée.
+    """
+    result = await db.execute(select(DemandeAdhesion).where(DemandeAdhesion.id == demande_id))
+    demande = result.scalar_one_or_none()
+    if not demande:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Demande non trouvée.")
+    if demande.statut != "approuvee":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Seule une demande approuvée peut être provisionnée.",
+        )
+
+    try:
+        credentials = await _provision_osc_and_user(
+            demande,
+            db,
+            force_crasc_id=None if current_user.is_superuser else current_user.crasc_id,
+        )
+    except Exception as e:
+        logger.exception("Provisionnement OSC échoué pour la demande %s", demande_id)
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Impossible de créer l'OSC : {e}",
+        )
+    return credentials
+
+
 @adhesion_router.get("/{demande_id}", response_model=DemandeAdhesionRead, status_code=status.HTTP_200_OK)
 async def get_demande(demande_id: int, db: AsyncSession = Depends(get_db)):
     """Obtenir une demande d'adhésion par ID"""
