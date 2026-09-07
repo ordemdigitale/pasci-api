@@ -106,13 +106,22 @@ async def run(
                     provisioned.append((demande.nom_organisation, "", "", ""))
                     continue
                 try:
-                    creds = await _provision_osc_and_user(demande, db)
+                    # Session dédiée par OSC : une erreur SQL invalide la
+                    # connexion, et un rollback sur la session partagée peut
+                    # lui-même échouer (MissingGreenlet) et interrompre tout
+                    # le lot. Isoler garantit qu'un échec n'en coûte qu'un.
+                    async with AsyncSessionLocal() as prov_db:
+                        demande_isolee = (
+                            await prov_db.execute(
+                                select(DemandeAdhesion).where(DemandeAdhesion.id == demande.id)
+                            )
+                        ).scalars().first()
+                        creds = await _provision_osc_and_user(demande_isolee, prov_db)
                     print(f"[CRÉÉE]      {creds.osc_name}  → user {creds.username}")
                     provisioned.append(
                         (creds.osc_name, creds.email, creds.username, creds.temp_password)
                     )
                 except Exception as exc:  # noqa: BLE001
-                    await db.rollback()
                     print(f"[ÉCHEC]      {demande.nom_organisation} : {exc}", file=sys.stderr)
                     failed.append((demande.nom_organisation, str(exc)))
                 continue

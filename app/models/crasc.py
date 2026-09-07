@@ -140,7 +140,10 @@ class Osc(SQLModel, table=True):
   """
   name: str = Field(index=True, unique=True)
   sigle: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Sigle ou abréviation")
-  description: Optional[str] = Field(default=None, nullable=True, max_length=500)
+  # TEXT et non varchar(500) : la description saisie dans la demande
+  # d'adhésion est un TEXT libre et dépassait la limite (jusqu'à 5000 car.),
+  # ce qui faisait échouer la création de l'OSC à l'approbation.
+  description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
   thumbnail_path: Optional[str] = Field(default="default.png", nullable=True, max_length=2048)
 
   type_id: Optional[int] = Field(default=None, foreign_key="osctype.id", ondelete="SET NULL")
