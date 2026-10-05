@@ -409,7 +409,8 @@ async def list_pole_membres(
                 type_id=osc.type_id,
                 type_name=osc_type_name,
                 categorie=osc.categorie,
-                region_nom=osc.region_nom,
+                # Les OSC importées n'ont que region_id : prendre le nom de la région liée
+                region_nom=(osc.region.name if getattr(osc, "region", None) else None) or osc.region_nom,
                 ville=osc.ville,
                 thumbnail_url=thumbnail_url,
             )

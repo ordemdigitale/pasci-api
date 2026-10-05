@@ -101,6 +101,23 @@ def _parse_pole_ids(raw_pole_ids: Optional[str]) -> Optional[List[int]]:
         raise HTTPException(status_code=400, detail="Les identifiants de pôles sont invalides.")
 
 
+# Champs qu'une OSC doit pouvoir vider : le formulaire envoie "" pour effacer
+# un domaine choisi par erreur, stocké ensuite à NULL.
+CHAMPS_EFFACABLES = {
+    "domaine_prioritaire",
+    "domaine_prioritaire_2",
+    "domaine_prioritaire_3",
+    "domaine_prioritaire_4",
+    "domaine_prioritaire_5",
+}
+
+
+def _valeur_osc(key: str, value):
+    if key in CHAMPS_EFFACABLES and value == "":
+        return None
+    return value
+
+
 def _same_osc_value(current_value, submitted_value) -> bool:
     if current_value is None and submitted_value == "":
         return True
@@ -139,7 +156,7 @@ async def _apply_osc_changes(
             raise HTTPException(status_code=409, detail="Une OSC avec ce nom existe déjà.")
 
     for key, value in update_data.items():
-        setattr(osc, key, value)
+        setattr(osc, key, _valeur_osc(key, value))
 
     if "name" in update_data and update_data["name"]:
         base_slug = slugify.slugify(osc.name)[:95]
@@ -1313,7 +1330,7 @@ async def update_osc_with_form(
     if not current_user.is_superuser:
         update_data.pop("crasc_id", None)
     for key, value in update_data.items():
-        setattr(osc, key, value)
+        setattr(osc, key, _valeur_osc(key, value))
     if "name" in update_data:
         base_slug = slugify.slugify(osc.name)[:95]
         new_slug = base_slug
