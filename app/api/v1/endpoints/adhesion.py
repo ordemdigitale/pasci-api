@@ -15,6 +15,7 @@ from app.models.adhesion import DemandeAdhesion
 from app.models.crasc import Osc, Crasc
 from app.models.users import User
 from app.core.auth import get_current_staff_user
+from app.services.email import send_welcome_osc
 from app.services.file_uploads import save_formalisation_file, save_supporting_document
 from app.schemas.adhesion import (
     DemandeAdhesionCreate,
@@ -275,7 +276,32 @@ async def _provision_osc_and_user(
     return credentials
 
 
-@adhesion_router.post("", response_model=DemandeAdhesionRead, status_code=status.HTTP_201_CREATED)
+async def _envoyer_identifiants(credentials: Optional[OscCredentials]) -> None:
+    """
+    Envoie par email le lien de connexion, l'identifiant et le mot de passe
+    temporaire à l'OSC qui vient d'être validée.
+
+    Uniquement pour un compte nouvellement créé : un compte existant garde
+    son mot de passe, il n'y a rien à lui transmettre. Un échec d'envoi ne
+    doit pas annuler l'approbation (les identifiants restent affichés à
+    l'administrateur).
+    """
+    if not credentials or credentials.temp_password.startswith("(compte existant"):
+        return
+    try:
+        await send_welcome_osc(
+            user_name=credentials.osc_name,
+            user_email=credentials.email,
+            osc_name=credentials.osc_name,
+            token="",
+            username=credentials.email,
+            password=credentials.temp_password,
+        )
+    except Exception:
+        logger.exception("Envoi des identifiants échoué pour l'OSC %s", credentials.osc_id)
+
+
+@adhesion_router.post("",response_model=DemandeAdhesionRead, status_code=status.HTTP_201_CREATED)
 async def create_demande(request: Request, db: AsyncSession = Depends(get_db)):
     """Soumettre une nouvelle demande d'adhésion"""
     try:
@@ -395,6 +421,7 @@ async def provisionner_demande(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Impossible de créer l'OSC : {e}",
         )
+    await _envoyer_identifiants(credentials)
     return credentials
 
 
@@ -452,6 +479,7 @@ async def update_demande(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Impossible de créer l'OSC : {e}. La demande n'a pas été approuvée.",
             )
+        await _envoyer_identifiants(credentials)
 
     response_data = demande.__dict__.copy()
     response_data["credentials"] = credentials
