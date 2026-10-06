@@ -188,6 +188,8 @@ class OscBase(BaseModel):
   secteurs_activites: Optional[str] = None
   populations_cibles: Optional[str] = None
   savoir_faire: Optional[str] = None
+  axe: Optional[str] = None
+  specialites: Optional[str] = None
   plan_action_annee_cours: Optional[bool] = None
   plan_action_annee_cours_details: Optional[str] = None
   difficultes: Optional[str] = None
@@ -387,6 +389,8 @@ class OscUpdate(BaseModel):
   secteurs_activites: Optional[str] = None
   populations_cibles: Optional[str] = None
   savoir_faire: Optional[str] = None
+  axe: Optional[str] = None
+  specialites: Optional[str] = None
   plan_action_annee_cours: Optional[bool] = None
   plan_action_annee_cours_details: Optional[str] = None
   difficultes: Optional[str] = None

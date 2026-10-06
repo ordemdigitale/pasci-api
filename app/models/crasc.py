@@ -241,6 +241,8 @@ class Osc(SQLModel, table=True):
   secteurs_activites: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Secteurs d'activités")
   populations_cibles: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Populations cibles")
   savoir_faire: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Savoir-faire / expertise")
+  axe: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Axe d'intervention dans le pôle")
+  specialites: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Spécialités de l'OSC")
   plan_action_annee_cours: Optional[bool] = Field(default=None, nullable=True, description="Plan d'action pour l'année en cours")
   plan_action_annee_cours_details: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Plan d'action et activités à venir")
   difficultes: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Difficultés rencontrées")

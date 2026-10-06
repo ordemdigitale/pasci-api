@@ -4,7 +4,7 @@ import os, uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, desc, func
-from sqlalchemy import or_
+from sqlalchemy import or_, update as sa_update, delete as sa_delete, insert as sa_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Union
@@ -21,12 +21,14 @@ from app.models.forum import (
     ForumSujet,
     ForumCommentaire,
 )
-from app.models.crasc import Osc
+from app.models.adhesion import DemandeAdhesion
+from app.models.crasc import Osc, osc_pole_link
 from app.models.users import User
+from app.services.rattachement import normaliser, vider_cache
 from app.schemas.forum import (
     PoleConcertationCreate, PoleConcertationRead, PoleConcertationUpdate,
     PoleSondageCreate, PoleSondageRead, PoleSondageUpdate, PoleSondageVoteCreate,
-    PoleSondageOptionRead, PoleMembreRead,
+    PoleSondageOptionRead, PoleMembreRead, PoleFusionRequest,
     ForumSujetCreate, ForumSujetRead, ForumSujetUpdate, ForumSujetDetail,
     ForumCommentaireCreate, ForumCommentaireRead,
 )
@@ -65,7 +67,25 @@ forum_router = APIRouter()
 POLE_LOAD_OPTIONS = (
     selectinload(PoleConcertation.oscs).selectinload(Osc.region),
     selectinload(PoleConcertation.oscs).selectinload(Osc.type),
+    selectinload(PoleConcertation.oscs).selectinload(Osc.crasc),
 )
+
+
+async def _oscs_actives(db: AsyncSession, pole: PoleConcertation) -> set:
+    """
+    OSC membres du pôle ayant déjà lancé un sujet de discussion dans ce pôle
+    (définition PdoC d'un « membre actif »).
+    """
+    membres_ids = {osc.id for osc in pole.oscs or []}
+    if not membres_ids:
+        return set()
+    result = await db.execute(
+        select(User.osc_id)
+        .join(ForumSujet, ForumSujet.author_id == User.id)
+        .where(ForumSujet.pole_id == pole.id, User.osc_id.is_not(None))
+        .distinct()
+    )
+    return {osc_id for osc_id in result.scalars().all() if osc_id in membres_ids}
 SONDAGE_LOAD_OPTIONS = (
     selectinload(PoleSondage.options).selectinload(PoleSondageOption.votes),
     selectinload(PoleSondage.votes),
@@ -106,7 +126,7 @@ async def _pole_response(db: AsyncSession, pole: PoleConcertation) -> PoleConcer
     pole_data = PoleConcertationRead.model_validate(pole)
     pole_data.sujets_count = count_result.scalar() or 0
     pole_data.nb_osc_membres = osc_count
-    pole_data.nb_membres_actifs = osc_count
+    pole_data.nb_membres_actifs = len(await _oscs_actives(db, pole))
     pole_data.regions_influence = _json_list(_regions_from_pole(pole))
     return pole_data
 
@@ -326,7 +346,9 @@ async def update_pole(
         _delete_image(pole.image_path)
         pole.image_path = await _save_image(image)
 
-    if name is not None:
+    if name is not None and name != pole.name:
+        # Le nom du pôle EST le domaine prioritaire : garder les OSC alignées
+        await _renommer_domaine(db, pole.name, name)
         pole.name = name
         pole.slug = slugify_lib.slugify(name)
     if category is not None:
@@ -376,6 +398,114 @@ async def delete_pole(
     return None
 
 
+DOMAINE_COLUMNS = (
+    "domaine_prioritaire",
+    "domaine_prioritaire_2",
+    "domaine_prioritaire_3",
+    "domaine_prioritaire_4",
+    "domaine_prioritaire_5",
+)
+
+
+async def _renommer_domaine(db: AsyncSession, ancien: str, nouveau: str) -> None:
+    """
+    Les pôles portent le nom des domaines prioritaires : quand un pôle est
+    renommé ou fusionné, les OSC et demandes d'adhésion qui citaient l'ancien
+    nom doivent pointer vers le nouveau, sinon elles ne sont plus rattachées.
+    """
+    # Comparaison sans accents ni casse (comme le rattachement), faite en
+    # Python : la base n'a pas l'extension unaccent.
+    cle_ancien = normaliser(ancien)
+    if not cle_ancien:
+        return
+    for model in (Osc, DemandeAdhesion):
+        colonnes = [getattr(model, name) for name in DOMAINE_COLUMNS]
+        lignes = (await db.execute(select(model.id, *colonnes))).all()
+        for ligne in lignes:
+            valeurs = {
+                name: nouveau
+                for name, valeur in zip(DOMAINE_COLUMNS, ligne[1:])
+                if valeur and normaliser(valeur) == cle_ancien
+            }
+            if valeurs:
+                await db.execute(sa_update(model).where(model.id == ligne[0]).values(valeurs))
+
+
+@forum_router.post("/poles/{pole_slug}/fusionner", response_model=PoleConcertationRead)
+async def fusionner_pole(
+    pole_slug: str,
+    payload: PoleFusionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    """
+    Fusionne le pôle `pole_slug` (source) dans `cible_slug`.
+
+    Les OSC membres, sujets de discussion et sondages de la source passent
+    dans la cible ; les domaines prioritaires des OSC sont mis à jour ; la
+    source est désactivée (conservée pour l'historique, plus proposée dans
+    les formulaires). `nouveau_nom` renomme le pôle fusionné.
+    """
+    source = await _get_pole_by_slug(db, pole_slug)
+    cible = await _get_pole_by_slug(db, payload.cible_slug)
+    if not source or not cible:
+        raise HTTPException(status_code=404, detail="Pôle non trouvé.")
+    if source.id == cible.id:
+        raise HTTPException(status_code=400, detail="Un pôle ne peut pas être fusionné avec lui-même.")
+
+    nouveau_nom = (payload.nouveau_nom or "").strip() or cible.name
+    if nouveau_nom != cible.name:
+        conflit = await db.execute(
+            select(PoleConcertation).where(
+                PoleConcertation.name == nouveau_nom, PoleConcertation.id.not_in([source.id, cible.id])
+            )
+        )
+        if conflit.scalars().first():
+            raise HTTPException(status_code=409, detail="Un autre pôle porte déjà ce nom.")
+
+    # 1. OSC membres : une OSC n'appartient qu'à un pôle, elle passe dans la cible
+    membres_source = (
+        await db.execute(select(osc_pole_link.c.osc_id).where(osc_pole_link.c.pole_id == source.id))
+    ).scalars().all()
+    await db.execute(sa_delete(osc_pole_link).where(osc_pole_link.c.pole_id == source.id))
+    if membres_source:
+        deja_cible = set(
+            (
+                await db.execute(
+                    select(osc_pole_link.c.osc_id).where(
+                        osc_pole_link.c.pole_id == cible.id, osc_pole_link.c.osc_id.in_(membres_source)
+                    )
+                )
+            ).scalars().all()
+        )
+        nouveaux = [{"osc_id": osc_id, "pole_id": cible.id} for osc_id in membres_source if osc_id not in deja_cible]
+        if nouveaux:
+            await db.execute(sa_insert(osc_pole_link), nouveaux)
+
+    # 2. Discussions et sondages
+    await db.execute(sa_update(ForumSujet).where(ForumSujet.pole_id == source.id).values(pole_id=cible.id))
+    await db.execute(sa_update(PoleSondage).where(PoleSondage.pole_id == source.id).values(pole_id=cible.id))
+
+    # 3. Noms : domaines prioritaires des OSC alignés sur le pôle fusionné
+    ancien_nom_cible = cible.name
+    if nouveau_nom != ancien_nom_cible:
+        await _renommer_domaine(db, ancien_nom_cible, nouveau_nom)
+        cible.name = nouveau_nom
+        cible.slug = slugify_lib.slugify(nouveau_nom)
+    await _renommer_domaine(db, source.name, nouveau_nom)
+
+    # 4. Source désactivée, pas supprimée
+    source.is_active = False
+
+    cible_slug = cible.slug
+    await db.commit()
+    vider_cache(db)
+    # Recharger la cible : ses membres ont changé hors ORM (table osc_pole)
+    db.expire_all()
+    fusionne = await _get_pole_by_slug(db, cible_slug)
+    return await _pole_response(db, fusionne)
+
+
 @forum_router.get("/poles/{pole_slug}/membres", response_model=List[PoleMembreRead])
 async def list_pole_membres(
     pole_slug: str,
@@ -388,6 +518,7 @@ async def list_pole_membres(
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
 
     normalized_type = type_name.strip().lower() if type_name else None
+    actives = await _oscs_actives(db, pole)
     membres = []
     for osc in sorted(pole.oscs or [], key=lambda item: (item.name or "").lower()):
         osc_type_name = osc.type.name if getattr(osc, "type", None) else None
@@ -413,6 +544,11 @@ async def list_pole_membres(
                 region_nom=(osc.region.name if getattr(osc, "region", None) else None) or osc.region_nom,
                 ville=osc.ville,
                 thumbnail_url=thumbnail_url,
+                crasc_id=osc.crasc_id,
+                crasc_nom=osc.crasc.name if getattr(osc, "crasc", None) else None,
+                axe=osc.axe,
+                specialites=osc.specialites,
+                est_actif=osc.id in actives,
             )
         )
     return membres

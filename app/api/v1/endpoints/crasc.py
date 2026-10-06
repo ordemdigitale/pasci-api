@@ -109,6 +109,8 @@ CHAMPS_EFFACABLES = {
     "domaine_prioritaire_3",
     "domaine_prioritaire_4",
     "domaine_prioritaire_5",
+    "axe",
+    "specialites",
 }
 
 
@@ -1010,6 +1012,8 @@ async def get_osc_update_form(
     difficultes: Optional[str] = Form(None),
     recommandations: Optional[str] = Form(None),
     recommandations_2: Optional[str] = Form(None),
+    axe: Optional[str] = Form(None),
+    specialites: Optional[str] = Form(None),
 ) -> OscUpdate:
     def to_int(v): return int(v) if v and v.strip() != "" else None
     def to_float(v): return float(v) if v and v.strip() != "" else None
@@ -1064,6 +1068,7 @@ async def get_osc_update_form(
         secteurs_activites=secteurs_activites, populations_cibles=populations_cibles,
         savoir_faire=savoir_faire, difficultes=difficultes, recommandations=recommandations,
         recommandations_2=recommandations_2,
+        axe=axe, specialites=specialites,
     )
 
 

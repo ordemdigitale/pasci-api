@@ -137,6 +137,18 @@ class PoleMembreRead(BaseModel):
     region_nom: Optional[str] = None
     ville: Optional[str] = None
     thumbnail_url: Optional[str] = None
+    crasc_id: Optional[int] = None
+    crasc_nom: Optional[str] = None
+    axe: Optional[str] = None
+    specialites: Optional[str] = None
+    # Membre actif : l'OSC a déjà lancé au moins un sujet de discussion dans le pôle
+    est_actif: bool = False
+
+
+class PoleFusionRequest(BaseModel):
+    cible_slug: str
+    # Nouveau nom du pôle fusionné (ex. "Gouvernance, société civile, paix et sécurité")
+    nouveau_nom: Optional[str] = None
 
 
 # ──────────────── Forum Sujet ────────────────

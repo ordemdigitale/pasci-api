@@ -16,6 +16,7 @@ from app.models.crasc import Osc, Crasc
 from app.models.users import User
 from app.core.auth import get_current_staff_user
 from app.services.email import send_welcome_osc
+from app.services.rattachement import rattacher_osc as _rattacher_osc
 from app.services.file_uploads import save_formalisation_file, save_supporting_document
 from app.schemas.adhesion import (
     DemandeAdhesionCreate,
@@ -127,6 +128,8 @@ def _osc_payload_from_demande(demande: DemandeAdhesion, crasc_id: Optional[int])
         "domaine_prioritaire_3": demande.domaine_prioritaire_3,
         "domaine_prioritaire_4": demande.domaine_prioritaire_4,
         "domaine_prioritaire_5": demande.domaine_prioritaire_5,
+        "axe": demande.axe,
+        "specialites": demande.specialites,
         "nb_membres": demande.nb_membres,
         "nb_femmes_membres": demande.nb_femmes_membres,
         "nb_hommes_membres": demande.nb_hommes_membres,
@@ -220,6 +223,11 @@ async def _provision_osc_and_user(
                 continue
             if value is not None:
                 setattr(osc, key, value)
+
+    # --- 2bis. Pôle (1er domaine prioritaire), type et région ---
+    # Sans ce rattachement, l'OSC validée n'apparaît dans aucun pôle de
+    # concertation et échappe aux filtres par type / région.
+    await _rattacher_osc(db, osc, demande.type_osc or demande.type_organisation)
 
     # --- 3. Créer ou mettre à jour l'utilisateur ---
     user_result = await db.execute(
@@ -386,7 +394,55 @@ async def get_demandes_sans_osc(
     return [d for d in demandes if _normaliser_nom(d.nom_organisation) not in noms_existants]
 
 
-@adhesion_router.post("/{demande_id}/provisionner", response_model=OscCredentials, status_code=status.HTTP_200_OK)
+@adhesion_router.post("/admin/rattrapage-rattachements", status_code=status.HTTP_200_OK)
+async def rattrapage_rattachements(
+    simulation: bool = Query(True, description="True : calcule sans rien enregistrer"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """
+    Rattache les OSC existantes à leur pôle (1er domaine prioritaire), leur
+    type et leur région, quand ces informations manquent.
+
+    Rattrapage des OSC créées avant que la validation ne fasse ce rattachement.
+    Le type est repris de la demande d'adhésion de même nom. Superadmin
+    uniquement. Par défaut en simulation : relancer avec simulation=false
+    pour enregistrer.
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Réservé au superadmin.")
+
+    demandes = (await db.execute(select(DemandeAdhesion))).scalars().all()
+    type_par_nom = {
+        _normaliser_nom(d.nom_organisation): (d.type_osc or d.type_organisation)
+        for d in demandes
+        if d.type_osc or d.type_organisation
+    }
+
+    oscs = (await db.execute(select(Osc).order_by(Osc.id))).scalars().all()
+    details = []
+    for osc in oscs:
+        rattache = await _rattacher_osc(db, osc, type_par_nom.get(_normaliser_nom(osc.name)))
+        if rattache:
+            details.append({"osc_id": osc.id, "osc": osc.name, **rattache})
+
+    if simulation:
+        await db.rollback()
+    else:
+        await db.commit()
+
+    return {
+        "simulation": simulation,
+        "oscs_examinees": len(oscs),
+        "oscs_rattachees": len(details),
+        "poles": sum(1 for d in details if "pole" in d),
+        "types": sum(1 for d in details if "type" in d),
+        "regions": sum(1 for d in details if "region" in d),
+        "details": details,
+    }
+
+
+@adhesion_router.post("/{demande_id}/provisionner",response_model=OscCredentials, status_code=status.HTTP_200_OK)
 async def provisionner_demande(
     demande_id: int,
     db: AsyncSession = Depends(get_db),

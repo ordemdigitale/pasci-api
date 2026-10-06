@@ -33,6 +33,8 @@ class DemandeAdhesion(SQLModel, table=True):
     domaine_prioritaire_3: Optional[str] = Field(default=None, max_length=200, nullable=True)
     domaine_prioritaire_4: Optional[str] = Field(default=None, max_length=200, nullable=True)
     domaine_prioritaire_5: Optional[str] = Field(default=None, max_length=200, nullable=True)
+    axe: Optional[str] = Field(default=None, max_length=200, nullable=True)
+    specialites: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     nb_membres: Optional[int] = Field(default=None, nullable=True)
     nb_femmes_membres: Optional[int] = Field(default=None, nullable=True)
     nb_hommes_membres: Optional[int] = Field(default=None, nullable=True)

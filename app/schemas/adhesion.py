@@ -29,6 +29,8 @@ class DemandeAdhesionCreate(BaseModel):
     domaine_prioritaire_3: Optional[str] = None
     domaine_prioritaire_4: Optional[str] = None
     domaine_prioritaire_5: Optional[str] = None
+    axe: Optional[str] = None
+    specialites: Optional[str] = None
     nb_membres: Optional[int] = None
     nb_femmes_membres: Optional[int] = None
     nb_hommes_membres: Optional[int] = None
@@ -89,6 +91,8 @@ class DemandeAdhesionRead(BaseModel):
     domaine_prioritaire_3: Optional[str] = None
     domaine_prioritaire_4: Optional[str] = None
     domaine_prioritaire_5: Optional[str] = None
+    axe: Optional[str] = None
+    specialites: Optional[str] = None
     nb_membres: Optional[int] = None
     nb_femmes_membres: Optional[int] = None
     nb_hommes_membres: Optional[int] = None
