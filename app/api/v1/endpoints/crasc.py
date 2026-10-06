@@ -1,7 +1,7 @@
-import json, os, shutil, uuid, slugify, secrets
+import json, os, re, shutil, uuid, slugify, secrets
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -24,6 +24,7 @@ from app.services.notifications import create_notification
 from app.schemas.users import UserRead, CrascAdminCreate, OscUserCreate
 from app.schemas.crasc import (
    CrascRead,
+   CrascListRead,
    CrascReadDetail,
    CrascUpdate,
    CrascContactCreate,
@@ -55,6 +56,8 @@ from app.models.crasc import (
 from app.models.forum import PoleConcertation
 from app.services.email import send_crasc_contact, send_welcome_osc
 from app.services.file_uploads import save_formalisation_file, save_supporting_document
+from app.services.osc_autoevaluation import BAREME, COULEUR_HEX, TRANCHES_COULEUR, expression_score_sql
+from app.services.recherche import contient, egal, normaliser
 
 
 crasc_router = APIRouter()
@@ -182,15 +185,69 @@ async def _apply_osc_changes(
 
 # ─────────────────────────── CRASC ───────────────────────────
 
-@crasc_router.post("/crasc", response_model=CrascRead, status_code=status.HTTP_201_CREATED)
+def _parse_region_ids(brut: Optional[str]) -> List[int]:
+   """Régions envoyées en JSON (`[1,2]`) ou séparées par des virgules."""
+   if not brut or not brut.strip():
+      return []
+   texte = brut.strip()
+   try:
+      donnees = json.loads(texte) if texte.startswith("[") else [p for p in texte.split(",") if p.strip()]
+      return [int(item) for item in donnees]
+   except (json.JSONDecodeError, TypeError, ValueError):
+      raise HTTPException(
+         status_code=400,
+         detail={"type": "validation_error", "errors": [{"field": "region_ids", "message": "Identifiants de régions invalides."}]},
+      )
+
+
+async def _rattacher_regions_au_crasc(db: AsyncSession, crasc: Crasc, region_ids: List[int]) -> None:
+   """
+   Un CRASC est défini par les régions qu'il couvre. La liste reçue fait foi :
+   les régions qui n'y figurent plus sont détachées, et une région déjà prise
+   par un autre CRASC est refusée (une région appartient à un seul CRASC).
+   """
+   regions = (await db.execute(select(Region).where(Region.id.in_(region_ids)))).scalars().all() if region_ids else []
+   manquantes = set(region_ids) - {region.id for region in regions}
+   if manquantes:
+      raise HTTPException(
+         status_code=404,
+         detail={"type": "not_found", "errors": [{"field": "region_ids", "message": f"Régions introuvables : {sorted(manquantes)}"}]},
+      )
+   deja_prises = [r.name for r in regions if r.crasc_id is not None and r.crasc_id != crasc.id]
+   if deja_prises:
+      raise HTTPException(
+         status_code=409,
+         detail={
+            "type": "conflict",
+            "errors": [{"field": "region_ids", "message": f"Déjà rattachée(s) à un autre CRASC : {', '.join(deja_prises)}"}],
+         },
+      )
+   actuelles = (await db.execute(select(Region).where(Region.crasc_id == crasc.id))).scalars().all()
+   for region in actuelles:
+      if region.id not in region_ids:
+         region.crasc_id = None
+   for region in regions:
+      region.crasc_id = crasc.id
+
+
+@crasc_router.post("/crasc", response_model=CrascReadDetail, status_code=status.HTTP_201_CREATED)
 async def create_crasc(
    name: str = Form(...),
    description: Optional[str] = Form(None),
+   email_pca: Optional[str] = Form(None),
+   region_ids: Optional[str] = Form(None),
    db: AsyncSession = Depends(get_db),
    current_user: User = Depends(get_current_superuser),
 ):
-   crasc_create = Crasc(name=name, description=description, osc_count=0)
-   result = await db.execute(select(Crasc).where(Crasc.name == crasc_create.name))
+   """Crée un CRASC. Le nombre de CRASC n'est pas limité : ce sont les régions
+   rattachées qui définissent la zone couverte."""
+   ids_regions = _parse_region_ids(region_ids)
+   if not ids_regions:
+      raise HTTPException(
+         status_code=422,
+         detail={"type": "validation_error", "errors": [{"field": "region_ids", "message": "Sélectionner au moins une région."}]},
+      )
+   result = await db.execute(select(Crasc).where(func.lower(func.btrim(Crasc.name)) == name.strip().lower()))
    if result.scalars().first():
       raise HTTPException(
          status_code=status.HTTP_409_CONFLICT,
@@ -200,17 +257,53 @@ async def create_crasc(
          }
       )
    try:
-      db_crasc = Crasc(**crasc_create.model_dump())
+      db_crasc = Crasc(name=name.strip(), description=description, email_pca=email_pca, osc_count=0)
       db.add(db_crasc)
+      await db.flush()
+      await _rattacher_regions_au_crasc(db, db_crasc, ids_regions)
       await db.commit()
-      await db.refresh(db_crasc)
-      return db_crasc
+   except HTTPException:
+      await db.rollback()
+      raise
    except Exception as e:
       await db.rollback()
       raise HTTPException(status_code=500, detail={"type": "database_error", "errors": [{"field": "database", "message": str(e)}]})
+   return await _charger_crasc_detail(db, db_crasc.id)
 
 
-@crasc_router.get("/crasc", response_model=List[CrascRead], status_code=status.HTTP_200_OK)
+def _osc_publiee(osc: Osc) -> bool:
+   """Critère unique d'appartenance à l'annuaire, partagé par tous les comptages."""
+   return osc.statut_publication == "publie" and osc.is_visible
+
+
+async def _charger_crasc_detail(db: AsyncSession, crasc_id: int) -> CrascReadDetail:
+   """
+   Fiche complète d'un CRASC.
+
+   La liste des OSC et le compteur `osc_count` appliquent le même filtre
+   (publiée **et** visible) : sans cela l'en-tête annonçait un nombre et la
+   liste en dessous en affichait un autre.
+   """
+   crasc = (await db.execute(
+      select(Crasc)
+      .options(
+         selectinload(Crasc.oscs),
+         selectinload(Crasc.regions),
+         selectinload(Crasc.news_items),
+         selectinload(Crasc.evenements),
+         selectinload(Crasc.videos),
+      )
+      .where(Crasc.id == crasc_id)
+   )).scalars().first()
+   if not crasc:
+      raise HTTPException(status_code=404, detail="CRASC non trouvé.")
+   detail = CrascReadDetail.model_validate(crasc)
+   detail.oscs = [OscRead.model_validate(osc) for osc in crasc.oscs if _osc_publiee(osc)]
+   detail.osc_count = len(detail.oscs)
+   return detail
+
+
+@crasc_router.get("/crasc", response_model=List[CrascListRead], status_code=status.HTTP_200_OK)
 async def get_crascs(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -226,6 +319,7 @@ async def get_crascs(
     )
     query = (
         select(Crasc, osc_count_sub.label("dynamic_osc_count"))
+        .options(selectinload(Crasc.regions))
         .offset(skip).limit(limit).order_by(Crasc.name)
     )
     if current_user and current_user.is_staff and not current_user.is_superuser:
@@ -245,28 +339,12 @@ async def get_crasc(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    result = await db.execute(
-        select(Crasc)
-        .options(
-            selectinload(Crasc.oscs),
-            selectinload(Crasc.regions),
-            selectinload(Crasc.news_items),
-            selectinload(Crasc.evenements),
-            selectinload(Crasc.videos),
-        )
-        .where(Crasc.slug == crasc_slug)
-    )
-    crasc = result.scalars().first()
-    if not crasc:
+    crasc = (await db.execute(select(Crasc.id).where(Crasc.slug == crasc_slug))).scalar_one_or_none()
+    if crasc is None:
         raise HTTPException(status_code=404, detail="CRASC non trouvé.")
     if current_user and current_user.is_staff and not current_user.is_superuser:
-        check_crasc_ownership(current_user, crasc.id)
-    # Comptage dynamique des OSC (exclut les rejetées)
-    count_result = await db.execute(
-        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id, Osc.statut_publication == "publie", Osc.is_visible == True)
-    )
-    crasc.osc_count = count_result.scalar_one()
-    return crasc
+        check_crasc_ownership(current_user, crasc)
+    return await _charger_crasc_detail(db, crasc)
 
 
 @crasc_router.patch("/crasc/{crasc_slug}", response_model=CrascReadDetail, status_code=status.HTTP_200_OK)
@@ -279,25 +357,27 @@ async def update_crasc(
     result = await db.execute(
         select(Crasc)
         .where(Crasc.slug == crasc_slug)
-        .options(selectinload(Crasc.oscs), selectinload(Crasc.regions), selectinload(Crasc.news_items))
+        .options(selectinload(Crasc.regions))
     )
     crasc = result.scalars().first()
     if not crasc:
         raise HTTPException(status_code=404, detail="CRASC non trouvé.")
     update_data = crasc_update.model_dump(exclude_unset=True)
     update_data.pop("osc_count", None)
+    region_ids = update_data.pop("region_ids", None)
     for key, value in update_data.items():
         setattr(crasc, key, value)
     if "name" in update_data:
         crasc.slug = slugify.slugify(crasc.name)
+    if region_ids is not None:
+        if not region_ids:
+            raise HTTPException(
+                status_code=422,
+                detail={"type": "validation_error", "errors": [{"field": "region_ids", "message": "Un CRASC doit couvrir au moins une région."}]},
+            )
+        await _rattacher_regions_au_crasc(db, crasc, region_ids)
     await db.commit()
-    await db.refresh(crasc)
-    # Comptage dynamique des OSC (exclut les rejetées)
-    count_result = await db.execute(
-        select(func.count(Osc.id)).where(Osc.crasc_id == crasc.id, Osc.statut_publication == "publie", Osc.is_visible == True)
-    )
-    crasc.osc_count = count_result.scalar_one()
-    return crasc
+    return await _charger_crasc_detail(db, crasc.id)
 
 
 @crasc_router.delete("/crasc/{crasc_slug}", status_code=status.HTTP_204_NO_CONTENT)
@@ -502,6 +582,10 @@ async def create_osc(
     crasc_id: str = Form(""),
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
+    contact_president: Optional[str] = Form(None),
+    contact_osc: Optional[str] = Form(None),
+    contact_1: Optional[str] = Form(None),
+    contact_2: Optional[str] = Form(None),
     region_nom: Optional[str] = Form(None),
     departement: Optional[str] = Form(None),
     sous_prefecture: Optional[str] = Form(None),
@@ -600,7 +684,10 @@ async def create_osc(
     db_osc = Osc(
         name=name, sigle=sigle, description=description, thumbnail_path=saved_path,
         type_id=type_id_int, crasc_id=resolved_crasc_id,
-        email=email, phone=phone, region_nom=region_nom, departement=departement,
+        email=email, phone=phone,
+        contact_president=contact_president, contact_osc=contact_osc,
+        contact_1=contact_1, contact_2=contact_2,
+        region_nom=region_nom, departement=departement,
         sous_prefecture=sous_prefecture, ville=ville, origine_organisation=origine_organisation, address=address,
         latitude=latitude, longitude=longitude,
         type_document_formalisation=type_document_formalisation,
@@ -761,6 +848,138 @@ async def valider_osc(
     return osc
 
 
+# Catégories d'organisation : la valeur attendue est le code interne, mais
+# d'anciennes fiches portent le libellé complet ou le sigle. Le filtre accepte
+# donc tous les écrits rencontrés, comparés sans casse ni accents.
+CATEGORIE_SYNONYMES = {
+    "organisation_jeune": ["organisation_jeune", "organisation de jeune", "organisation de jeunes", "odj"],
+    "organisation_femme": ["organisation_femme", "organisation de femme", "organisation de femmes", "odf"],
+    "organisation_mixte": ["organisation_mixte", "organisation mixte", "mixte"],
+}
+
+# Colonnes balayées par la recherche libre.
+COLONNES_RECHERCHE_OSC = (
+    "name", "sigle", "description", "region_nom", "departement", "sous_prefecture",
+    "ville", "categorie", "secteurs_activites", "savoir_faire", "populations_cibles",
+    "numero_recepisse", "nom_president", "reseau_appartenance",
+    "domaine_prioritaire", "domaine_prioritaire_2", "domaine_prioritaire_3",
+    "domaine_prioritaire_4", "domaine_prioritaire_5",
+)
+
+COLONNES_DOMAINES_OSC = (
+    "secteurs_activites", "domaine_prioritaire", "domaine_prioritaire_2",
+    "domaine_prioritaire_3", "domaine_prioritaire_4", "domaine_prioritaire_5",
+)
+
+TRI_OSC = {
+    "name": Osc.name,
+    "region_nom": Osc.region_nom,
+    "departement": Osc.departement,
+    "sous_prefecture": Osc.sous_prefecture,
+    "categorie": Osc.categorie,
+    "niveau_regroupement": Osc.niveau_regroupement,
+    "niveau_couverture": Osc.niveau_couverture,
+    "domaine_prioritaire": Osc.domaine_prioritaire,
+    "domaine_prioritaire_2": Osc.domaine_prioritaire_2,
+    "domaine_prioritaire_3": Osc.domaine_prioritaire_3,
+    "domaine_prioritaire_4": Osc.domaine_prioritaire_4,
+    "domaine_prioritaire_5": Osc.domaine_prioritaire_5,
+    "type_document_formalisation": Osc.type_document_formalisation,
+    "date_creation": Osc.date_creation,
+    "created_at": Osc.created_at,
+    "updated_at": Osc.updated_at,
+}
+
+TriOsc = Literal[
+    "name", "region_nom", "departement", "sous_prefecture", "categorie",
+    "niveau_regroupement", "niveau_couverture",
+    "domaine_prioritaire", "domaine_prioritaire_2", "domaine_prioritaire_3",
+    "domaine_prioritaire_4", "domaine_prioritaire_5",
+    "type_document_formalisation", "document_formalisation",
+    "date_creation", "created_at", "updated_at", "score_autoevaluation",
+]
+
+
+def _filtre_categorie(valeur: str):
+    """Accepte le code interne, le libellé complet ou le sigle (ODJ/ODF)."""
+    ecritures = CATEGORIE_SYNONYMES.get(valeur, [valeur])
+    return or_(*[egal(Osc.categorie, ecriture) for ecriture in ecritures])
+
+
+def _filtre_annee_creation(annee: str):
+    """`date_creation` est une chaîne libre : AAAA-MM-JJ, JJ/MM/AAAA ou AAAA."""
+    annee = annee.strip()
+    return or_(Osc.date_creation.like(f"{annee}%"), Osc.date_creation.like(f"%{annee}"))
+
+
+def _filtres_osc_annuaire(
+    *,
+    type_id, region_id, search, region_nom, departement, sous_prefecture,
+    domaine_activite, categorie, type_document_formalisation, has_document_formalisation,
+    existence_siege, manuel_procedures, plan_action, rapports_annuels,
+    adhesion_crasc_statut, niveau_regroupement, niveau_couverture,
+    annee_creation, score_min, score_max,
+) -> list:
+    """Construit la liste des conditions SQL communes au comptage et à la page."""
+    filters = []
+    if type_id:
+        filters.append(Osc.type_id == type_id)
+    if region_id:
+        filters.append(Osc.region_id == region_id)
+    if search and search.strip():
+        colonnes = [getattr(Osc, nom) for nom in COLONNES_RECHERCHE_OSC]
+        conditions = [contient(colonne, search) for colonne in colonnes]
+        # « ODJ », « femmes »… désignent une catégorie plutôt qu'un mot du texte.
+        terme = normaliser(search)
+        for code, ecritures in CATEGORIE_SYNONYMES.items():
+            if any(ecriture in terme for ecriture in ecritures):
+                conditions.append(_filtre_categorie(code))
+        filters.append(or_(*conditions))
+    if region_nom:
+        filters.append(contient(Osc.region_nom, region_nom))
+    if departement:
+        filters.append(contient(Osc.departement, departement))
+    if sous_prefecture:
+        filters.append(contient(Osc.sous_prefecture, sous_prefecture))
+    if domaine_activite:
+        filters.append(or_(*[contient(getattr(Osc, nom), domaine_activite) for nom in COLONNES_DOMAINES_OSC]))
+    if categorie:
+        filters.append(_filtre_categorie(categorie))
+    if type_document_formalisation:
+        filters.append(Osc.type_document_formalisation == type_document_formalisation)
+    if has_document_formalisation is True:
+        filters.append(Osc.document_formalisation_path.is_not(None))
+    elif has_document_formalisation is False:
+        filters.append(Osc.document_formalisation_path.is_(None))
+    # Critères du barème : « non » recouvre aussi les fiches non renseignées.
+    for valeur, colonne in (
+        (existence_siege, Osc.existence_siege),
+        (manuel_procedures, Osc.manuel_procedures),
+        (plan_action, Osc.plan_action),
+        (rapports_annuels, Osc.rapports_annuels),
+    ):
+        if valeur is True:
+            filters.append(colonne == True)  # noqa: E712
+        elif valeur is False:
+            filters.append(or_(colonne == False, colonne.is_(None)))  # noqa: E712
+    if adhesion_crasc_statut:
+        if adhesion_crasc_statut == "oui":
+            filters.append(or_(Osc.adhesion_crasc_statut == "oui", and_(Osc.adhesion_crasc_statut.is_(None), Osc.adhesion_crasc == True)))  # noqa: E712
+        else:
+            filters.append(Osc.adhesion_crasc_statut == adhesion_crasc_statut)
+    if niveau_regroupement:
+        filters.append(egal(Osc.niveau_regroupement, niveau_regroupement))
+    if niveau_couverture:
+        filters.append(egal(Osc.niveau_couverture, niveau_couverture))
+    if annee_creation:
+        filters.append(_filtre_annee_creation(annee_creation))
+    if score_min is not None:
+        filters.append(expression_score_sql(Osc) >= score_min)
+    if score_max is not None:
+        filters.append(expression_score_sql(Osc) <= score_max)
+    return filters
+
+
 @crasc_router.get("/osc", response_model=PaginatedResponse[OscReadDetail], status_code=status.HTTP_200_OK)
 async def get_all_osc(
     page: int = Query(1, ge=1),
@@ -770,87 +989,39 @@ async def get_all_osc(
     region_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     region_nom: Optional[str] = Query(None),
+    departement: Optional[str] = Query(None),
     sous_prefecture: Optional[str] = Query(None),
     domaine_activite: Optional[str] = Query(None),
     categorie: Optional[str] = Query(None),
     type_document_formalisation: Optional[str] = Query(None),
     has_document_formalisation: Optional[bool] = Query(None),
-    sort_by: Literal[
-        "name",
-        "region_nom",
-        "departement",
-        "sous_prefecture",
-        "categorie",
-        "niveau_regroupement",
-        "domaine_prioritaire",
-        "domaine_prioritaire_2",
-        "domaine_prioritaire_3",
-        "domaine_prioritaire_4",
-        "domaine_prioritaire_5",
-        "type_document_formalisation",
-        "document_formalisation",
-    ] = Query("name"),
+    existence_siege: Optional[bool] = Query(None),
+    manuel_procedures: Optional[bool] = Query(None),
+    plan_action: Optional[bool] = Query(None),
+    rapports_annuels: Optional[bool] = Query(None),
+    adhesion_crasc_statut: Optional[Literal["oui", "non", "en_cours"]] = Query(None),
+    niveau_regroupement: Optional[str] = Query(None),
+    niveau_couverture: Optional[str] = Query(None),
+    annee_creation: Optional[str] = Query(None),
+    score_min: Optional[int] = Query(None, ge=0, le=20),
+    score_max: Optional[int] = Query(None, ge=0, le=20),
+    sort_by: TriOsc = Query("name"),
     sort_order: Literal["asc", "desc"] = Query("asc"),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
-    filters = []
-    if type_id:
-        filters.append(Osc.type_id == type_id)
-    if region_id:
-        filters.append(Osc.region_id == region_id)
-    if search:
-        term = f"%{search}%"
-        search_conditions = [
-            Osc.name.ilike(term),
-            Osc.description.ilike(term),
-            Osc.region_nom.ilike(term),
-            Osc.sous_prefecture.ilike(term),
-            Osc.categorie.ilike(term),
-            Osc.secteurs_activites.ilike(term),
-            Osc.domaine_prioritaire.ilike(term),
-            Osc.domaine_prioritaire_2.ilike(term),
-            Osc.domaine_prioritaire_3.ilike(term),
-            Osc.domaine_prioritaire_4.ilike(term),
-            Osc.domaine_prioritaire_5.ilike(term),
-        ]
-        normalized_search = search.strip().lower()
-        category_aliases = {
-            "odj": "organisation_jeune",
-            "organisation de jeune": "organisation_jeune",
-            "jeune": "organisation_jeune",
-            "odf": "organisation_femme",
-            "organisation de femme": "organisation_femme",
-            "femme": "organisation_femme",
-            "mixte": "organisation_mixte",
-            "mix": "organisation_mixte",
-        }
-        for alias, category_value in category_aliases.items():
-            if alias in normalized_search:
-                search_conditions.append(Osc.categorie == category_value)
-        filters.append(or_(*search_conditions))
-    if region_nom:
-        filters.append(Osc.region_nom.ilike(f"%{region_nom}%"))
-    if sous_prefecture:
-        filters.append(Osc.sous_prefecture.ilike(f"%{sous_prefecture}%"))
-    if domaine_activite:
-        term = f"%{domaine_activite}%"
-        filters.append(or_(
-            Osc.secteurs_activites.ilike(term),
-            Osc.domaine_prioritaire.ilike(term),
-            Osc.domaine_prioritaire_2.ilike(term),
-            Osc.domaine_prioritaire_3.ilike(term),
-            Osc.domaine_prioritaire_4.ilike(term),
-            Osc.domaine_prioritaire_5.ilike(term),
-        ))
-    if categorie:
-        filters.append(Osc.categorie == categorie)
-    if type_document_formalisation:
-        filters.append(Osc.type_document_formalisation == type_document_formalisation)
-    if has_document_formalisation is True:
-        filters.append(Osc.document_formalisation_path.is_not(None))
-    elif has_document_formalisation is False:
-        filters.append(Osc.document_formalisation_path.is_(None))
+    filters = _filtres_osc_annuaire(
+        type_id=type_id, region_id=region_id, search=search,
+        region_nom=region_nom, departement=departement, sous_prefecture=sous_prefecture,
+        domaine_activite=domaine_activite, categorie=categorie,
+        type_document_formalisation=type_document_formalisation,
+        has_document_formalisation=has_document_formalisation,
+        existence_siege=existence_siege, manuel_procedures=manuel_procedures,
+        plan_action=plan_action, rapports_annuels=rapports_annuels,
+        adhesion_crasc_statut=adhesion_crasc_statut,
+        niveau_regroupement=niveau_regroupement, niveau_couverture=niveau_couverture,
+        annee_creation=annee_creation, score_min=score_min, score_max=score_max,
+    )
 
     # Un admin CRASC ne voit que les OSCs de son CRASC
     if current_user and current_user.is_staff and not current_user.is_superuser:
@@ -862,44 +1033,75 @@ async def get_all_osc(
     filters.append(Osc.is_visible == True)
     filters.append(Osc.statut_publication == "publie")
 
-    count_query = select(func.count()).select_from(Osc)
-    if filters:
-        count_query = count_query.where(*filters)
+    count_query = select(func.count()).select_from(Osc).where(*filters)
     total = (await db.execute(count_query)).scalar()
 
     offset = (page - 1) * size
     query = select(Osc).options(
         selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.news_items), selectinload(Osc.poles)
-    )
-    if filters:
-        query = query.where(*filters)
+    ).where(*filters)
+
+    descendant = sort_order == "desc"
     if sort_by == "document_formalisation":
-        has_no_document = Osc.document_formalisation_path.is_(None)
-        query = query.order_by(has_no_document.asc() if sort_order == "asc" else has_no_document.desc(), Osc.name.asc())
-    elif sort_by == "name":
-        query = query.order_by(Osc.name.asc() if sort_order == "asc" else Osc.name.desc())
+        # « asc » = les OSC avec justificatif d'abord.
+        sans_justificatif = Osc.document_formalisation_path.is_(None)
+        colonne_tri = sans_justificatif.desc() if descendant else sans_justificatif.asc()
+    elif sort_by == "score_autoevaluation":
+        score = expression_score_sql(Osc)
+        colonne_tri = score.desc() if descendant else score.asc()
     else:
-        sort_columns = {
-            "region_nom": Osc.region_nom,
-            "departement": Osc.departement,
-            "sous_prefecture": Osc.sous_prefecture,
-            "categorie": Osc.categorie,
-            "niveau_regroupement": Osc.niveau_regroupement,
-            "domaine_prioritaire": Osc.domaine_prioritaire,
-            "domaine_prioritaire_2": Osc.domaine_prioritaire_2,
-            "domaine_prioritaire_3": Osc.domaine_prioritaire_3,
-            "domaine_prioritaire_4": Osc.domaine_prioritaire_4,
-            "domaine_prioritaire_5": Osc.domaine_prioritaire_5,
-            "type_document_formalisation": Osc.type_document_formalisation,
-        }
-        order_column = sort_columns[sort_by]
-        query = query.order_by(order_column.asc() if sort_order == "asc" else order_column.desc(), Osc.name.asc())
-    query = query.offset(offset).limit(size)
+        colonne = TRI_OSC[sort_by]
+        colonne_tri = colonne.desc().nulls_last() if descendant else colonne.asc().nulls_last()
+    query = query.order_by(colonne_tri, Osc.name.asc()).offset(offset).limit(size)
 
     result = await db.execute(query)
     items = result.scalars().all()
 
     return PaginatedResponse(items=items, total=total, page=page, size=size, pages=-(-total // size))
+
+
+@crasc_router.get("/osc/filtres", status_code=status.HTTP_200_OK)
+async def get_osc_filtres(db: AsyncSession = Depends(get_db)):
+    """
+    Valeurs réellement présentes dans l'annuaire, pour alimenter les listes
+    déroulantes de la recherche avancée. Les proposer plutôt que de les faire
+    saisir évite les recherches sans résultat dues à une faute de frappe.
+    """
+    publiees = (Osc.statut_publication == "publie", Osc.is_visible == True)  # noqa: E712
+
+    async def valeurs(colonne) -> List[str]:
+        resultat = await db.execute(
+            select(colonne).where(*publiees, colonne.is_not(None), func.btrim(colonne) != "").distinct()
+        )
+        return sorted({v.strip() for (v,) in resultat.all() if v and v.strip()}, key=lambda v: normaliser(v))
+
+    domaines = set()
+    for nom in COLONNES_DOMAINES_OSC:
+        if nom != "secteurs_activites":
+            domaines.update(await valeurs(getattr(Osc, nom)))
+
+    annees = set()
+    lignes = (await db.execute(select(Osc.date_creation).where(*publiees, Osc.date_creation.is_not(None)))).all()
+    for (date_creation,) in lignes:
+        annees.update(re.findall(r"(?:19|20)\d{2}", date_creation or ""))
+
+    types = (await db.execute(select(OscType).order_by(OscType.name))).scalars().all()
+    crascs = (await db.execute(select(Crasc).order_by(Crasc.name))).scalars().all()
+
+    return {
+        "regions": await valeurs(Osc.region_nom),
+        "departements": await valeurs(Osc.departement),
+        "sous_prefectures": await valeurs(Osc.sous_prefecture),
+        "villes": await valeurs(Osc.ville),
+        "domaines": sorted(domaines, key=normaliser),
+        "niveaux_couverture": await valeurs(Osc.niveau_couverture),
+        "niveaux_regroupement": await valeurs(Osc.niveau_regroupement),
+        "annees_creation": sorted(annees, reverse=True),
+        "types_osc": [{"id": t.id, "name": t.name} for t in types],
+        "crascs": [{"id": c.id, "name": c.name} for c in crascs],
+        "bareme": BAREME,
+        "tranches_couleur": [{**tranche, "hex": COULEUR_HEX[tranche["couleur"]]} for tranche in TRANCHES_COULEUR],
+    }
 
 
 @crasc_router.get("/osc/me", response_model=OscReadDetail, status_code=status.HTTP_200_OK)
@@ -948,6 +1150,10 @@ async def get_osc_update_form(
     address: Optional[str] = Form(""),
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
+    contact_president: Optional[str] = Form(None),
+    contact_osc: Optional[str] = Form(None),
+    contact_1: Optional[str] = Form(None),
+    contact_2: Optional[str] = Form(None),
     region_nom: Optional[str] = Form(None),
     departement: Optional[str] = Form(None),
     sous_prefecture: Optional[str] = Form(None),
@@ -1023,7 +1229,10 @@ async def get_osc_update_form(
     return OscUpdate(
         name=name, sigle=sigle, description=description,
         type_id=to_int(type_id), crasc_id=to_int(crasc_id),
-        address=address, email=email, phone=phone, region_nom=region_nom,
+        address=address, email=email, phone=phone,
+        contact_president=contact_president, contact_osc=contact_osc,
+        contact_1=contact_1, contact_2=contact_2,
+        region_nom=region_nom,
         departement=departement, sous_prefecture=sous_prefecture, ville=ville,
         origine_organisation=origine_organisation,
         latitude=to_float(latitude), longitude=to_float(longitude),

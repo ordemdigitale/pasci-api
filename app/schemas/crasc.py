@@ -35,6 +35,15 @@ class CrascRead(CrascBase):
   class Config:
     from_attributes = True
 
+class CrascListRead(CrascRead):
+  """
+  CRASC de la liste publique, avec ses régions : un CRASC se définit par les
+  régions qu'il couvre (carte, filtres, création d'un nouveau CRASC).
+  Schéma distinct de `CrascRead` car ce dernier est imbriqué dans les fiches
+  OSC, où les régions ne sont pas chargées.
+  """
+  regions: List["RegionRead"] = []
+
 class CrascReadDetail(CrascBase):
   id: int
   slug: Optional[str] = None
@@ -58,6 +67,8 @@ class CrascUpdate(BaseModel):
   description: Optional[str] = None
   osc_count: Optional[int] = None
   email_pca: Optional[str] = None
+  # Rattachement des régions : liste complète, les régions absentes sont détachées.
+  region_ids: Optional[List[int]] = None
 
 
 #Region Schemas
@@ -126,6 +137,10 @@ class OscBase(BaseModel):
   # Informations de contact pour l'annuaire
   email: Optional[str] = None
   phone: Optional[str] = None
+  contact_president: Optional[str] = None
+  contact_osc: Optional[str] = None
+  contact_1: Optional[str] = None
+  contact_2: Optional[str] = None
   region_nom: Optional[str] = None
   departement: Optional[str] = None
   sous_prefecture: Optional[str] = None
@@ -328,6 +343,10 @@ class OscUpdate(BaseModel):
   longitude: Optional[float] = None
   email: Optional[str] = None
   phone: Optional[str] = None
+  contact_president: Optional[str] = None
+  contact_osc: Optional[str] = None
+  contact_1: Optional[str] = None
+  contact_2: Optional[str] = None
   region_nom: Optional[str] = None
   departement: Optional[str] = None
   sous_prefecture: Optional[str] = None

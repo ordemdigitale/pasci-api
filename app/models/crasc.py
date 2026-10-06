@@ -163,6 +163,10 @@ class Osc(SQLModel, table=True):
   # Informations de contact pour l'annuaire
   email: Optional[str] = Field(default=None, nullable=True, max_length=255, description="Email de contact")
   phone: Optional[str] = Field(default=None, nullable=True, max_length=50, description="Numéro de téléphone")
+  contact_president: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Contact du/de la président(e)")
+  contact_osc: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Contact de l'OSC")
+  contact_1: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Contact 1")
+  contact_2: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Contact 2")
   region_nom: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Région déclarée")
   departement: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Département")
   sous_prefecture: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Sous-préfecture")

@@ -52,3 +52,66 @@ def couleur_pour_score(score: int) -> str:
     if score <= 15:
         return "bleu"
     return "vert"
+
+
+def expression_score_sql(osc):
+    """
+    Version SQL de `calculer_score_autoevaluation`, pour filtrer et trier sur
+    le score sans charger toutes les OSC en mémoire. Doit rester alignée sur
+    la version Python ci-dessus (le maximum atteignable est exactement 20,
+    il n'y a donc pas de plafond à appliquer ici).
+    """
+    from sqlalchemy import and_, case, or_
+
+    formalisation = case(
+        *[
+            (osc.type_document_formalisation == valeur, points)
+            for valeur, points in FORMALISATION_POINTS.items()
+        ],
+        else_=0,
+    )
+    critere = lambda colonne: case((colonne == True, 3), else_=0)  # noqa: E712, E731
+    # Le statut prime sur le booléen ; sans statut renseigné on retombe dessus.
+    adhesion = case(
+        (osc.adhesion_crasc_statut == "oui", 1),
+        (
+            and_(
+                or_(osc.adhesion_crasc_statut.is_(None), osc.adhesion_crasc_statut == ""),
+                osc.adhesion_crasc == True,  # noqa: E712
+            ),
+            1,
+        ),
+        else_=0,
+    )
+    return (
+        formalisation
+        + critere(osc.existence_siege)
+        + critere(osc.manuel_procedures)
+        + critere(osc.plan_action)
+        + critere(osc.rapports_annuels)
+        + adhesion
+    )
+
+
+# Barème affiché à l'utilisateur (annuaire, profil OSC, back-office).
+BAREME = [
+    {
+        "critere": "Document de formalisation",
+        "points": 7,
+        "detail": "Journal Officiel 7 · Récépissé de déclaration 5 · Agrément/décret 5 · Récépissé de dépôt 3 · Statuts et règlement intérieur 1",
+    },
+    {"critere": "Existence d'un siège", "points": 3, "detail": "Siège social identifié"},
+    {"critere": "Plan d'action", "points": 3, "detail": "Plan d'action formalisé"},
+    {"critere": "Rapports annuels d'activités", "points": 3, "detail": "Rapports d'activités produits"},
+    {"critere": "Manuel de procédures", "points": 3, "detail": "Manuel de procédures en vigueur"},
+    {"critere": "Adhésion au CRASC", "points": 1, "detail": "Adhésion effective au CRASC"},
+]
+
+# Tranches de couleur, alignées sur `couleur_pour_score`.
+TRANCHES_COULEUR = [
+    {"couleur": "rouge", "min": 1, "max": 5, "libelle": "Très faible"},
+    {"couleur": "orange", "min": 6, "max": 8, "libelle": "Faible"},
+    {"couleur": "jaune", "min": 9, "max": 12, "libelle": "Moyen"},
+    {"couleur": "bleu", "min": 13, "max": 15, "libelle": "Bon"},
+    {"couleur": "vert", "min": 16, "max": 20, "libelle": "Très bon"},
+]
