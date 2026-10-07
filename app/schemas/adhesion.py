@@ -17,6 +17,10 @@ class DemandeAdhesionCreate(BaseModel):
     origine_organisation: Optional[str] = None
     email: str
     telephone: str
+    contact_president: Optional[str] = None
+    contact_osc: Optional[str] = None
+    contact_1: Optional[str] = None
+    contact_2: Optional[str] = None
     description: Optional[str] = None
     motivation: str
     type_document_formalisation: Optional[str] = None
@@ -79,6 +83,10 @@ class DemandeAdhesionRead(BaseModel):
     origine_organisation: Optional[str] = None
     email: str
     telephone: str
+    contact_president: Optional[str] = None
+    contact_osc: Optional[str] = None
+    contact_1: Optional[str] = None
+    contact_2: Optional[str] = None
     description: Optional[str] = None
     motivation: str
     type_document_formalisation: Optional[str] = None
