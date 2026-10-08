@@ -327,6 +327,7 @@ async def ma_progression(
         "completed": inscription.is_completed,
         "certificat_code": cert_code,
         "inscrit": True,
+        "inscription_id": inscription.id,
         # Contenu accessible : formation gratuite ou paiement validé
         "acces": formation_acces.a_acces(inscription),
         "payment_status": inscription.payment_status,
@@ -962,7 +963,8 @@ async def soumettre_paiement_inscription(
     inscription = result.scalar_one_or_none()
     if not inscription:
         raise HTTPException(status_code=404, detail="Inscription non trouvée.")
-    if inscription.payment_status != "pending":
+    # « failed » : paiement rejeté par l'équipe, le participant peut soumettre un nouveau code.
+    if inscription.payment_status not in ("pending", "failed"):
         raise HTTPException(
             status_code=400,
             detail=f"Ce paiement ne peut pas être soumis (statut actuel : {inscription.payment_status})."
