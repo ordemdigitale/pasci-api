@@ -19,7 +19,7 @@ async def create_job(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_redacteur_or_staff),
 ) -> Jobs:
-    statut = "publie" if current_user.is_staff else "en_attente"
+    statut = "publie" if (current_user.is_staff or current_user.is_superuser) else "en_attente"
     db_job = Jobs(**job.model_dump(), statut_publication=statut)
     db.add(db_job)
     await db.commit()

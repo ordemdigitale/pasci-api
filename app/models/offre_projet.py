@@ -57,6 +57,12 @@ class OffreProjet(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),
         description="Date de publication"
     )
+    # Date limite de soumission des candidatures (au-delà : offre clôturée)
+    date_limite_soumission: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+        description="Date limite de soumission",
+    )
 
     # Timestamps (auto-managed)
     created_at: datetime = Field(

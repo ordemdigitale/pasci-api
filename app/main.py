@@ -20,6 +20,7 @@ from app.api.v1.endpoints.jobs import jobs_router
 from app.api.v1.endpoints.crasc import crasc_router
 from app.api.v1.endpoints.key_stats import key_stats_router
 from app.api.v1.endpoints.ptf import ptf_router
+from app.api.v1.endpoints.task_forces import task_forces_router
 from app.api.v1.endpoints.news import news_router
 from app.api.v1.endpoints.stats import stats_router
 from app.api.v1.endpoints.search import search_router
@@ -104,6 +105,7 @@ app.include_router(crasc_router, prefix="/api/v1/crasc", tags=["crasc"])
 app.include_router(jobs_router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(key_stats_router, prefix="/api/v1/key-stats", tags=["key-stats"])
 app.include_router(ptf_router, prefix="/api/v1/ptf", tags=["ptf"])
+app.include_router(task_forces_router, prefix="/api/v1/task-forces", tags=["ptf"])
 app.include_router(offre_projet_router, prefix="/api/v1/offre-projets", tags=["offre-projets"])
 app.include_router(news_router, prefix="/api/v1/news", tags=["news"])
 app.include_router(tags_router, prefix="/api/v1/tags", tags=["tags"])

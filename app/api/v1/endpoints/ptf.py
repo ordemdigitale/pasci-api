@@ -137,19 +137,42 @@ async def create_ptf(
 async def get_ptfs(
     skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
     limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    categorie: Optional[str] = Query(None, description="Type de PTF (voir /ptf/types)"),
     db: AsyncSession = Depends(get_db)
 ):
     """Get all PTF with pagination"""
-    result = await db.execute(
-        select(Ptf)
-        .options(selectinload(Ptf.projets))
-        .offset(skip)
-        .limit(limit)
-        .order_by(Ptf.name)
-    )
+    query = select(Ptf).options(selectinload(Ptf.projets))
+    if categorie:
+        query = query.where(Ptf.categorie == categorie)
+    result = await db.execute(query.offset(skip).limit(limit).order_by(Ptf.name))
     ptfs = result.scalars().all()
     return ptfs
 ### read single
+# Classification des PTF (champ `categorie`), dans l'ordre d'affichage de l'annuaire
+TYPES_PTF = [
+  {"nom": "Institutions multilatérales", "description": "Union européenne, Banque mondiale, Banque africaine de développement…"},
+  {"nom": "Agences spécialisées", "description": "Agences du système des Nations unies (PNUD, UNICEF, ONU Femmes…)"},
+  {"nom": "Bailleurs bilatéraux", "description": "Coopérations et agences de développement des États, ambassades"},
+  {"nom": "Institutions financières", "description": "Banques et fonds de développement"},
+  {"nom": "ONG internationales", "description": "Organisations non gouvernementales internationales"},
+  {"nom": "Fondations", "description": "Fondations publiques ou privées"},
+  {"nom": "Secteur privé", "description": "Entreprises et fondations d'entreprise"},
+  {"nom": "Autres", "description": "Autres partenaires techniques et financiers"},
+]
+
+
+@ptf_router.get("/types", status_code=status.HTTP_200_OK)
+async def get_types_ptf(db: AsyncSession = Depends(get_db)):
+  """Types de PTF et nombre de PTF par type (les types déjà saisis hors liste sont ajoutés)."""
+  from sqlalchemy import func
+  rows = (await db.execute(select(Ptf.categorie, func.count()).group_by(Ptf.categorie))).all()
+  nb = {c: n for c, n in rows}
+  types = [{**t, "nb_ptf": nb.get(t["nom"], 0)} for t in TYPES_PTF]
+  connus = {t["nom"] for t in TYPES_PTF}
+  types += [{"nom": c, "description": None, "nb_ptf": n} for c, n in rows if c and c not in connus]
+  return types
+
+
 @ptf_router.get("/{ptf_slug}", response_model=PtfReadWithProjets, status_code=status.HTTP_200_OK)
 async def get_ptf(ptf_slug: str, db: AsyncSession = Depends(get_db)):
   result = await db.execute(

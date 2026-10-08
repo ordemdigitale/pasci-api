@@ -161,7 +161,7 @@ async def create_news(
         saved_path = "default.png"
 
     # Si rédacteur → en attente de validation, si staff → publié directement
-    statut = "publie" if current_user.is_staff else "en_attente"
+    statut = "publie" if (current_user.is_staff or current_user.is_superuser) else "en_attente"
 
     # Create database record
     news_create = News(

@@ -7,6 +7,8 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
+from datetime import datetime, timezone
+from sqlalchemy import or_
 import os
 from pathlib import Path
 from uuid import UUID
@@ -21,6 +23,25 @@ offre_projet_router = APIRouter()
 
 # Static directory for uploads
 UPLOAD_DIR = Path("static/projets")
+EXTENSIONS_IMAGE = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def _verifier_image(image: Optional[UploadFile]) -> None:
+    if image and image.filename and os.path.splitext(image.filename)[1].lower() not in EXTENSIONS_IMAGE:
+        raise HTTPException(status_code=422, detail="Image : formats acceptés JPG, PNG ou WebP.")
+
+
+def _date_limite(valeur: Optional[str]) -> Optional[datetime]:
+    """« AAAA-MM-JJ » (jusqu'à la fin de la journée) ou date-heure ISO ; vide = aucune."""
+    if valeur is None or not valeur.strip():
+        return None
+    texte = valeur.strip()
+    try:
+        d = datetime.fromisoformat(texte).replace(hour=23, minute=59, second=59) if len(texte) == 10 \
+            else datetime.fromisoformat(texte.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Date limite de soumission invalide (AAAA-MM-JJ).")
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -31,10 +52,16 @@ async def get_all_projets(
     domaine: Optional[str] = None,
     statut: Optional[str] = None,
     ptf_id: Optional[int] = None,
+    soumission: Optional[str] = Query(None, description="ouvertes | cloturees"),
     db: AsyncSession = Depends(get_db)
 ) -> List[OffreProjet]:
     """Get all published projets with optional filters"""
     query = select(OffreProjet).options(selectinload(OffreProjet.ptf)).where(OffreProjet.statut_publication == "publie").offset(skip).limit(limit)
+    maintenant = datetime.now(timezone.utc)
+    if soumission == "ouvertes":
+        query = query.where(or_(OffreProjet.date_limite_soumission.is_(None), OffreProjet.date_limite_soumission >= maintenant))
+    elif soumission == "cloturees":
+        query = query.where(OffreProjet.date_limite_soumission < maintenant)
     if domaine:
         query = query.where(OffreProjet.domaine == domaine)
     if statut:
@@ -96,12 +123,14 @@ async def create_projet(
     resultats_attendus: Optional[str] = Form(None),
     partenaires: Optional[str] = Form(None),
     ptf_id: Optional[int] = Form(None),
+    date_limite_soumission: Optional[str] = Form(None, description="AAAA-MM-JJ ; vide = aucune"),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_redacteur_or_staff),
 ) -> OffreProjet:
     """Create a new projet"""
 
+    _verifier_image(image)
     # Handle image upload
     image_filename = "default-project.jpg"
     if image and image.filename:
@@ -119,7 +148,7 @@ async def create_projet(
             content = await image.read()
             buffer.write(content)
 
-    statut_pub = "publie" if current_user.is_staff else "en_attente"
+    statut_pub = "publie" if (current_user.is_staff or current_user.is_superuser) else "en_attente"
 
     # Create projet
     projet = OffreProjet(
@@ -140,6 +169,7 @@ async def create_projet(
         image_path=image_filename,
         statut_publication=statut_pub,
         ptf_id=ptf_id,
+        date_limite_soumission=_date_limite(date_limite_soumission),
     )
 
     db.add(projet)
@@ -167,6 +197,7 @@ async def update_projet(
     resultats_attendus: Optional[str] = Form(None),
     partenaires: Optional[str] = Form(None),
     ptf_id: Optional[int] = Form(None),
+    date_limite_soumission: Optional[str] = Form(None, description="AAAA-MM-JJ ; vide = aucune"),
     image: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
@@ -184,6 +215,7 @@ async def update_projet(
             detail=f"Projet with slug '{slug}' not found"
         )
 
+    _verifier_image(image)
     # Handle image upload
     if image and image.filename:
         # Delete old image if it exists and is not default
@@ -241,6 +273,8 @@ async def update_projet(
         projet.partenaires = partenaires
     if ptf_id is not None:
         projet.ptf_id = ptf_id
+    if date_limite_soumission is not None:
+        projet.date_limite_soumission = _date_limite(date_limite_soumission)
 
     await db.commit()
 

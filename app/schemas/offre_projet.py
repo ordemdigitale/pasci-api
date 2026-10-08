@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from pydantic import BaseModel, computed_field
 from uuid import UUID
@@ -36,6 +36,7 @@ class OffreProjetBase(BaseModel):
     partenaires: Optional[str] = None
     image_path: Optional[str] = "default-project.jpg"
     date_publication: Optional[datetime] = None
+    date_limite_soumission: Optional[datetime] = None
     ptf_id: Optional[int] = None
 
 
@@ -57,6 +58,28 @@ class OffreProjetRead(OffreProjetBase):
         if self.image_path and self.image_path != "default-project.jpg":
             return f"{settings.API_BASE_URL}/static/{self.image_path}"
         return None
+
+    @computed_field
+    @property
+    def soumission_ouverte(self) -> bool:
+        """Vrai tant que la date limite de soumission n'est pas dépassée (ou s'il n'y en a pas)."""
+        if not self.date_limite_soumission:
+            return True
+        fin = self.date_limite_soumission
+        if fin.tzinfo is None:
+            fin = fin.replace(tzinfo=timezone.utc)
+        return fin >= datetime.now(timezone.utc)
+
+    @computed_field
+    @property
+    def jours_restants(self) -> Optional[int]:
+        """Jours avant la date limite (0 le dernier jour), None sans date ou si elle est passée."""
+        if not self.date_limite_soumission or not self.soumission_ouverte:
+            return None
+        fin = self.date_limite_soumission
+        if fin.tzinfo is None:
+            fin = fin.replace(tzinfo=timezone.utc)
+        return max(0, (fin - datetime.now(timezone.utc)).days)
 
     @computed_field
     @property
@@ -98,4 +121,5 @@ class OffreProjetUpdate(BaseModel):
     partenaires: Optional[str] = None
     image_path: Optional[str] = None
     date_publication: Optional[datetime] = None
+    date_limite_soumission: Optional[datetime] = None
     ptf_id: Optional[int] = None
