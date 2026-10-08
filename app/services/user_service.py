@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status
-from app.models.users import User
+from app.models.users import User, email_egal
 from app.schemas.users import UserCreate, UserUpdate, UserUpdateAdmin, ChangePassword
 from app.core.security import get_password_hash
 from uuid import UUID
@@ -9,8 +9,8 @@ from uuid import UUID
 class UserService:
   @staticmethod
   async def get_user_by_email(db: AsyncSession, email: str) -> User:
-    result = await db.execute(select(User).where(User.email == email))
-    return result.scalar_one_or_none()
+    result = await db.execute(select(User).where(email_egal(email)).order_by(User.date_joined))
+    return result.scalars().first()
   
   @staticmethod
   async def get_user_by_username(db: AsyncSession, username: str) -> User:
@@ -37,6 +37,7 @@ class UserService:
         )
      
      update_data = user_update.model_dump(exclude_unset=True)
+     await UserService.verifier_email_libre(db, update_data.get("email"), user.id)
      for field, value in update_data.items():
         setattr(user, field, value)
      
@@ -77,6 +78,7 @@ class UserService:
         )
 
      update_data = user_update.model_dump(exclude_unset=True)
+     await UserService.verifier_email_libre(db, update_data.get("email"), user.id)
      for field, value in update_data.items():
         setattr(user, field, value)
 
@@ -131,7 +133,7 @@ class UserService:
      if existing_user:
         raise HTTPException(
            status_code=status.HTTP_400_BAD_REQUEST,
-           detail="Email already registered"
+           detail="Un compte existe déjà avec cet email."
         )
 
      # Check if username already exists
@@ -150,3 +152,21 @@ class UserService:
      await db.commit()
      await db.refresh(db_user)
      return db_user
+
+
+  @staticmethod
+  async def verifier_email_libre(db: AsyncSession, email, user_id: UUID = None) -> None:
+     """
+     Refuse un email déjà utilisé par un autre compte, sans tenir compte des
+     majuscules ni des espaces (« Osc@Mail.ci » = « osc@mail.ci »).
+     """
+     if not email:
+        return
+     query = select(User).where(email_egal(email))
+     if user_id is not None:
+        query = query.where(User.id != user_id)
+     if (await db.execute(query)).scalars().first():
+        raise HTTPException(
+           status_code=status.HTTP_400_BAD_REQUEST,
+           detail="Un compte existe déjà avec cet email.",
+        )

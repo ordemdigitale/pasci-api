@@ -2,6 +2,7 @@
 from datetime import datetime
 import bcrypt as _bcrypt
 from sqlalchemy import Column, Text, DateTime
+from sqlalchemy.event import listens_for
 from sqlalchemy.sql import func
 from sqlmodel import SQLModel, Field
 from typing import Optional
@@ -94,3 +95,26 @@ class User(SQLModel, table=True):
   # Optional: Nice representation in admin/logs
   def __repr__(self) -> str:
       return f"<User {self.id}: {self.get_username()} ({'active' if self.is_active else 'inactive'})>"
+
+
+# ——— Unicité de l'email ———
+# « Osc@Mail.ci », « osc@mail.ci » et « osc@mail.ci » (espace final) sont la
+# même adresse : sans normalisation, chacune créait un compte distinct.
+
+def normaliser_email(email: Optional[str]) -> str:
+  """Forme canonique d'un email : sans espaces autour, en minuscules."""
+  return (email or "").strip().lower()
+
+
+def email_egal(email: Optional[str]):
+  """Critère SQL « ce compte a cet email », insensible à la casse et aux espaces."""
+  return func.lower(func.btrim(User.email)) == normaliser_email(email)
+
+
+@listens_for(User, "before_insert")
+@listens_for(User, "before_update")
+def _normaliser_email_avant_ecriture(mapper, connection, target: User) -> None:
+  # Quel que soit le chemin de création (inscription, admin, adhésion, script),
+  # l'email est stocké sous sa forme canonique.
+  if target.email:
+    target.email = normaliser_email(target.email)

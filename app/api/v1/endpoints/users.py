@@ -3,12 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
-from sqlmodel import select, desc
+from sqlmodel import select, desc, func
 
 from app.core.auth import get_current_user, get_current_superuser, get_current_staff_user
 from sqlalchemy import or_
 from app.database.session import get_db
-from app.models.users import User
+from app.models.users import User, normaliser_email
 from app.schemas.users import UserCreate, UserUpdate, UserRead, UserUpdateAdmin, ChangePassword
 from app.services.user_service import UserService
 
@@ -56,6 +56,31 @@ async def get_users(
 
     result = await db.execute(query.offset(skip).limit(limit))
     return result.scalars().all()
+
+
+@users_router.get("/admin/doublons-email", response_model=List[List[UserRead]])
+async def lister_doublons_email(
+   db: AsyncSession = Depends(get_db),
+   current_user: User = Depends(get_current_superuser),
+):
+   """
+   Comptes qui partagent le même email (à la casse et aux espaces près),
+   créés avant que l'unicité ne soit vérifiée correctement. Un groupe par
+   email, du plus ancien au plus récent : à fusionner ou supprimer à la main.
+   """
+   cle = func.lower(func.btrim(User.email))
+   emails = (
+      await db.execute(select(cle).group_by(cle).having(func.count() > 1).order_by(cle))
+   ).scalars().all()
+   if not emails:
+      return []
+   comptes = (
+      await db.execute(select(User).where(cle.in_(emails)).order_by(cle, User.date_joined))
+   ).scalars().all()
+   groupes: dict = {}
+   for compte in comptes:
+      groupes.setdefault(normaliser_email(compte.email), []).append(compte)
+   return list(groupes.values())
 
 
 @users_router.get("/{user_id}", response_model=UserRead, status_code=status.HTTP_200_OK)

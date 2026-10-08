@@ -13,7 +13,7 @@ from typing import List, Optional
 from app.database.session import get_db
 from app.models.adhesion import DemandeAdhesion
 from app.models.crasc import Osc, Crasc
-from app.models.users import User
+from app.models.users import User, email_egal
 from app.core.auth import get_current_staff_user
 from app.services.email import send_welcome_osc
 from app.services.rattachement import rattacher_osc as _rattacher_osc
@@ -235,9 +235,9 @@ async def _provision_osc_and_user(
 
     # --- 3. Créer ou mettre à jour l'utilisateur ---
     user_result = await db.execute(
-        select(User).where(User.email == demande.email)
+        select(User).where(email_egal(demande.email))
     )
-    user = user_result.scalar_one_or_none()
+    user = user_result.scalars().first()
 
     temp_password = _generate_password()
     base_username = python_slugify.slugify(demande.nom_organisation)[:30]

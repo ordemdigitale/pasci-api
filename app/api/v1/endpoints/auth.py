@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
-from app.models.users import User
+from app.models.users import User, email_egal
 from app.database.session import get_db
 from app.schemas.users import UserRead, UserCreate
 from app.schemas.auth import Token
@@ -23,11 +23,17 @@ auth_router = APIRouter()
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(User).where(
-            (User.email == form_data.username) | (User.username == form_data.username)
+            (email_egal(form_data.username)) | (User.username == form_data.username)
         )
     )
-    user = result.scalar_one_or_none()
-    if not user or not verify_password(form_data.password, user.password):
+    # Plusieurs comptes peuvent encore partager un email (doublons créés avant
+    # que l'email ne soit comparé sans tenir compte de la casse) : on retient
+    # celui dont le mot de passe correspond.
+    user = next(
+        (u for u in result.scalars().all() if verify_password(form_data.password, u.password)),
+        None,
+    )
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -43,9 +49,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @auth_router.post("/register", response_model=UserRead)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     # Check if email already exists
-    result = await db.execute(select(User).where(User.email == user_in.email))
-    if result.scalar_one_or_none():
-        raise HTTPException(400, "Email already registered")
+    result = await db.execute(select(User).where(email_egal(user_in.email)))
+    if result.scalars().first():
+        raise HTTPException(400, "Un compte existe déjà avec cet email.")
 
     hashed_password = get_password_hash(user_in.password)
     user = User(
@@ -107,8 +113,8 @@ class ResetPasswordRequest(BaseModel):
 @auth_router.post("/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Envoie un email de réinitialisation si l'email existe. Ne révèle jamais si l'email est enregistré."""
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
+    result = await db.execute(select(User).where(email_egal(body.email)))
+    user = result.scalars().first()
 
     if user:
         token = secrets.token_urlsafe(32)

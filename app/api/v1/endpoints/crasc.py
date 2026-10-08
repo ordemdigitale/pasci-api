@@ -19,7 +19,7 @@ from app.core.auth import (
     check_osc_ownership,
 )
 from app.database.session import get_db
-from app.models.users import User
+from app.models.users import User, email_egal
 from app.services.notifications import create_notification
 from app.schemas.users import UserRead, CrascAdminCreate, OscUserCreate
 from app.schemas.crasc import (
@@ -1786,7 +1786,7 @@ async def create_crasc_admin(
         )
 
     # Vérifier l'unicité email / username
-    if (await db.execute(select(User).where(User.email == admin_data.email))).scalar_one_or_none():
+    if (await db.execute(select(User).where(email_egal(admin_data.email)))).scalars().first():
         raise HTTPException(status_code=400, detail="Cet email est déjà utilisé.")
     if admin_data.username:
         if (await db.execute(select(User).where(User.username == admin_data.username))).scalar_one_or_none():
@@ -1902,7 +1902,7 @@ async def create_osc_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Cette OSC a déjà un compte utilisateur.")
 
-    if (await db.execute(select(User).where(User.email == user_data.email))).scalar_one_or_none():
+    if (await db.execute(select(User).where(email_egal(user_data.email)))).scalars().first():
         raise HTTPException(status_code=400, detail="Cet email est déjà utilisé.")
     if user_data.username:
         if (await db.execute(select(User).where(User.username == user_data.username))).scalar_one_or_none():

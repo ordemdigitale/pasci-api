@@ -8,7 +8,7 @@ from typing import Optional
 import logging
 
 from app.core.security import verify_password, create_access_token, verify_token
-from app.models.users import User
+from app.models.users import User, email_egal
 from app.database.session import async_engine, AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -29,12 +29,16 @@ class AdminAuth(AuthenticationBackend):
         async with AsyncSession(async_engine) as db:
             result = await db.execute(
                 select(User).where(
-                    (User.email == username) | (User.username == username)
+                    (email_egal(username)) | (User.username == username)
                 )
             )
-            user = result.scalar_one_or_none()
+            # Doublons d'email hérités : retenir le compte dont le mot de passe correspond
+            user = next(
+                (u for u in result.scalars().all() if verify_password(password, u.password)),
+                None,
+            )
 
-            if not user or not verify_password(password, user.password):
+            if not user:
                 logger.warning(f"Failed login attempt for: {username}")
                 return False
 
