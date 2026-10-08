@@ -18,6 +18,9 @@ site_config_router = APIRouter()
 EXTENSIONS_IMAGE = {"jpg", "jpeg", "png", "webp"}
 TAILLE_MAX_IMAGE = 5 * 1024 * 1024
 CLE_VALIDE = re.compile(r"^[a-z0-9_]{1,100}$")
+# Médias de l'accueil (podcast, vidéo) : audio ou vidéo, 100 Mo maximum
+EXTENSIONS_MEDIA = {"mp3", "m4a", "aac", "ogg", "oga", "wav", "mp4", "webm", "mov"}
+TAILLE_MAX_MEDIA = 100 * 1024 * 1024
 
 
 def _verifier_cle(key: str) -> None:
@@ -111,6 +114,45 @@ async def upload_config_image(
         row.value = image_url
     else:
         row = SiteConfig(key=key, value=image_url)
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return {"key": row.key, "value": row.value}
+
+
+@site_config_router.post("/upload-media/{key}")
+async def upload_config_media(
+    key: str,
+    fichier: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Envoi d'un fichier audio ou vidéo (podcast, vidéo de l'accueil) ; son URL est stockée sous `key`."""
+    _verifier_cle(key)
+    ext = fichier.filename.rsplit(".", 1)[-1].lower() if fichier.filename and "." in fichier.filename else ""
+    if ext not in EXTENSIONS_MEDIA:
+        raise HTTPException(status_code=422, detail="Format non supporté (MP3, M4A, AAC, OGG, WAV, MP4, WEBM, MOV).")
+    fichier.file.seek(0, os.SEEK_END)
+    taille = fichier.file.tell()
+    fichier.file.seek(0)
+    if taille > TAILLE_MAX_MEDIA:
+        raise HTTPException(status_code=413, detail="Fichier trop lourd (100 Mo maximum).")
+    dossier = os.path.join(settings.UPLOAD_DIR, "accueil-medias")
+    os.makedirs(dossier, exist_ok=True)
+    filename = f"{uuid.uuid4()}.{ext}"
+    with open(os.path.join(dossier, filename), "wb") as f:
+        shutil.copyfileobj(fichier.file, f)
+    url = f"{settings.API_BASE_URL}/static/accueil-medias/{filename}"
+
+    row = (await db.execute(select(SiteConfig).where(SiteConfig.key == key))).scalars().first()
+    if row:
+        if row.value and "/static/accueil-medias/" in row.value:
+            ancien = os.path.join(dossier, os.path.basename(row.value))
+            if os.path.exists(ancien):
+                os.remove(ancien)
+        row.value = url
+    else:
+        row = SiteConfig(key=key, value=url)
         db.add(row)
     await db.commit()
     await db.refresh(row)

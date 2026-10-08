@@ -33,6 +33,7 @@ from app.api.v1.endpoints.forum import forum_router
 from app.api.v1.endpoints.annonces import annonces_router
 from app.api.v1.endpoints.hero_slides import hero_slides_router
 from app.api.v1.endpoints.site_config import site_config_router
+from app.api.v1.endpoints.partenaires_accueil import partenaires_accueil_router
 from app.api.v1.endpoints.adhesion import adhesion_router
 from app.api.v1.endpoints.dons import dons_router
 from app.api.v1.endpoints.volontaires import volontaires_router
@@ -116,6 +117,7 @@ app.include_router(forum_router, prefix="/api/v1/forum", tags=["forum"])
 app.include_router(annonces_router, prefix="/api/v1/annonces", tags=["annonces"])
 app.include_router(hero_slides_router, prefix="/api/v1/hero-slides", tags=["hero-slides"])
 app.include_router(site_config_router, prefix="/api/v1/config", tags=["config"])
+app.include_router(partenaires_accueil_router, prefix="/api/v1/partenaires-accueil", tags=["accueil"])
 app.include_router(adhesion_router, prefix="/api/v1/adhesion", tags=["adhesion"])
 app.include_router(dons_router, prefix="/api/v1/dons", tags=["dons"])
 app.include_router(volontaires_router, prefix="/api/v1/volontaires", tags=["volontaires"])

@@ -1,7 +1,7 @@
 # models/hero_slide.py
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field
-from sqlalchemy import Column, DateTime, func
+from sqlalchemy import Column, DateTime, TEXT, func
 from typing import Optional
 
 
@@ -12,9 +12,19 @@ class HeroSlide(SQLModel, table=True):
     image_path: str = Field(nullable=False, max_length=500)
     title: Optional[str] = Field(default=None, nullable=True, max_length=200)
     description: Optional[str] = Field(default=None, nullable=True, max_length=1000)
-    type: str = Field(default="haut", max_length=20, description="'haut' = slider CRASC, 'bas' = partenaires")
+    type: str = Field(default="haut", max_length=20, description="'haut' = slider héro, 'bas' = slider pleine largeur")
     ordre: int = Field(default=0)
     is_active: bool = Field(default=True)
+    # Désactivation automatique : au-delà de cette date, la slide n'est plus affichée
+    date_expiration: Optional[datetime] = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    # Descriptif affiché par « Voir plus » (page propre à la slide)
+    objectif: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    resume: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    article: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    photo1_path: Optional[str] = Field(default=None, max_length=500)
+    photo2_path: Optional[str] = Field(default=None, max_length=500)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),

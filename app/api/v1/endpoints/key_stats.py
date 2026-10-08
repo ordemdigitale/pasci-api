@@ -5,6 +5,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Optional, List
 
 from app.database.session import get_db
+from app.core.auth import get_current_staff_user
+from app.models.users import User
 from app.schemas.key_stats import(
   KeyStatsCreate,
   KeyStatsRead,
@@ -16,7 +18,7 @@ key_stats_router = APIRouter()
 
 # create: POST
 @key_stats_router.post("", response_model=KeyStatsCreate, status_code=status.HTTP_201_CREATED)
-async def create_key_stat(stats: KeyStatsCreate, db: AsyncSession = Depends(get_db)) -> KeyStats:
+async def create_key_stat(stats: KeyStatsCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_staff_user)) -> KeyStats:
   result = await db.execute(select(KeyStats).where(KeyStats.name == stats.name))
   if result.scalars().first(): raise HTTPException(status_code=409, detail="Chiffre clé existe déjà.")
   db_stats = KeyStats(**stats.model_dump())
@@ -56,7 +58,7 @@ async def get_key_stat(key_stats_id: int, db: AsyncSession = Depends(get_db)):
 
 ## update: PATCH
 @key_stats_router.patch("/{key_stats_id}", response_model=KeyStatsRead, status_code=status.HTTP_200_OK)
-async def update_key_stat(key_stats_id: int, key_stats_update: KeyStatsUpdate, db: AsyncSession = Depends(get_db)):
+async def update_key_stat(key_stats_id: int, key_stats_update: KeyStatsUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_staff_user)):
   # fetch existing resource by slug
   result = await db.execute(select(KeyStats).where(KeyStats.id == key_stats_id))
   key_stats = result.scalars().first()
@@ -76,7 +78,7 @@ async def update_key_stat(key_stats_id: int, key_stats_update: KeyStatsUpdate, d
 
 ## delete: DELETE
 @key_stats_router.delete("/{key_stats_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_key_stat(key_stats_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_key_stat(key_stats_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_staff_user)):
   """ Supprimer un chiffre clé """
   result = await db.execute(select(KeyStats).where(KeyStats.id == key_stats_id))
   key_stats = result.scalar_one_or_none()
