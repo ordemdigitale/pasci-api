@@ -101,9 +101,14 @@ def _region_dedupe_key(region_name: str) -> str:
     return slugify_lib.slugify(region_name or "").casefold()
 
 
-def _regions_from_pole(pole: PoleConcertation) -> List[str]:
-    seen = set()
-    regions = []
+def _regions_avec_effectifs(pole: PoleConcertation) -> List[tuple]:
+    """
+    Régions des OSC membres avec leur nombre d'OSC, de la plus représentée à
+    la moins représentée (ordre alphabétique à égalité). La première est la
+    région affichée sur la carte du pôle (« Gbêkê (45) +26 »).
+    """
+    noms: dict = {}
+    effectifs: dict = {}
     for osc in pole.oscs or []:
         region_name = ""
         if getattr(osc, "region", None):
@@ -112,10 +117,11 @@ def _regions_from_pole(pole: PoleConcertation) -> List[str]:
             region_name = (osc.region_nom or "").strip()
 
         region_key = _region_dedupe_key(region_name)
-        if region_name and region_key and region_key not in seen:
-            seen.add(region_key)
-            regions.append(region_name)
-    return sorted(regions, key=str.lower)
+        if region_name and region_key:
+            noms.setdefault(region_key, region_name)
+            effectifs[region_key] = effectifs.get(region_key, 0) + 1
+    ordre = sorted(effectifs, key=lambda cle: (-effectifs[cle], noms[cle].lower()))
+    return [(noms[cle], effectifs[cle]) for cle in ordre]
 
 
 async def _pole_response(db: AsyncSession, pole: PoleConcertation) -> PoleConcertationRead:
@@ -127,7 +133,9 @@ async def _pole_response(db: AsyncSession, pole: PoleConcertation) -> PoleConcer
     pole_data.sujets_count = count_result.scalar() or 0
     pole_data.nb_osc_membres = osc_count
     pole_data.nb_membres_actifs = len(await _oscs_actives(db, pole))
-    pole_data.regions_influence = _json_list(_regions_from_pole(pole))
+    regions = _regions_avec_effectifs(pole)
+    pole_data.regions_influence = _json_list([nom for nom, _ in regions])
+    pole_data.regions_effectifs = [{"nom": nom, "nb": nb} for nom, nb in regions]
     return pole_data
 
 

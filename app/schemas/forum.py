@@ -35,6 +35,8 @@ class PoleConcertationRead(PoleConcertationBase):
     created_at: datetime
     sujets_count: Optional[int] = 0
     nb_membres_actifs: Optional[int] = 0
+    # [{"nom": "Gbêkê", "nb": 45}, ...] de la région la plus représentée à la moins représentée
+    regions_effectifs: List[dict] = []
 
     @computed_field
     @property
