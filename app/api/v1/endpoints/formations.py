@@ -8,7 +8,7 @@ import uuid
 import slugify
 from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Query
-from sqlmodel import select, or_
+from sqlmodel import select, or_, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
@@ -29,6 +29,7 @@ from app.schemas.formation import (
 )
 from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
 from app.services.cinetpay import cinetpay_service
+from app.services import formation_acces
 from app.services.email import (
     send_inscription_confirmation,
     send_paiement_confirme,
@@ -218,16 +219,15 @@ async def marquer_lecon_vue(
     module = module_result.scalar_one()
     formation_id = module.formation_id
 
-    # Trouver l'inscription active de l'utilisateur
-    insc_result = await db.execute(
-        select(FormationInscription).where(
-            FormationInscription.formation_id == formation_id,
-            FormationInscription.participant_email == current_user.email,
-        )
-    )
-    inscription = insc_result.scalar_one_or_none()
+    # Trouver l'inscription de l'utilisateur
+    inscription = await formation_acces.inscription_de(db, formation_id, current_user)
     if not inscription:
         raise HTTPException(status_code=403, detail="Vous n'êtes pas inscrit à cette formation.")
+    if not formation_acces.a_acces(inscription):
+        raise HTTPException(
+            status_code=403,
+            detail="Votre paiement n'est pas encore validé : le contenu sera accessible après sa vérification.",
+        )
 
     # Enregistrer la vue si pas déjà faite
     existing = await db.execute(
@@ -238,54 +238,27 @@ async def marquer_lecon_vue(
     )
     if not existing.scalar_one_or_none():
         db.add(FormationProgression(inscription_id=inscription.id, lecon_id=lecon_id))
-        await db.commit()
+        await db.flush()
 
-    # Compter toutes les leçons de la formation
-    all_lecons_result = await db.execute(
-        select(FormationLecon)
-        .join(FormationModule, FormationLecon.module_id == FormationModule.id)
-        .where(FormationModule.formation_id == formation_id)
-    )
-    total_lecons = len(all_lecons_result.scalars().all())
-
-    # Compter les leçons vues
-    vues_result = await db.execute(
-        select(FormationProgression).where(FormationProgression.inscription_id == inscription.id)
-    )
-    total_vues = len(vues_result.scalars().all())
-
+    total_vues, total_lecons = await formation_acces.progression(db, formation_id, inscription.id)
     progression = round((total_vues / total_lecons) * 100) if total_lecons > 0 else 0
 
-    # 100% → auto-complétion + certificat
+    # Toutes les leçons vues → certificat, sauf si une évaluation finale reste à réussir
+    formation = (await db.execute(select(Formation).where(Formation.id == formation_id))).scalar_one()
+    certificat = await formation_acces.delivrer_certificat_si_eligible(db, formation, inscription)
+    await db.commit()
     certificat_code = None
-    if progression >= 100 and not inscription.is_completed:
-        inscription.is_completed = True
-        inscription.completed_at = datetime.utcnow()
+    if certificat:
+        await db.refresh(certificat)
+        certificat_code = certificat.code
+        await send_certificat_emis(
+            participant_name=inscription.participant_name,
+            participant_email=inscription.participant_email,
+            formation_title=formation.title,
+            cert_code=certificat.code,
+        )
 
-        # Émettre le certificat si pas encore fait
-        if not inscription.certificate_issued:
-            form_result = await db.execute(select(Formation).where(Formation.id == formation_id))
-            formation = form_result.scalar_one()
-            certificat = Certificat(
-                inscription_id=inscription.id,
-                formation_title=formation.title,
-                participant_name=inscription.participant_name,
-                participant_email=inscription.participant_email,
-            )
-            db.add(certificat)
-            inscription.certificate_issued = True
-            await db.commit()
-            await db.refresh(certificat)
-            certificat_code = certificat.code
-            await send_certificat_emis(
-                participant_name=inscription.participant_name,
-                participant_email=inscription.participant_email,
-                formation_title=formation.title,
-                cert_code=certificat.code,
-            )
-        else:
-            await db.commit()
-
+    nb_questions = await formation_acces.nombre_questions(db, formation_id)
     return {
         "lecon_id": lecon_id,
         "progression": progression,
@@ -293,6 +266,10 @@ async def marquer_lecon_vue(
         "lecons_vues": total_vues,
         "completed": inscription.is_completed,
         "certificat_code": certificat_code,
+        # Leçons terminées mais évaluation finale encore à réussir
+        "evaluation_a_passer": bool(
+            nb_questions and total_vues >= total_lecons and not inscription.certificate_issued
+        ),
     }
 
 
@@ -308,15 +285,14 @@ async def ma_progression(
     if not formation:
         raise HTTPException(status_code=404, detail="Formation introuvable.")
 
-    insc_result = await db.execute(
-        select(FormationInscription).where(
-            FormationInscription.formation_id == formation.id,
-            FormationInscription.participant_email == current_user.email,
-        )
-    )
-    inscription = insc_result.scalar_one_or_none()
+    inscription = await formation_acces.inscription_de(db, formation.id, current_user)
+    nb_questions = await formation_acces.nombre_questions(db, formation.id)
     if not inscription:
-        return {"progression": 0, "lecons_vues": [], "completed": False, "certificat_code": None}
+        return {
+            "progression": 0, "lecons_vues": [], "completed": False, "certificat_code": None,
+            "inscrit": False, "acces": False, "payment_status": None,
+            "evaluation": {"nb_questions": nb_questions, "reussie": False, "note_minimale": formation.note_minimale},
+        }
 
     # Leçons vues
     vues_result = await db.execute(
@@ -350,6 +326,15 @@ async def ma_progression(
         "total_lecons": total_lecons,
         "completed": inscription.is_completed,
         "certificat_code": cert_code,
+        "inscrit": True,
+        # Contenu accessible : formation gratuite ou paiement validé
+        "acces": formation_acces.a_acces(inscription),
+        "payment_status": inscription.payment_status,
+        "evaluation": {
+            "nb_questions": nb_questions,
+            "reussie": await formation_acces.evaluation_reussie(db, inscription.id),
+            "note_minimale": formation.note_minimale,
+        },
     }
 
 
@@ -366,13 +351,7 @@ async def soumettre_avis(
     if not formation:
         raise HTTPException(status_code=404, detail="Formation introuvable.")
 
-    insc_result = await db.execute(
-        select(FormationInscription).where(
-            FormationInscription.formation_id == formation.id,
-            FormationInscription.participant_email == current_user.email,
-        )
-    )
-    inscription = insc_result.scalar_one_or_none()
+    inscription = await formation_acces.inscription_de(db, formation.id, current_user)
     if not inscription:
         raise HTTPException(status_code=403, detail="Vous devez être inscrit pour laisser un avis.")
 
@@ -411,13 +390,7 @@ async def mon_avis(
     if not formation:
         raise HTTPException(status_code=404, detail="Formation introuvable.")
 
-    insc_result = await db.execute(
-        select(FormationInscription).where(
-            FormationInscription.formation_id == formation.id,
-            FormationInscription.participant_email == current_user.email,
-        )
-    )
-    inscription = insc_result.scalar_one_or_none()
+    inscription = await formation_acces.inscription_de(db, formation.id, current_user)
     if not inscription:
         return None
 
@@ -457,7 +430,7 @@ async def mes_certificats(
     """Retourne les certificats de l'utilisateur connecté (par email)"""
     result = await db.execute(
         select(Certificat)
-        .where(Certificat.participant_email == current_user.email)
+        .where(func.lower(func.btrim(Certificat.participant_email)) == (current_user.email or "").strip().lower())
         .order_by(Certificat.issued_at.desc())
     )
     return result.scalars().all()
@@ -627,7 +600,8 @@ async def create_formation(
             }
         )
 
-    statut_pub = "publie" if current_user.is_staff else "en_attente"
+    # Staff et superadmin publient directement ; un rédacteur CRASC passe par la validation
+    statut_pub = "publie" if (current_user.is_staff or current_user.is_superuser) else "en_attente"
 
     # Synchroniser categorie avec le nom de la rubrique si rubrique_id fourni
     if rubrique_id_int:
@@ -686,6 +660,9 @@ async def get_formations(
     crasc_id: Optional[int] = Query(None, description="Filtrer par CRASC"),
     osc_id: Optional[int] = Query(None, description="Filtrer par OSC"),
     rubrique_id: Optional[int] = Query(None, description="Filtrer par rubrique"),
+    statut: Optional[str] = Query(
+        None, description="a_venir | en_cours | terminees (terminée = cochée terminée ou date de fin passée)"
+    ),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -731,8 +708,21 @@ async def get_formations(
     if rubrique_id:
         query = query.where(Formation.rubrique_id == rubrique_id)
 
-    # Apply pagination and ordering
-    query = query.offset(skip).limit(limit).order_by(Formation.start_date.desc())
+    # Une formation est terminée si elle est cochée « terminée » OU si sa date de
+    # fin (à défaut, de début) est passée : le simple drapeau manuel laissait des
+    # formations finies marquées « en cours » et invisibles dans « Terminé ».
+    maintenant = datetime.now()
+    fin = func.coalesce(Formation.end_date, Formation.start_date)
+    terminee = or_(Formation.is_completed == True, fin < maintenant)  # noqa: E712
+    if statut == "terminees":
+        query = query.where(terminee)
+    elif statut == "a_venir":
+        query = query.where(~terminee, Formation.start_date > maintenant)
+    elif statut == "en_cours":
+        query = query.where(~terminee, or_(Formation.start_date == None, Formation.start_date <= maintenant))  # noqa: E711
+
+    # Apply pagination and ordering (formations sans date en dernier)
+    query = query.offset(skip).limit(limit).order_by(Formation.start_date.desc().nulls_last())
 
     result = await db.execute(query)
     formations = result.scalars().all()
@@ -947,11 +937,16 @@ async def inscriptions_en_attente(
 ):
     """Liste toutes les inscriptions en attente de validation paiement (admin)."""
     result = await db.execute(
-        select(FormationInscription)
+        select(FormationInscription, Formation.title)
+        .join(Formation, Formation.id == FormationInscription.formation_id)
         .where(FormationInscription.payment_status.in_(["pending", "soumis"]))
         .order_by(FormationInscription.created_at.asc())
     )
-    return result.scalars().all()
+    # Titre de la formation : indispensable dès qu'il y a plusieurs formations payantes
+    return [
+        FormationInscriptionRead.model_validate(inscription).model_copy(update={"formation_title": titre})
+        for inscription, titre in result.all()
+    ]
 
 
 @formations_router.post("/inscriptions/{inscription_id}/soumettre-paiement", response_model=FormationInscriptionRead)
@@ -1243,10 +1238,10 @@ async def check_inscription(
     existing = await db.execute(
         select(FormationInscription).where(
             FormationInscription.formation_id == formation.id,
-            FormationInscription.participant_email == email,
+            func.lower(func.btrim(FormationInscription.participant_email)) == email.strip().lower(),
         )
     )
-    inscription = existing.scalar_one_or_none()
+    inscription = existing.scalars().first()
     return {
         "registered": inscription is not None,
         "payment_status": inscription.payment_status if inscription else None,
@@ -1272,12 +1267,16 @@ async def inscrire_participant(
         raise HTTPException(status_code=404, detail="Formation non trouvée.")
     if formation.is_full:
         raise HTTPException(status_code=400, detail="Formation complète.")
-    if formation.is_completed:
+    # Mêmes règles que l'affichage (FormationRead.est_terminee / inscriptions_ouvertes) :
+    # l'API ne doit pas accepter ce que le site ne propose plus.
+    if formation_acces.est_terminee(formation):
         raise HTTPException(status_code=400, detail="Formation déjà terminée.")
+    if not formation_acces.inscriptions_ouvertes(formation):
+        raise HTTPException(status_code=400, detail="La date limite d'inscription est dépassée.")
     existing = await db.execute(
         select(FormationInscription).where(
             FormationInscription.formation_id == formation.id,
-            FormationInscription.participant_email == data.participant_email,
+            func.lower(func.btrim(FormationInscription.participant_email)) == data.participant_email.strip().lower(),
         )
     )
     if existing.scalar_one_or_none():
@@ -1292,7 +1291,7 @@ async def inscrire_participant(
         participant_name=participant_name,
         participant_nom=data.participant_nom,
         participant_prenoms=data.participant_prenoms,
-        participant_email=data.participant_email,
+        participant_email=data.participant_email.strip().lower(),
         participant_phone=data.participant_phone,
         categorie_acteur=data.categorie_acteur,
         payment_status=payment_status,
@@ -1367,7 +1366,7 @@ async def initier_paiement(
     existing_result = await db.execute(
         select(FormationInscription).where(
             FormationInscription.formation_id == formation.id,
-            FormationInscription.participant_email == data.participant_email,
+            func.lower(func.btrim(FormationInscription.participant_email)) == data.participant_email.strip().lower(),
         )
     )
     inscription = existing_result.scalar_one_or_none()
@@ -1379,7 +1378,7 @@ async def initier_paiement(
             participant_name=participant_name,
             participant_nom=data.participant_nom,
             participant_prenoms=data.participant_prenoms,
-            participant_email=data.participant_email,
+            participant_email=data.participant_email.strip().lower(),
             participant_phone=data.participant_phone,
             categorie_acteur=data.categorie_acteur,
             payment_status="pending",
@@ -1388,7 +1387,7 @@ async def initier_paiement(
         db.add(inscription)
         await db.commit()
         await db.refresh(inscription)
-    elif inscription.payment_status == "paid":
+    elif formation_acces.a_acces(inscription):
         raise HTTPException(status_code=409, detail="Cet email a déjà payé cette formation.")
 
     # Initier le paiement via CinetPay
@@ -1580,8 +1579,19 @@ async def _get_module_or_404(module_id: int, db: AsyncSession) -> FormationModul
 
 
 @formations_router.get("/{formation_slug}/modules", response_model=List[FormationModuleRead])
-async def list_modules(formation_slug: str, db: AsyncSession = Depends(get_db)):
-    """Liste les modules d'une formation avec leurs leçons (public)"""
+async def list_modules(
+    formation_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    """
+    Liste les modules d'une formation avec leurs leçons (public).
+
+    Le programme (titres, types, durées) est public, mais le contenu des
+    leçons (lien vidéo, texte, PDF) n'est renvoyé qu'aux participants qui y
+    ont accès (formation gratuite ou paiement validé), au staff, et pour les
+    leçons marquées « aperçu ». Sinon la leçon est renvoyée « verrouillée ».
+    """
     formation = await _get_formation_or_404(formation_slug, db)
     result = await db.execute(
         select(FormationModule)
@@ -1589,7 +1599,20 @@ async def list_modules(formation_slug: str, db: AsyncSession = Depends(get_db)):
         .order_by(FormationModule.order)
         .options(selectinload(FormationModule.lecons))
     )
-    return result.scalars().all()
+    modules = result.scalars().all()
+    acces_complet = formation_acces.est_staff(current_user) or formation_acces.a_acces(
+        await formation_acces.inscription_de(db, formation.id, current_user)
+    )
+    reponse = []
+    for module in modules:
+        data = FormationModuleRead.model_validate(module)
+        for lecon in data.lecons:
+            if not acces_complet and not lecon.is_preview:
+                lecon.content = None
+                lecon.file_path = None
+                lecon.verrouillee = True
+        reponse.append(data)
+    return reponse
 
 
 @formations_router.post("/{formation_slug}/modules", response_model=FormationModuleRead, status_code=201)
@@ -1734,14 +1757,19 @@ async def upload_lecon_pdf(
 
     upload_dir = "static/formations/pdf"
     os.makedirs(upload_dir, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}_{file.filename}"
+    # Nom d'origine nettoyé : jamais de chemin ni de caractère spécial dans le nom stocké
+    nom_propre = slugify.slugify(os.path.splitext(os.path.basename(file.filename or ""))[0])[:80] or "document"
+    filename = f"{uuid.uuid4().hex}_{nom_propre}.pdf"
     file_path = os.path.join(upload_dir, filename)
 
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
     lecon.file_path = f"formations/pdf/{filename}"
-    lecon.type = "pdf"
+    # Une leçon vidéo garde sa vidéo : le PDF devient son support complémentaire.
+    # Seules les leçons texte deviennent des leçons PDF.
+    if lecon.type != "video":
+        lecon.type = "pdf"
     await db.commit()
     await db.refresh(lecon)
     return lecon

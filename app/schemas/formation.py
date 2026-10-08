@@ -89,6 +89,8 @@ class FormationInscriptionRead(BaseModel):
     payment_date: Optional[datetime] = None
     payment_operator: Optional[str] = None
     created_at: datetime
+    # Renseigné dans les listes multi-formations (paiements à valider)
+    formation_title: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -204,8 +206,25 @@ class FormationRead(FormationBase):
     rubrique_id: Optional[int] = None
     crasc_id: Optional[int] = None
     osc_id: Optional[int] = None
+    note_minimale: int = 70
     created_at: datetime
     updated_at: datetime
+
+    # Mêmes règles que l'API (services/formation_acces) : affichage et
+    # contrôles d'inscription ne peuvent pas diverger.
+    @computed_field
+    @property
+    def est_terminee(self) -> bool:
+        """Cochée « terminée » ou date de fin (à défaut, de début) passée."""
+        from app.services.formation_acces import est_terminee
+        return est_terminee(self)
+
+    @computed_field
+    @property
+    def inscriptions_ouvertes(self) -> bool:
+        """Non terminée, non complète et date limite d'inscription non dépassée."""
+        from app.services.formation_acces import inscriptions_ouvertes
+        return inscriptions_ouvertes(self)
 
     @computed_field
     @property
@@ -270,6 +289,8 @@ class FormationLeconRead(BaseModel):
     is_preview: bool
     order: int
     created_at: datetime
+    # True : contenu masqué (pas inscrit ou paiement non validé)
+    verrouillee: bool = False
 
     @computed_field
     @property

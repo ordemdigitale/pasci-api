@@ -28,6 +28,9 @@ class Settings(BaseSettings):
   FORUM_MAX_VIDEO_MO: int = 30
   FORUM_MAX_FICHIERS: int = 4
 
+  # Supports de formation (Mo par fichier)
+  FORMATION_SUPPORT_MAX_MO: int = 20
+
   # API Base URL (for constructing static file URLs)
   API_BASE_URL: str = "http://localhost:8000"
 

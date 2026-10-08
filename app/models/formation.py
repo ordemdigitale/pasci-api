@@ -74,6 +74,9 @@ class Formation(SQLModel, table=True):
     is_published: bool = Field(default=False, description="Formation publiée et visible")
     is_full: bool = Field(default=False, description="Formation complète")
     is_completed: bool = Field(default=False, description="Formation terminée")
+    # Évaluation finale : note minimale (en %) pour obtenir le certificat,
+    # si la formation comporte des questions d'évaluation.
+    note_minimale: int = Field(default=70, ge=0, le=100)
     # brouillon | en_attente | publie | rejete
     statut_publication: str = Field(default="publie", max_length=20)
 
@@ -271,6 +274,62 @@ class CatalogueFormation(SQLModel, table=True):
 
     def __repr__(self) -> str:
         return f"<CatalogueFormation: {self.titre}>"
+
+
+class FormationSupport(SQLModel, table=True):
+    """
+    Support de formation (« lucarne » de la page formation) : document à
+    télécharger ou lien. Réservé aux inscrits (paiement validé) sauf s'il est
+    marqué public.
+    """
+    __tablename__ = "formation_support"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    formation_id: int = Field(foreign_key="formations.id", ondelete="CASCADE", index=True)
+    titre: str = Field(max_length=200)
+    description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    type: str = Field(default="fichier", max_length=10)  # fichier | lien
+    chemin: Optional[str] = Field(default=None, max_length=500)  # relatif à UPLOAD_DIR
+    url: Optional[str] = Field(default=None, max_length=1000)
+    nom_original: Optional[str] = Field(default=None, max_length=255)
+    taille: int = Field(default=0)
+    public: bool = Field(default=False)
+    ordre: int = Field(default=0)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+
+class FormationQuestion(SQLModel, table=True):
+    """Question à choix multiples de l'évaluation finale d'une formation."""
+    __tablename__ = "formation_question"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    formation_id: int = Field(foreign_key="formations.id", ondelete="CASCADE", index=True)
+    enonce: str = Field(sa_column=Column(TEXT, nullable=False))
+    choix: str = Field(sa_column=Column(TEXT, nullable=False))  # JSON : ["choix A", "choix B", ...]
+    bonnes_reponses: str = Field(sa_column=Column(TEXT, nullable=False))  # JSON : [index, ...]
+    ordre: int = Field(default=0)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+
+
+class FormationTentative(SQLModel, table=True):
+    """Tentative d'un participant à l'évaluation finale."""
+    __tablename__ = "formation_tentative"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    inscription_id: int = Field(foreign_key="formation_inscription.id", ondelete="CASCADE", index=True)
+    score: int = Field(default=0)  # pourcentage de bonnes réponses
+    reussi: bool = Field(default=False)
+    reponses: str = Field(sa_column=Column(TEXT, nullable=False))  # JSON : {question_id: [index, ...]}
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
 
 
 class FormationProgression(SQLModel, table=True):
