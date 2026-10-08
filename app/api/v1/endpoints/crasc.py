@@ -56,6 +56,7 @@ from app.models.crasc import (
 from app.models.forum import PoleConcertation
 from app.services.email import send_crasc_contact, send_welcome_osc
 from app.services.file_uploads import save_formalisation_file, save_supporting_document
+from app.services.rattachement import rattacher_osc
 from app.services.osc_autoevaluation import BAREME, COULEUR_HEX, TRANCHES_COULEUR, expression_score_sql
 from app.services.recherche import contient, egal, normaliser
 
@@ -637,6 +638,8 @@ async def create_osc(
     date_derniere_activite: Optional[str] = Form(None),
     recommandations: Optional[str] = Form(None),
     recommandations_2: Optional[str] = Form(None),
+    axe: Optional[str] = Form(None),
+    specialites: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_or_superuser),
 ):
@@ -733,6 +736,7 @@ async def create_osc(
         date_derniere_activite=date_derniere_activite,
         recommandations=recommandations,
         recommandations_2=recommandations_2,
+        axe=axe, specialites=specialites,
         # Créée par un admin : publiée directement, sans passer par /admin/moderation.
         statut_publication="publie",
     )
@@ -756,6 +760,9 @@ async def create_osc(
             counter += 1
         osc_create.slug = candidate_slug
         db.add(osc_create)
+        await db.flush()
+        # Comme à la validation d'une adhésion : pôle (1er domaine), région et CRASC
+        await rattacher_osc(db, osc_create)
         await db.commit()
         await db.refresh(osc_create)
         return osc_create
