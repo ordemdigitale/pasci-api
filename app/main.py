@@ -27,6 +27,7 @@ from app.api.v1.endpoints.tags import tags_router
 from app.api.v1.endpoints.formations import formations_router
 from app.api.v1.endpoints.formation_parcours import formation_parcours_router
 from app.api.v1.endpoints.documentation import documentation_router
+from app.api.v1.endpoints.ressource_typologie import ressource_typologie_router
 from app.api.v1.endpoints.offre_projet import offre_projet_router
 from app.api.v1.endpoints.forum import forum_router
 from app.api.v1.endpoints.annonces import annonces_router
@@ -108,6 +109,7 @@ app.include_router(tags_router, prefix="/api/v1/tags", tags=["tags"])
 app.include_router(formation_parcours_router, prefix="/api/v1/formations", tags=["formations"])
 app.include_router(formations_router, prefix="/api/v1/formations", tags=["formations"])
 app.include_router(documentation_router, prefix="/api/v1/documentation", tags=["documentation"])
+app.include_router(ressource_typologie_router, prefix="/api/v1/ressources-typologie", tags=["documentation"])
 app.include_router(stats_router, prefix="/api/v1/stats", tags=["statistics"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(forum_router, prefix="/api/v1/forum", tags=["forum"])

@@ -21,6 +21,7 @@ from app.schemas.documentation import (
     DocumentationUpdate
 )
 from app.models.documentation import Documentation
+from app.models.ressource_typologie import RessourceType
 from app.models.users import User
 
 documentation_router = APIRouter()
@@ -31,6 +32,16 @@ ALLOWED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp"]
 MAX_DOCUMENT_SIZE = 50 * 1024 * 1024  # 50MB for documents
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB for images
 THUMBNAIL_SIZE = (800, 600)  # Max dimensions for thumbnails
+
+async def verifier_type_ressource(db: AsyncSession, type_slug: str) -> None:
+    """Le type doit figurer dans la typologie gérée dans l'admin (table ressource_type)."""
+    existe = (await db.execute(select(RessourceType.id).where(RessourceType.slug == type_slug))).first()
+    if not existe:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"type": "validation_error", "errors": [{"field": "type", "message": "Type de ressource inconnu."}]},
+        )
+
 
 # Create documents directory if it doesn't exist
 DOCUMENTS_DIR = os.path.join(settings.UPLOAD_DIR, "documents")
@@ -210,8 +221,8 @@ async def create_documentation(
 
     - **title**: Title of the document (required)
     - **description**: Description of the document
-    - **type**: Type of resource ('documentation' or 'fiche')
-    - **category**: Category (Rapport, Guide, Étude, Manuel, PV, Infographie, Politique, Récit, Plan)
+    - **type**: Type de ressource (slug d'un type de /api/v1/ressources-typologie/types)
+    - **category**: Catégorie (nom d'une catégorie de /api/v1/ressources-typologie/categories)
     - **file**: Document file (PDF, DOCX, etc., optional, max 50MB)
     - **thumbnail**: Cover image (optional, max 5MB)
     - **crasc_id**: Associated CRASC ID
@@ -230,6 +241,8 @@ async def create_documentation(
             }
         )
     
+    await verifier_type_ressource(db, type)
+
     # Parse IDs
     crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
     osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
@@ -304,7 +317,7 @@ async def create_documentation(
 async def get_all_documentation(
     skip: int = Query(0, ge=0, description="Nombre de documents à ignorer"),
     limit: int = Query(20, ge=1, le=100, description="Nombre de documents à retourner"),
-    type: Optional[str] = Query(None, description="Filtrer par type ('documentation' ou 'fiche')"),
+    type: Optional[str] = Query(None, description="Filtrer par type (slug de la typologie)"),
     category: Optional[str] = Query(None, description="Filtrer par catégorie"),
     crasc_id: Optional[int] = Query(None, description="Filtrer par CRASC ID"),
     osc_id: Optional[int] = Query(None, description="Filtrer par OSC ID"),
@@ -537,6 +550,8 @@ async def update_documentation(
         )
     if current_user.is_staff and not current_user.is_superuser and doc.crasc_id != current_user.crasc_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vous n'avez pas accès à ce document.")
+    if doc_update.type and doc_update.type != doc.type:
+        await verifier_type_ressource(db, doc_update.type)
 
     # Handle document file upload
     if file and file.filename:
