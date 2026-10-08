@@ -153,6 +153,15 @@ class ForumSujet(SQLModel, table=True):
     is_pinned: bool = Field(default=False)
     views_count: int = Field(default=0)
     comments_count: int = Field(default=0)
+    # Synthèse : une fois la discussion close, l'administrateur publie la
+    # synthèse des idées échangées (rédigée à partir du brouillon automatique).
+    est_clos: bool = Field(default=False)
+    synthese: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    synthese_par: Optional[str] = Field(default=None, max_length=200)
+    synthese_le: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),
@@ -200,3 +209,26 @@ class ForumCommentaire(SQLModel, table=True):
 
     def __repr__(self) -> str:
         return f"<ForumCommentaire id={self.id}>"
+
+
+class ForumPieceJointe(SQLModel, table=True):
+    """Photo, audio ou vidéo jointe à un sujet ou à un message d'un pôle."""
+    __tablename__ = "forum_piece_jointe"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    sujet_id: Optional[int] = Field(default=None, foreign_key="forum_sujet.id", nullable=True, ondelete="CASCADE", index=True)
+    commentaire_id: Optional[int] = Field(
+        default=None, foreign_key="forum_commentaire.id", nullable=True, ondelete="CASCADE", index=True
+    )
+    type: str = Field(max_length=10, nullable=False)  # image | audio | video
+    chemin: str = Field(max_length=500, nullable=False)  # relatif à UPLOAD_DIR
+    nom_original: Optional[str] = Field(default=None, max_length=255)
+    mime: Optional[str] = Field(default=None, max_length=100)
+    taille: int = Field(default=0, nullable=False)  # octets
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ForumPieceJointe {self.type} {self.chemin}>"

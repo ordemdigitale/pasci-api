@@ -171,6 +171,10 @@ class ForumSujetRead(BaseModel):
     is_pinned: bool
     views_count: int
     comments_count: int
+    est_clos: bool = False
+    synthese: Optional[str] = None
+    synthese_par: Optional[str] = None
+    synthese_le: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -182,6 +186,17 @@ class ForumSujetUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     is_pinned: Optional[bool] = None
+
+
+# ──────────────── Pièces jointes (photo, audio, vidéo) ────────────────
+
+class PieceJointeRead(BaseModel):
+    id: int
+    type: Literal["image", "audio", "video"]
+    url: str
+    nom: Optional[str] = None
+    mime: Optional[str] = None
+    taille: int = 0
 
 
 # ──────────────── Forum Commentaire ────────────────
@@ -198,6 +213,7 @@ class ForumCommentaireRead(BaseModel):
     author_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    pieces_jointes: List["PieceJointeRead"] = []
 
     class Config:
         from_attributes = True
@@ -211,3 +227,33 @@ class ForumCommentaireUpdate(BaseModel):
 
 class ForumSujetDetail(ForumSujetRead):
     commentaires: List[ForumCommentaireRead] = []
+    pieces_jointes: List["PieceJointeRead"] = []
+
+
+# ──────────────── Synthèse d'une discussion ────────────────
+
+class SyntheseUpdate(BaseModel):
+    synthese: Optional[str] = None
+    est_clos: Optional[bool] = None
+
+
+class ContributionRead(BaseModel):
+    id: int
+    auteur: str
+    osc: Optional[str] = None
+    date: datetime
+    contenu: str
+    pieces_jointes: List[PieceJointeRead] = []
+
+
+class ContributionsSujetRead(BaseModel):
+    """Toutes les idées d'une discussion, rassemblées pour la synthèse."""
+    sujet: ForumSujetRead
+    pole_nom: str
+    pole_slug: str
+    contributions: List[ContributionRead]
+    nb_contributions: int
+    nb_participants: int
+    nb_osc: int
+    mots_cles: List[str]
+    brouillon: str

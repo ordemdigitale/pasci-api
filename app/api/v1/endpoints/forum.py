@@ -2,7 +2,7 @@
 import json
 import os, uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from sqlmodel import select, desc, func
 from sqlalchemy import or_, update as sa_update, delete as sa_delete, insert as sa_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,17 +20,21 @@ from app.models.forum import (
     PoleSondageVote,
     ForumSujet,
     ForumCommentaire,
+    ForumPieceJointe,
 )
 from app.models.adhesion import DemandeAdhesion
 from app.models.crasc import Osc, osc_pole_link
 from app.models.users import User
 from app.services.rattachement import normaliser, vider_cache
+from app.services import forum_medias
+from app.services.forum_synthese import brouillon as brouillon_synthese, mots_cles
 from app.schemas.forum import (
     PoleConcertationCreate, PoleConcertationRead, PoleConcertationUpdate,
     PoleSondageCreate, PoleSondageRead, PoleSondageUpdate, PoleSondageVoteCreate,
     PoleSondageOptionRead, PoleMembreRead, PoleFusionRequest,
     ForumSujetCreate, ForumSujetRead, ForumSujetUpdate, ForumSujetDetail,
     ForumCommentaireCreate, ForumCommentaireRead,
+    PieceJointeRead, SyntheseUpdate, ContributionRead, ContributionsSujetRead,
 )
 from app.core.auth import get_current_user, get_current_staff_user, get_current_superuser, get_optional_current_user
 
@@ -754,14 +758,67 @@ async def list_sujets(
     return result.scalars().all()
 
 
-@forum_router.post("/poles/{pole_slug}/sujets", response_model=ForumSujetRead, status_code=status.HTTP_201_CREATED)
+# ───────── Messages multimédias : lecture JSON ou multipart ─────────
+
+async def _lire_message(request: Request) -> tuple:
+    """
+    Corps d'un sujet ou d'un message : JSON (texte seul, anciens clients) ou
+    multipart/form-data (texte + fichiers « fichiers »). Retourne
+    (champs texte, liste de fichiers).
+    """
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith(("multipart/form-data", "application/x-www-form-urlencoded")):
+        form = await request.form()
+        champs = {k: v for k, v in form.items() if isinstance(v, str)}
+        fichiers = [v for k, v in form.multi_items() if k == "fichiers" and hasattr(v, "filename")]
+        return champs, fichiers
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=422, detail="Corps de requête invalide.")
+    return (data if isinstance(data, dict) else {}), []
+
+
+def _nom_auteur(user: User) -> str:
+    return user.username or f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email
+
+
+async def _pieces_par(db: AsyncSession, *, sujet_id: Optional[int] = None, commentaire_ids: Optional[List[int]] = None) -> dict:
+    """Pièces jointes groupées : {"sujet": [...], commentaire_id: [...]}."""
+    groupes: dict = {}
+    if sujet_id is not None:
+        rows = (await db.execute(
+            select(ForumPieceJointe).where(ForumPieceJointe.sujet_id == sujet_id).order_by(ForumPieceJointe.id)
+        )).scalars().all()
+        groupes["sujet"] = [PieceJointeRead(**forum_medias.serialiser(p)) for p in rows]
+    if commentaire_ids:
+        rows = (await db.execute(
+            select(ForumPieceJointe)
+            .where(ForumPieceJointe.commentaire_id.in_(commentaire_ids))
+            .order_by(ForumPieceJointe.id)
+        )).scalars().all()
+        for p in rows:
+            groupes.setdefault(p.commentaire_id, []).append(PieceJointeRead(**forum_medias.serialiser(p)))
+    return groupes
+
+
+@forum_router.get("/medias/limites")
+async def limites_medias():
+    """Tailles maximales (Mo) des photos, audios et vidéos, et nombre de fichiers par message."""
+    return forum_medias.limites_mo()
+
+
+@forum_router.post("/poles/{pole_slug}/sujets", response_model=ForumSujetDetail, status_code=status.HTTP_201_CREATED)
 async def create_sujet(
     pole_slug: str,
-    sujet: ForumSujetCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Créer un sujet dans un pôle (utilisateur connecté)"""
+    """
+    Créer un sujet dans un pôle (utilisateur connecté). JSON {title, content}
+    ou multipart (title, content, fichiers) pour joindre photos, audio, vidéos.
+    """
     pole_result = await db.execute(
         select(PoleConcertation).where(PoleConcertation.slug == pole_slug)
     )
@@ -769,22 +826,44 @@ async def create_sujet(
     if not pole:
         raise HTTPException(status_code=404, detail="Pôle non trouvé.")
 
-    author_name = current_user.username or f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
-    base_slug = slugify_lib.slugify(sujet.title)
+    champs, fichiers = await _lire_message(request)
+    title = (champs.get("title") or "").strip()
+    content = (champs.get("content") or "").strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Le titre est requis.")
+    if not content and not fichiers:
+        raise HTTPException(status_code=422, detail="Écrivez un message ou joignez un fichier.")
+
+    pieces = await forum_medias.enregistrer_fichiers(fichiers)
+    base_slug = slugify_lib.slugify(title)
     unique_slug = f"{base_slug}-{int(time.time())}"
 
     db_sujet = ForumSujet(
-        title=sujet.title,
+        title=title,
         slug=unique_slug,
-        content=sujet.content,
+        content=content,
         pole_id=pole.id,
         author_id=current_user.id,
-        author_name=author_name,
+        author_name=_nom_auteur(current_user),
     )
-    db.add(db_sujet)
-    await db.commit()
+    try:
+        db.add(db_sujet)
+        await db.flush()
+        for piece in pieces:
+            piece.sujet_id = db_sujet.id
+            db.add(piece)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        forum_medias.supprimer_fichiers(pieces)
+        raise
     await db.refresh(db_sujet)
-    return db_sujet
+    groupes = await _pieces_par(db, sujet_id=db_sujet.id)
+    return ForumSujetDetail(
+        **ForumSujetRead.model_validate(db_sujet).model_dump(),
+        commentaires=[],
+        pieces_jointes=groupes.get("sujet", []),
+    )
 
 
 @forum_router.get("/poles/{pole_slug}/sujets/{sujet_slug}", response_model=ForumSujetDetail)
@@ -823,6 +902,7 @@ async def get_sujet(
         .order_by(ForumCommentaire.created_at)
     )
     commentaires = comments_result.scalars().all()
+    groupes = await _pieces_par(db, sujet_id=sujet.id, commentaire_ids=[c.id for c in commentaires])
 
     # Build response manually to avoid SQLAlchemy lazy-load issues
     commentaires_data = [
@@ -834,24 +914,15 @@ async def get_sujet(
             author_name=c.author_name,
             created_at=c.created_at,
             updated_at=c.updated_at,
+            pieces_jointes=groupes.get(c.id, []),
         )
         for c in commentaires
     ]
 
     return ForumSujetDetail(
-        id=sujet.id,
-        title=sujet.title,
-        slug=sujet.slug,
-        content=sujet.content,
-        pole_id=sujet.pole_id,
-        author_id=sujet.author_id,
-        author_name=sujet.author_name,
-        is_pinned=sujet.is_pinned,
-        views_count=sujet.views_count,
-        comments_count=sujet.comments_count,
-        created_at=sujet.created_at,
-        updated_at=sujet.updated_at,
+        **ForumSujetRead.model_validate(sujet).model_dump(),
         commentaires=commentaires_data,
+        pieces_jointes=groupes.get("sujet", []),
     )
 
 
@@ -895,8 +966,18 @@ async def delete_sujet(
         raise HTTPException(status_code=404, detail="Sujet non trouvé.")
     if sujet.author_id != current_user.id and not current_user.is_staff:
         raise HTTPException(status_code=403, detail="Action non autorisée.")
+    # Fichiers du sujet et de ses messages (les lignes partent en cascade)
+    ids_commentaires = (await db.execute(
+        select(ForumCommentaire.id).where(ForumCommentaire.sujet_id == sujet.id)
+    )).scalars().all()
+    pieces = (await db.execute(
+        select(ForumPieceJointe).where(
+            or_(ForumPieceJointe.sujet_id == sujet.id, ForumPieceJointe.commentaire_id.in_(ids_commentaires or [0]))
+        )
+    )).scalars().all()
     await db.delete(sujet)
     await db.commit()
+    forum_medias.supprimer_fichiers(pieces)
     return None
 
 
@@ -912,32 +993,61 @@ async def delete_sujet(
 async def create_commentaire(
     pole_slug: str,
     sujet_slug: str,
-    commentaire: ForumCommentaireCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Ajouter un commentaire à un sujet (utilisateur connecté)"""
+    """
+    Ajouter un message à un sujet (utilisateur connecté). JSON {content} ou
+    multipart (content, fichiers) pour joindre photos, audio, vidéos.
+    Refusé si la discussion est close.
+    """
     sujet_result = await db.execute(
         select(ForumSujet).where(ForumSujet.slug == sujet_slug)
     )
     sujet = sujet_result.scalars().first()
     if not sujet:
         raise HTTPException(status_code=404, detail="Sujet non trouvé.")
+    if sujet.est_clos:
+        raise HTTPException(status_code=409, detail="Cette discussion est close : elle n'accepte plus de messages.")
 
-    author_name = current_user.username or f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email
+    champs, fichiers = await _lire_message(request)
+    content = (champs.get("content") or "").strip()
+    if not content and not fichiers:
+        raise HTTPException(status_code=422, detail="Écrivez un message ou joignez un fichier.")
+
+    pieces = await forum_medias.enregistrer_fichiers(fichiers)
     db_comment = ForumCommentaire(
-        content=commentaire.content,
+        content=content,
         sujet_id=sujet.id,
         author_id=current_user.id,
-        author_name=author_name,
+        author_name=_nom_auteur(current_user),
     )
-    db.add(db_comment)
-
-    # Update comments_count
-    sujet.comments_count += 1
-    await db.commit()
+    try:
+        db.add(db_comment)
+        await db.flush()
+        for piece in pieces:
+            piece.commentaire_id = db_comment.id
+            db.add(piece)
+        # Update comments_count
+        sujet.comments_count += 1
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        forum_medias.supprimer_fichiers(pieces)
+        raise
     await db.refresh(db_comment)
-    return db_comment
+    groupes = await _pieces_par(db, commentaire_ids=[db_comment.id])
+    return ForumCommentaireRead(
+        id=db_comment.id,
+        content=db_comment.content,
+        sujet_id=db_comment.sujet_id,
+        author_id=db_comment.author_id,
+        author_name=db_comment.author_name,
+        created_at=db_comment.created_at,
+        updated_at=db_comment.updated_at,
+        pieces_jointes=groupes.get(db_comment.id, []),
+    )
 
 
 @forum_router.delete("/commentaires/{commentaire_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -964,6 +1074,103 @@ async def delete_commentaire(
     if sujet and sujet.comments_count > 0:
         sujet.comments_count -= 1
 
+    pieces = (await db.execute(
+        select(ForumPieceJointe).where(ForumPieceJointe.commentaire_id == comment.id)
+    )).scalars().all()
     await db.delete(comment)
     await db.commit()
+    forum_medias.supprimer_fichiers(pieces)
     return None
+
+
+# ─────────────────────────────────────────────────────
+# SYNTHÈSE DES DISCUSSIONS
+# ─────────────────────────────────────────────────────
+
+async def _sujet_pour_staff(db: AsyncSession, sujet_id: int, current_user: User) -> tuple:
+    sujet = (await db.execute(select(ForumSujet).where(ForumSujet.id == sujet_id))).scalars().first()
+    if not sujet:
+        raise HTTPException(status_code=404, detail="Sujet non trouvé.")
+    pole = (await db.execute(select(PoleConcertation).where(PoleConcertation.id == sujet.pole_id))).scalars().first()
+    return sujet, pole
+
+
+@forum_router.get("/sujets/{sujet_id}/contributions", response_model=ContributionsSujetRead)
+async def contributions_sujet(
+    sujet_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """
+    Toutes les idées d'une discussion rassemblées pour la synthèse (staff) :
+    chaque contribution avec son auteur, son OSC, sa date et ses médias,
+    les statistiques de participation et un brouillon de synthèse automatique.
+    """
+    sujet, pole = await _sujet_pour_staff(db, sujet_id, current_user)
+    commentaires = (await db.execute(
+        select(ForumCommentaire).where(ForumCommentaire.sujet_id == sujet.id).order_by(ForumCommentaire.created_at)
+    )).scalars().all()
+    groupes = await _pieces_par(db, sujet_id=sujet.id, commentaire_ids=[c.id for c in commentaires])
+
+    # OSC de chaque auteur
+    auteurs = {c.author_id for c in commentaires if c.author_id} | ({sujet.author_id} if sujet.author_id else set())
+    osc_par_auteur: dict = {}
+    if auteurs:
+        rows = (await db.execute(
+            select(User.id, Osc.name).join(Osc, Osc.id == User.osc_id).where(User.id.in_(auteurs))
+        )).all()
+        osc_par_auteur = {uid: nom for uid, nom in rows}
+
+    contributions = [
+        ContributionRead(
+            id=c.id,
+            auteur=c.author_name or "Anonyme",
+            osc=osc_par_auteur.get(c.author_id),
+            date=c.created_at,
+            contenu=c.content or "",
+            pieces_jointes=groupes.get(c.id, []),
+        )
+        for c in commentaires
+    ]
+    pour_brouillon = [
+        {"auteur": c.auteur, "osc": c.osc, "date": c.date, "contenu": c.contenu, "medias": len(c.pieces_jointes)}
+        for c in contributions
+    ]
+    pole_nom = pole.name if pole else ""
+    return ContributionsSujetRead(
+        sujet=ForumSujetRead.model_validate(sujet),
+        pole_nom=pole_nom,
+        pole_slug=pole.slug if pole else "",
+        contributions=contributions,
+        nb_contributions=len(contributions),
+        nb_participants=len({c.auteur for c in contributions}),
+        nb_osc=len({c.osc for c in contributions if c.osc}),
+        mots_cles=mots_cles([sujet.content] + [c.contenu for c in contributions]),
+        brouillon=brouillon_synthese(sujet.title, sujet.content, pole_nom, pour_brouillon),
+    )
+
+
+@forum_router.patch("/sujets/{sujet_id}/synthese", response_model=ForumSujetRead)
+async def enregistrer_synthese(
+    sujet_id: int,
+    payload: SyntheseUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """
+    Enregistre la synthèse d'une discussion et/ou la clôt (staff). Une
+    synthèse vide la retire ; rouvrir la discussion (est_clos=false) permet
+    de nouveau les messages.
+    """
+    sujet, _ = await _sujet_pour_staff(db, sujet_id, current_user)
+    donnees = payload.model_dump(exclude_unset=True)
+    if "synthese" in donnees:
+        texte = (donnees["synthese"] or "").strip()
+        sujet.synthese = texte or None
+        sujet.synthese_par = _nom_auteur(current_user) if texte else None
+        sujet.synthese_le = datetime.now(timezone.utc) if texte else None
+    if "est_clos" in donnees and donnees["est_clos"] is not None:
+        sujet.est_clos = bool(donnees["est_clos"])
+    await db.commit()
+    await db.refresh(sujet)
+    return sujet

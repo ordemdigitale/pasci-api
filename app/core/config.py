@@ -22,6 +22,12 @@ class Settings(BaseSettings):
   # Uploads directory
   UPLOAD_DIR: str = "uploads/images"
 
+  # Messages multimédias des pôles de concertation (tailles en Mo, par fichier)
+  FORUM_MAX_IMAGE_MO: int = 5
+  FORUM_MAX_AUDIO_MO: int = 10
+  FORUM_MAX_VIDEO_MO: int = 30
+  FORUM_MAX_FICHIERS: int = 4
+
   # API Base URL (for constructing static file URLs)
   API_BASE_URL: str = "http://localhost:8000"
 
