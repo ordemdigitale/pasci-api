@@ -91,7 +91,7 @@ def create_admin_panel(app) -> Admin:
     admin = Admin(
         app=app,
         engine=async_engine,
-        title="PASCI Admin",
+        title="PdoC Admin",
         authentication_backend=authentication_backend,
         base_url="/admin"
     )

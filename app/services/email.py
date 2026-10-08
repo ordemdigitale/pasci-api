@@ -28,8 +28,8 @@ _INSCRIPTION_GRATUITE = """
         <!-- Header -->
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <!-- Body -->
@@ -74,7 +74,7 @@ _INSCRIPTION_GRATUITE = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -95,8 +95,8 @@ _PAIEMENT_CONFIRME = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <tr>
@@ -131,7 +131,7 @@ _PAIEMENT_CONFIRME = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PASCI
+              © {{ year }} PdoC
             </p>
           </td>
         </tr>
@@ -152,7 +152,7 @@ _CERTIFICAT_EMIS = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#2A591D;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
             <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Certificat de réussite</p>
           </td>
         </tr>
@@ -174,7 +174,7 @@ _CERTIFICAT_EMIS = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PASCI
+              © {{ year }} PdoC
             </p>
           </td>
         </tr>
@@ -298,7 +298,7 @@ async def send_certificat_emis(
     )
     await _send(
         to=participant_email,
-        subject=f"Votre certificat PASCI — {formation_title}",
+        subject=f"Votre certificat PdoC — {formation_title}",
         html=html,
     )
 
@@ -314,8 +314,8 @@ _MERCI_DON = """
         <!-- Header vert -->
         <tr>
           <td style="background:#2A591D;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <!-- Body -->
@@ -364,7 +364,7 @@ _MERCI_DON = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ donor_email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -387,8 +387,8 @@ _RESET_PASSWORD = """
         <!-- Header -->
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <!-- Body -->
@@ -419,7 +419,7 @@ _RESET_PASSWORD = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ user_email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -451,7 +451,7 @@ async def send_merci_don(
     )
     await _send(
         to=donor_email,
-        subject="Merci pour votre don — PASCI",
+        subject="Merci pour votre don — PdoC",
         html=html,
     )
 
@@ -466,8 +466,8 @@ _CONTACT_ACCUSE = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <tr>
@@ -493,7 +493,7 @@ _CONTACT_ACCUSE = """
             </p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -603,7 +603,7 @@ async def send_contact_accuse(
     )
     await _send(
         to=email,
-        subject=f"Votre message a bien été reçu — PASCI",
+        subject=f"Votre message a bien été reçu — PdoC",
         html=html,
     )
 
@@ -652,14 +652,14 @@ _CRASC_CONTACT_NOTIF = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#2A591D;padding:28px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">Message via le site PASCI</h1>
+            <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">Message via le site PdoC</h1>
             <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Contact CRASC — {{ crasc_name }}</p>
           </td>
         </tr>
         <tr>
           <td style="padding:32px 40px;">
             <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.6;">
-              Un message a été envoyé au <strong>{{ crasc_name }}</strong> via la plateforme PASCI.
+              Un message a été envoyé au <strong>{{ crasc_name }}</strong> via la plateforme PdoC.
             </p>
             <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
               <tr style="background:#f9fafb;">
@@ -688,7 +688,7 @@ _CRASC_CONTACT_NOTIF = """
             <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#374151;">Message :</p>
             <p style="margin:0 0 24px;font-size:14px;color:#555;background:#f9fafb;border-left:3px solid #2A591D;padding:12px 16px;border-radius:4px;line-height:1.7;white-space:pre-wrap;">{{ message }}</p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -709,8 +709,8 @@ _CRASC_CONTACT_ACCUSE = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#2A591D;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <tr>
@@ -730,7 +730,7 @@ _CRASC_CONTACT_ACCUSE = """
             </table>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -785,7 +785,7 @@ async def send_crasc_contact(
     )
     await _send(
         to=email,
-        subject=f"Votre message au {crasc_name} a bien été transmis — PASCI",
+        subject=f"Votre message au {crasc_name} a bien été transmis — PdoC",
         html=html_accuse,
     )
 
@@ -806,7 +806,7 @@ async def send_reset_password(
     )
     await _send(
         to=user_email,
-        subject="Réinitialisation de votre mot de passe PASCI",
+        subject="Réinitialisation de votre mot de passe PdoC",
         html=html,
     )
 
@@ -821,14 +821,14 @@ _WELCOME_OSC = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#2a591d;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <tr>
           <td style="padding:40px;">
             <p style="margin:0 0 24px;color:#333;font-size:15px;line-height:1.7;">
-              Chers responsables d'OSC, veuillez confirmer ou mettre à jour les informations de votre organisation à l'aide du code reçu du CRASC.
+              Chers responsables d'OSC, veuillez mettre à jour les informations de votre organisation à l'aide de l'identifiant (email) et du mot de passe ci-dessous.
             </p>
 
             <!-- Identifiants -->
@@ -841,7 +841,7 @@ _WELCOME_OSC = """
                     <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#1a1a1a;">{{ username }}</p>
                   </td></tr>
                   <tr><td style="padding:8px 0;">
-                    <p style="margin:0;font-size:13px;color:#666;">Mot de passe temporaire</p>
+                    <p style="margin:0;font-size:13px;color:#666;">Mot de passe</p>
                     <p style="margin:4px 0 0;font-size:15px;font-weight:700;color:#1a1a1a;letter-spacing:1px;">{{ password }}</p>
                   </td></tr>
                 </table>
@@ -867,7 +867,7 @@ _WELCOME_OSC = """
             </p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ user_email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -901,7 +901,7 @@ async def send_welcome_osc(
     )
     await _send(
         to=user_email,
-        subject=f"Votre compte PASCI — {osc_name}",
+        subject=f"Votre compte PdoC — {osc_name}",
         html=html,
     )
 
@@ -917,8 +917,8 @@ _INSTRUCTIONS_PAIEMENT_MANUEL = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <tr>
@@ -965,7 +965,7 @@ _INSTRUCTIONS_PAIEMENT_MANUEL = """
             </p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -1014,13 +1014,13 @@ _INSTRUCTIONS_DON_MANUEL = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#2a591d;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <tr>
           <td style="padding:40px;">
-            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Instructions de paiement — Don PASCI</h2>
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Instructions de paiement — Don PdoC</h2>
             <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
               Bonjour <strong>{{ donor_name }}</strong>,<br><br>
               Merci pour votre générosité ! Pour finaliser votre don de <strong>{{ montant }} FCFA</strong>,
@@ -1054,7 +1054,7 @@ _INSTRUCTIONS_DON_MANUEL = """
             </table>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ donor_email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
@@ -1085,7 +1085,7 @@ async def send_don_instructions(
     )
     await _send(
         to=donor_email,
-        subject="Instructions de paiement — Don PASCI",
+        subject="Instructions de paiement — Don PdoC",
         html=html,
     )
 
@@ -1149,8 +1149,8 @@ _PAIEMENT_REJETE = """
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <tr>
           <td style="background:#dc2626;padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PASCI</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme d'Appui à la Société Civile Ivoirienne</p>
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
           </td>
         </tr>
         <tr>
@@ -1182,7 +1182,7 @@ _PAIEMENT_REJETE = """
             </table>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PASCI — Plateforme d'Appui à la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
             </p>
           </td>
         </tr>
