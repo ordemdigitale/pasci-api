@@ -1,5 +1,5 @@
-import os, shutil, uuid
-from fastapi import APIRouter, Depends, UploadFile, File
+import os, re, shutil, uuid
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import Dict
@@ -8,8 +8,21 @@ from pydantic import BaseModel
 from app.database.session import get_db
 from app.models.site_config import SiteConfig
 from app.core.config import settings
+from app.core.auth import get_current_staff_user
+from app.models.users import User
 
 site_config_router = APIRouter()
+
+
+# Images de configuration (illustrations des pages, image par défaut…)
+EXTENSIONS_IMAGE = {"jpg", "jpeg", "png", "webp"}
+TAILLE_MAX_IMAGE = 5 * 1024 * 1024
+CLE_VALIDE = re.compile(r"^[a-z0-9_]{1,100}$")
+
+
+def _verifier_cle(key: str) -> None:
+    if not CLE_VALIDE.match(key):
+        raise HTTPException(status_code=422, detail="Clé de configuration invalide.")
 
 
 class ConfigUpdate(BaseModel):
@@ -43,7 +56,14 @@ async def get_payment_numbers(db: AsyncSession = Depends(get_db)):
 
 
 @site_config_router.put("/{key}")
-async def upsert_config(key: str, body: ConfigUpdate, db: AsyncSession = Depends(get_db)):
+async def upsert_config(
+    key: str,
+    body: ConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    # Réservé à l'administration : auparavant n'importe qui pouvait modifier la configuration.
+    _verifier_cle(key)
     result = await db.execute(select(SiteConfig).where(SiteConfig.key == key))
     row = result.scalars().first()
     if row:
@@ -57,9 +77,22 @@ async def upsert_config(key: str, body: ConfigUpdate, db: AsyncSession = Depends
 
 
 @site_config_router.post("/upload/{key}")
-async def upload_config_image(key: str, image: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
-    """Upload an image and store its URL in site config."""
-    ext = image.filename.rsplit(".", 1)[-1].lower() if image.filename and "." in image.filename else "jpg"
+async def upload_config_image(
+    key: str,
+    image: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Upload an image and store its URL in site config (administration uniquement)."""
+    _verifier_cle(key)
+    ext = image.filename.rsplit(".", 1)[-1].lower() if image.filename and "." in image.filename else ""
+    if ext not in EXTENSIONS_IMAGE:
+        raise HTTPException(status_code=422, detail="Format d'image non supporté (JPG, PNG ou WEBP).")
+    image.file.seek(0, os.SEEK_END)
+    taille = image.file.tell()
+    image.file.seek(0)
+    if taille > TAILLE_MAX_IMAGE:
+        raise HTTPException(status_code=413, detail="Image trop lourde (5 Mo maximum).")
     filename = f"{uuid.uuid4()}.{ext}"
     path = os.path.join(settings.UPLOAD_DIR, filename)
     with open(path, "wb") as f:
@@ -71,7 +104,7 @@ async def upload_config_image(key: str, image: UploadFile = File(...), db: Async
     if row:
         # delete old file if it's a stored upload
         if row.value and "/static/" in row.value:
-            old_filename = row.value.split("/static/")[-1]
+            old_filename = os.path.basename(row.value.split("/static/")[-1])
             old_path = os.path.join(settings.UPLOAD_DIR, old_filename)
             if os.path.exists(old_path):
                 os.remove(old_path)

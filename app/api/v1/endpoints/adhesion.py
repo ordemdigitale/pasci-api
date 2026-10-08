@@ -5,7 +5,7 @@ import string
 import slugify as python_slugify
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import select, desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
@@ -17,6 +17,8 @@ from app.models.users import User, email_egal
 from app.core.auth import get_current_staff_user
 from app.services.email import send_welcome_osc
 from app.services.rattachement import rattacher_osc as _rattacher_osc
+from app.services.recherche import contient
+from app.services.osc_etiquettes import filtre_categorie, filtre_faitiere
 from app.services.file_uploads import save_formalisation_file, save_supporting_document
 from app.schemas.adhesion import (
     DemandeAdhesionCreate,
@@ -330,16 +332,56 @@ async def create_demande(request: Request, db: AsyncSession = Depends(get_db)):
     return demande
 
 
+# Tri des demandes : tous les champs du questionnaire (hors pièces jointes)
+_COLONNES_DEMANDE_NON_TRIABLES = {
+    "id", "document_formalisation_path", "plan_action_document_path",
+    "rapports_annuels_document_path", "adhesion_crasc_document_path",
+}
+TRI_DEMANDES = {
+    c.name: getattr(DemandeAdhesion, c.name)
+    for c in DemandeAdhesion.__table__.columns
+    if c.name not in _COLONNES_DEMANDE_NON_TRIABLES
+}
+COLONNES_DOMAINES_DEMANDE = (
+    "domaine_prioritaire", "domaine_prioritaire_2", "domaine_prioritaire_3",
+    "domaine_prioritaire_4", "domaine_prioritaire_5", "axe", "specialites",
+)
+COLONNES_RECHERCHE_DEMANDE = (
+    "nom_organisation", "sigle", "email", "telephone", "region", "departement",
+    "sous_prefecture", "ville", "crasc_nom", "description", "categorie", "niveau_regroupement",
+) + COLONNES_DOMAINES_DEMANDE
+
+
 @adhesion_router.get("", response_model=List[DemandeAdhesionRead], status_code=status.HTTP_200_OK)
 async def get_demandes(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     statut: Optional[str] = Query(None, description="Filtrer par statut: en_attente, approuvee, rejetee"),
+    search: Optional[str] = Query(None, description="Recherche libre (nom, contacts, localisation, thématiques…)"),
+    domaine: Optional[str] = Query(None, description="Thématique : domaines prioritaires, axe, spécialités"),
+    categorie: Optional[str] = Query(None, description="OdF, OdJ, OPSH, mixte (code, libellé ou sigle)"),
+    faitiere: Optional[bool] = Query(None),
+    sort_by: str = Query("created_at", description="Champ du questionnaire"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
 ):
     """Lister toutes les demandes d'adhésion (staff only)"""
-    query = select(DemandeAdhesion).order_by(desc(DemandeAdhesion.created_at))
+    if sort_by not in TRI_DEMANDES:
+        raise HTTPException(status_code=422, detail=f"Tri impossible sur « {sort_by} ».")
+    colonne = TRI_DEMANDES[sort_by]
+    ordre = colonne.desc().nulls_last() if sort_order == "desc" else colonne.asc().nulls_last()
+    query = select(DemandeAdhesion).order_by(ordre, desc(DemandeAdhesion.created_at))
+    if search and search.strip():
+        query = query.where(or_(*[contient(getattr(DemandeAdhesion, c), search) for c in COLONNES_RECHERCHE_DEMANDE]))
+    if domaine and domaine.strip():
+        query = query.where(or_(*[contient(getattr(DemandeAdhesion, c), domaine) for c in COLONNES_DOMAINES_DEMANDE]))
+    if categorie:
+        query = query.where(filtre_categorie(DemandeAdhesion.categorie, categorie))
+    if faitiere is True:
+        query = query.where(filtre_faitiere(DemandeAdhesion.niveau_regroupement))
+    elif faitiere is False:
+        query = query.where(or_(~filtre_faitiere(DemandeAdhesion.niveau_regroupement), DemandeAdhesion.niveau_regroupement.is_(None)))
 
     # Admin CRASC : filtrer par son CRASC via le nom
     if not current_user.is_superuser and current_user.crasc_id:

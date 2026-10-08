@@ -59,6 +59,7 @@ from app.services.file_uploads import save_formalisation_file, save_supporting_d
 from app.services.rattachement import rattacher_osc
 from app.services.osc_autoevaluation import BAREME, COULEUR_HEX, TRANCHES_COULEUR, expression_score_sql
 from app.services.recherche import contient, egal, normaliser
+from app.services.osc_etiquettes import CATEGORIE_SYNONYMES, TERMES_FAITIERE, filtre_categorie, filtre_faitiere
 
 
 crasc_router = APIRouter()
@@ -855,14 +856,7 @@ async def valider_osc(
     return osc
 
 
-# Catégories d'organisation : la valeur attendue est le code interne, mais
-# d'anciennes fiches portent le libellé complet ou le sigle. Le filtre accepte
-# donc tous les écrits rencontrés, comparés sans casse ni accents.
-CATEGORIE_SYNONYMES = {
-    "organisation_jeune": ["organisation_jeune", "organisation de jeune", "organisation de jeunes", "odj"],
-    "organisation_femme": ["organisation_femme", "organisation de femme", "organisation de femmes", "odf"],
-    "organisation_mixte": ["organisation_mixte", "organisation mixte", "mixte"],
-}
+# Catégories d'organisation (OdF, OdJ, OPSH, mixte) : voir app/services/osc_etiquettes.py
 
 # Colonnes balayées par la recherche libre.
 COLONNES_RECHERCHE_OSC = (
@@ -878,39 +872,25 @@ COLONNES_DOMAINES_OSC = (
     "domaine_prioritaire_3", "domaine_prioritaire_4", "domaine_prioritaire_5",
 )
 
-TRI_OSC = {
-    "name": Osc.name,
-    "region_nom": Osc.region_nom,
-    "departement": Osc.departement,
-    "sous_prefecture": Osc.sous_prefecture,
-    "categorie": Osc.categorie,
-    "niveau_regroupement": Osc.niveau_regroupement,
-    "niveau_couverture": Osc.niveau_couverture,
-    "domaine_prioritaire": Osc.domaine_prioritaire,
-    "domaine_prioritaire_2": Osc.domaine_prioritaire_2,
-    "domaine_prioritaire_3": Osc.domaine_prioritaire_3,
-    "domaine_prioritaire_4": Osc.domaine_prioritaire_4,
-    "domaine_prioritaire_5": Osc.domaine_prioritaire_5,
-    "type_document_formalisation": Osc.type_document_formalisation,
-    "date_creation": Osc.date_creation,
-    "created_at": Osc.created_at,
-    "updated_at": Osc.updated_at,
+# Tri : tous les champs du questionnaire (et dates de la fiche). Les chemins de
+# fichiers, coordonnées et champs techniques sont exclus.
+_COLONNES_NON_TRIABLES = {
+    "id", "slug", "thumbnail_path", "type_id", "crasc_id", "region_id", "latitude", "longitude",
+    "document_formalisation_path", "plan_action_document_path", "rapports_annuels_document_path",
+    "adhesion_crasc_document_path", "is_visible", "statut_publication",
 }
-
-TriOsc = Literal[
-    "name", "region_nom", "departement", "sous_prefecture", "categorie",
-    "niveau_regroupement", "niveau_couverture",
-    "domaine_prioritaire", "domaine_prioritaire_2", "domaine_prioritaire_3",
-    "domaine_prioritaire_4", "domaine_prioritaire_5",
-    "type_document_formalisation", "document_formalisation",
-    "date_creation", "created_at", "updated_at", "score_autoevaluation",
-]
+TRI_OSC = {
+    colonne.name: getattr(Osc, colonne.name)
+    for colonne in Osc.__table__.columns
+    if colonne.name not in _COLONNES_NON_TRIABLES
+}
+# Tris calculés (hors colonnes)
+TRIS_SPECIAUX = ("document_formalisation", "score_autoevaluation")
 
 
 def _filtre_categorie(valeur: str):
-    """Accepte le code interne, le libellé complet ou le sigle (ODJ/ODF)."""
-    ecritures = CATEGORIE_SYNONYMES.get(valeur, [valeur])
-    return or_(*[egal(Osc.categorie, ecriture) for ecriture in ecritures])
+    """Accepte le code interne, le libellé complet ou le sigle (OdJ, OdF, OPSH)."""
+    return filtre_categorie(Osc.categorie, valeur)
 
 
 def _filtre_annee_creation(annee: str):
@@ -925,7 +905,7 @@ def _filtres_osc_annuaire(
     domaine_activite, categorie, type_document_formalisation, has_document_formalisation,
     existence_siege, manuel_procedures, plan_action, rapports_annuels,
     adhesion_crasc_statut, niveau_regroupement, niveau_couverture,
-    annee_creation, score_min, score_max,
+    annee_creation, score_min, score_max, faitiere=None,
 ) -> list:
     """Construit la liste des conditions SQL communes au comptage et à la page."""
     filters = []
@@ -939,8 +919,11 @@ def _filtres_osc_annuaire(
         # « ODJ », « femmes »… désignent une catégorie plutôt qu'un mot du texte.
         terme = normaliser(search)
         for code, ecritures in CATEGORIE_SYNONYMES.items():
-            if any(ecriture in terme for ecriture in ecritures):
+            if any(normaliser(ecriture) in terme.split() if " " not in normaliser(ecriture) else normaliser(ecriture) in terme
+                   for ecriture in ecritures):
                 conditions.append(_filtre_categorie(code))
+        if any(t in terme for t in TERMES_FAITIERE):
+            conditions.append(filtre_faitiere(Osc.niveau_regroupement))
         filters.append(or_(*conditions))
     if region_nom:
         filters.append(contient(Osc.region_nom, region_nom))
@@ -976,6 +959,10 @@ def _filtres_osc_annuaire(
             filters.append(Osc.adhesion_crasc_statut == adhesion_crasc_statut)
     if niveau_regroupement:
         filters.append(egal(Osc.niveau_regroupement, niveau_regroupement))
+    if faitiere is True:
+        filters.append(filtre_faitiere(Osc.niveau_regroupement))
+    elif faitiere is False:
+        filters.append(or_(~filtre_faitiere(Osc.niveau_regroupement), Osc.niveau_regroupement.is_(None)))
     if niveau_couverture:
         filters.append(egal(Osc.niveau_couverture, niveau_couverture))
     if annee_creation:
@@ -1012,7 +999,8 @@ async def get_all_osc(
     annee_creation: Optional[str] = Query(None),
     score_min: Optional[int] = Query(None, ge=0, le=20),
     score_max: Optional[int] = Query(None, ge=0, le=20),
-    sort_by: TriOsc = Query("name"),
+    faitiere: Optional[bool] = Query(None, description="Organisations faîtières (réseau, fédération, plateforme, confédération)"),
+    sort_by: str = Query("name", description="Champ du questionnaire, document_formalisation ou score_autoevaluation"),
     sort_order: Literal["asc", "desc"] = Query("asc"),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
@@ -1028,7 +1016,10 @@ async def get_all_osc(
         adhesion_crasc_statut=adhesion_crasc_statut,
         niveau_regroupement=niveau_regroupement, niveau_couverture=niveau_couverture,
         annee_creation=annee_creation, score_min=score_min, score_max=score_max,
+        faitiere=faitiere,
     )
+    if sort_by not in TRI_OSC and sort_by not in TRIS_SPECIAUX:
+        raise HTTPException(status_code=422, detail=f"Tri impossible sur « {sort_by} ».")
 
     # Un admin CRASC ne voit que les OSCs de son CRASC
     if current_user and current_user.is_staff and not current_user.is_superuser:

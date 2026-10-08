@@ -1,4 +1,5 @@
 from pydantic import BaseModel, computed_field, field_validator
+from app.services import osc_etiquettes
 from typing import Any, Dict, Optional, List, Generic, TypeVar, Literal
 from datetime import datetime
 from math import isnan
@@ -232,6 +233,17 @@ class OscBase(BaseModel):
       self.adhesion_crasc,
       self.adhesion_crasc_statut,
     )
+
+  @computed_field
+  @property
+  def etiquettes(self) -> List[str]:
+    """OdF, OdJ, OPSH (catégorie) et Faîtière (niveau de regroupement)."""
+    return osc_etiquettes.etiquettes(self.categorie, self.niveau_regroupement)
+
+  @computed_field
+  @property
+  def est_faitiere(self) -> bool:
+    return osc_etiquettes.est_faitiere(self.niveau_regroupement)
 
   @computed_field
   @property

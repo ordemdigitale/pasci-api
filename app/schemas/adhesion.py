@@ -1,6 +1,8 @@
 # schemas/adhesion.py
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, computed_field
+from typing import List, Optional
+
+from app.services import osc_etiquettes
 from datetime import datetime
 
 
@@ -137,6 +139,12 @@ class DemandeAdhesionRead(BaseModel):
     note_admin: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+
+    @computed_field
+    @property
+    def etiquettes(self) -> List[str]:
+        """OdF, OdJ, OPSH (catégorie) et Faîtière (niveau de regroupement)."""
+        return osc_etiquettes.etiquettes(self.categorie, self.niveau_regroupement)
 
     class Config:
         from_attributes = True
