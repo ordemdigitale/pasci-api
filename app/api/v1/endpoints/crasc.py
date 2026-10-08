@@ -899,6 +899,50 @@ def _filtre_annee_creation(annee: str):
     return or_(Osc.date_creation.like(f"{annee}%"), Osc.date_creation.like(f"%{annee}"))
 
 
+# Mots ignorés dans la recherche libre (« femmes de Yopougon » = femmes + yopougon)
+MOTS_VIDES = {"de", "des", "du", "la", "le", "les", "l", "d", "et", "a", "au", "aux", "en", "un", "une", "pour", "sur"}
+
+
+def _condition_recherche_osc(search: str):
+    """
+    Recherche libre : **chaque mot** doit figurer dans la fiche (nom, sigle,
+    description, localisation, thématiques…), dans n'importe quel ordre, sans
+    tenir compte de la casse ni des accents.
+
+    Seuls les sigles et libellés explicites de catégorie (OdF, OdJ, OPSH,
+    « organisation de femmes »…) et « faîtière » renvoient aussi à la
+    catégorie : un simple mot comme « femmes » reste un mot du texte. Avant,
+    « femmes dynamiques » ramenait toutes les organisations de femmes (le mot
+    « femme » valait catégorie OdF), même sans « dynamique » dans leur fiche.
+    """
+    colonnes = [getattr(Osc, nom) for nom in COLONNES_RECHERCHE_OSC]
+    terme = normaliser(search)
+
+    # Expression complète désignant une catégorie (« organisation de femmes », « OPSH »…)
+    categories_expression = [
+        code for code, ecritures in CATEGORIE_SYNONYMES.items()
+        if terme in {normaliser(e) for e in ecritures}
+    ]
+    if categories_expression or terme in TERMES_FAITIERE:
+        options = [_filtre_categorie(code) for code in categories_expression]
+        if terme in TERMES_FAITIERE:
+            options.append(filtre_faitiere(Osc.niveau_regroupement))
+        return or_(*options, *[contient(c, search) for c in colonnes])
+
+    mots = [m for m in terme.split() if m not in MOTS_VIDES] or terme.split()
+    conditions_mots = []
+    for mot in mots:
+        options = [contient(c, mot) for c in colonnes]
+        # Sigle de catégorie utilisé comme mot (« odf yopougon »)
+        for code, ecritures in CATEGORIE_SYNONYMES.items():
+            if mot in {normaliser(e) for e in ecritures if " " not in normaliser(e)}:
+                options.append(_filtre_categorie(code))
+        if mot in TERMES_FAITIERE:
+            options.append(filtre_faitiere(Osc.niveau_regroupement))
+        conditions_mots.append(or_(*options))
+    return and_(*conditions_mots)
+
+
 def _filtres_osc_annuaire(
     *,
     type_id, region_id, search, region_nom, departement, sous_prefecture,
@@ -914,17 +958,7 @@ def _filtres_osc_annuaire(
     if region_id:
         filters.append(Osc.region_id == region_id)
     if search and search.strip():
-        colonnes = [getattr(Osc, nom) for nom in COLONNES_RECHERCHE_OSC]
-        conditions = [contient(colonne, search) for colonne in colonnes]
-        # « ODJ », « femmes »… désignent une catégorie plutôt qu'un mot du texte.
-        terme = normaliser(search)
-        for code, ecritures in CATEGORIE_SYNONYMES.items():
-            if any(normaliser(ecriture) in terme.split() if " " not in normaliser(ecriture) else normaliser(ecriture) in terme
-                   for ecriture in ecritures):
-                conditions.append(_filtre_categorie(code))
-        if any(t in terme for t in TERMES_FAITIERE):
-            conditions.append(filtre_faitiere(Osc.niveau_regroupement))
-        filters.append(or_(*conditions))
+        filters.append(_condition_recherche_osc(search))
     if region_nom:
         filters.append(contient(Osc.region_nom, region_nom))
     if departement:
