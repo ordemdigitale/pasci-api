@@ -781,8 +781,11 @@ async def get_formations(
     )
 
     result = await db.execute(query)
-    formations = result.scalars().all()
-    return formations
+    # Liste publique : le lien de la séance en ligne reste sur la fiche, pour les inscrits
+    return [
+        FormationReadWithRelations.model_validate(f).model_copy(update={"lien_visio": None})
+        for f in result.scalars().all()
+    ]
 
 
 @formations_router.get("/upcoming", response_model=List[FormationRead], status_code=status.HTTP_200_OK)
@@ -844,7 +847,12 @@ async def get_formation(
     if formation.statut_publication != "publie" and not can_view_pending:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Formation non trouvée.")
 
-    return formation
+    # Le lien de la séance en ligne n'est donné qu'aux inscrits (paiement validé) et au staff
+    reponse = FormationReadWithRelations.model_validate(formation)
+    if reponse.lien_visio and not can_view_pending:
+        if not formation_acces.a_acces(await formation_acces.inscription_de(db, formation.id, current_user)):
+            reponse.lien_visio = None
+    return reponse
 
 
 async def get_formation_update_form(
