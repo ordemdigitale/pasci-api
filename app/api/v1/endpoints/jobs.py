@@ -2,8 +2,9 @@ from uuid import UUID
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, status, HTTPException, Query
 from sqlmodel import select, desc
+from sqlalchemy import update
 from sqlmodel.ext.asyncio.session import AsyncSession
-from typing import List
+from typing import List, Optional
 from app.database.session import get_db
 from app.models.jobs import Jobs
 from app.models.users import User
@@ -12,6 +13,27 @@ from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff
 import slugify
 
 jobs_router = APIRouter()
+
+
+async def desactiver_offres_expirees(db: AsyncSession) -> int:
+    """Désactive les offres dont la date d'expiration est dépassée.
+
+    Appelé à chaque consultation des listes : pas besoin d'une tâche planifiée,
+    une offre expirée disparaît du site dès la première requête suivante.
+    """
+    maintenant = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(Jobs)
+        .where(
+            Jobs.is_expired == False,  # noqa: E712 — comparaison SQL
+            Jobs.expiration_date != None,  # noqa: E711
+            Jobs.expiration_date < maintenant,
+        )
+        .values(is_expired=True, updated_at=maintenant)
+    )
+    if result.rowcount:
+        await db.commit()
+    return result.rowcount or 0
 
 @jobs_router.post("", response_model=JobsRead, status_code=status.HTTP_201_CREATED)
 async def create_job(
@@ -31,15 +53,18 @@ async def create_job(
 async def get_jobs(
     skip: int = Query(0, ge=0, description="Nombre d'enregistrements à ignorer"),
     limit: int = Query(100, ge=1, le=500, description="Nombre d'enregistrements à retourner"),
+    include_expired: bool = Query(
+        False, description="Inclure les offres expirées (backoffice uniquement)"
+    ),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all published jobs with pagination"""
+    """Offres publiées. Les offres expirées sont exclues du site public."""
+    await desactiver_offres_expirees(db)
+    query = select(Jobs).where(Jobs.statut_publication == "publie")
+    if not include_expired:
+        query = query.where(Jobs.is_expired == False)  # noqa: E712
     result = await db.execute(
-        select(Jobs)
-        .where(Jobs.statut_publication == "publie")
-        .order_by(desc(Jobs.publication_date))
-        .offset(skip)
-        .limit(limit)
+        query.order_by(desc(Jobs.publication_date)).offset(skip).limit(limit)
     )
     jobs = result.scalars().all()
     return jobs
@@ -52,6 +77,7 @@ async def get_active_jobs(
     db: AsyncSession = Depends(get_db)
 ):
     """Get all active (non-expired) published jobs with pagination"""
+    await desactiver_offres_expirees(db)
     result = await db.execute(
         select(Jobs)
         .where(Jobs.is_expired == False, Jobs.statut_publication == "publie")
@@ -124,10 +150,68 @@ async def update_job(
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvée.")
     update_data = job_update.model_dump(exclude_unset=True)
+
+    # Réactiver une offre dont la date est dépassée la ferait réexpirer aussitôt :
+    # on exige une nouvelle date d'expiration.
+    if update_data.get("is_expired") is False and not job.is_expired_date_valide(
+        update_data.get("expiration_date")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La date d'expiration est dépassée : indiquez une nouvelle date pour réactiver cette offre.",
+        )
+
     for key, value in update_data.items():
         setattr(job, key, value)
     if "title" in update_data:
         job.slug = slugify.slugify(job.title)
+    job.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@jobs_router.patch("/{job_slug}/desactiver", response_model=JobsRead)
+async def desactiver_job(
+    job_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Désactiver manuellement une offre : elle sort immédiatement du site."""
+    result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
+    job = result.scalars().first()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvée.")
+    job.is_expired = True
+    job.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@jobs_router.patch("/{job_slug}/activer", response_model=JobsRead)
+async def activer_job(
+    job_slug: str,
+    expiration_date: Optional[datetime] = Query(
+        None, description="Nouvelle date d'expiration (obligatoire si l'ancienne est dépassée)"
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Réactiver une offre désactivée ou expirée."""
+    result = await db.execute(select(Jobs).where(Jobs.slug == job_slug))
+    job = result.scalars().first()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvée.")
+    if not job.is_expired_date_valide(expiration_date):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La date d'expiration est dépassée : indiquez une nouvelle date pour réactiver cette offre.",
+        )
+    if expiration_date:
+        job.expiration_date = expiration_date
+    job.is_expired = False
+    job.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(job)
     return job

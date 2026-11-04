@@ -197,8 +197,23 @@ def _render(template_str: str, **context) -> str:
     return _jinja.from_string(template_str).render(**context)
 
 
-async def _send(to: str, subject: str, html: str) -> None:
-    """Envoie un email via SMTP async. Ne lève pas d'exception (log seulement)."""
+async def _send(
+    to: str | list[str],
+    subject: str,
+    html: str,
+    reply_to: Optional[str] = None,
+) -> None:
+    """Envoie un email via SMTP async. Ne lève pas d'exception (log seulement).
+
+    `to` accepte une adresse ou une liste d'adresses (notifications internes
+    envoyées à plusieurs administrateurs). `reply_to` permet de répondre
+    directement depuis sa boîte mail à l'expéditeur du message.
+    """
+    destinataires = [a.strip() for a in (to if isinstance(to, list) else [to]) if a and a.strip()]
+    if not destinataires:
+        logger.warning("Aucun destinataire — email non envoyé | %s", subject)
+        return
+    to = ", ".join(destinataires)
     if not settings.SMTP_HOST:
         logger.warning("SMTP_HOST non configuré — email non envoyé à %s", to)
         return
@@ -207,10 +222,13 @@ async def _send(to: str, subject: str, html: str) -> None:
         msg["Subject"] = subject
         msg["From"] = settings.SMTP_FROM
         msg["To"] = to
+        if reply_to:
+            msg["Reply-To"] = reply_to
         msg.attach(MIMEText(html, "html", "utf-8"))
 
         await aiosmtplib.send(
             msg,
+            recipients=destinataires,
             hostname=settings.SMTP_HOST,
             port=settings.SMTP_PORT,
             username=settings.SMTP_USER or None,
@@ -620,7 +638,14 @@ async def send_contact_notif_admin(
     pays: Optional[str] = None,
     lieu_residence: Optional[str] = None,
     message: Optional[str] = None,
+    destinataires: Optional[list[str]] = None,
 ) -> None:
+    """Notifie l'équipe PdoC d'un nouveau message de contact.
+
+    `destinataires` : boîtes mails des administrateurs (configurables dans le
+    backoffice). Sans liste fournie, on retombe sur ADMIN_EMAIL — l'ancien
+    envoi vers SMTP_FROM (noreply@…) n'arrivait dans aucune boîte réelle.
+    """
     frontend_url = settings.FRONTEND_URL.rstrip("/")
     html = _render(
         _CONTACT_NOTIF_ADMIN,
@@ -636,9 +661,89 @@ async def send_contact_notif_admin(
         backoffice_url=f"{frontend_url}/admin/contact",
     )
     await _send(
-        to=settings.SMTP_FROM,
+        to=destinataires or [settings.ADMIN_EMAIL],
         subject=f"[Contact] Nouveau message — {motif} — {prenoms} {nom}",
         html=html,
+        # Répondre à l'email ouvre directement une réponse vers l'expéditeur
+        reply_to=email,
+    )
+
+
+
+# ── Réponse de l'équipe à un message de contact ───────────────────────────────
+
+_CONTACT_REPONSE = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#E05017;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Réponse à votre message</h2>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour <strong>{{ prenom_nom }}</strong>,<br><br>
+              Suite à votre message{% if motif %} concernant « {{ motif }} »{% endif %}, voici notre réponse :
+            </p>
+
+            <p style="margin:0 0 28px;font-size:15px;color:#333;background:#f9fafb;border-left:3px solid #E05017;padding:16px 18px;border-radius:4px;line-height:1.7;white-space:pre-wrap;">{{ reponse }}</p>
+
+            {% if message_initial %}
+            <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;">Votre message initial</p>
+            <p style="margin:0 0 28px;font-size:13px;color:#6b7280;background:#fafafa;border:1px solid #f0f0f0;padding:12px 16px;border-radius:4px;line-height:1.6;white-space:pre-wrap;">{{ message_initial }}</p>
+            {% endif %}
+
+            <p style="margin:0 0 24px;color:#555;font-size:14px;line-height:1.6;">
+              Vous pouvez répondre directement à cet email si vous avez besoin de précisions.
+            </p>
+
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              {% if auteur %}Réponse envoyée par {{ auteur }} — équipe PdoC.<br>{% endif %}
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_contact_reponse(
+    *,
+    nom: str,
+    prenoms: str,
+    email: str,
+    motif: Optional[str],
+    reponse: str,
+    message_initial: Optional[str] = None,
+    auteur: Optional[str] = None,
+    reply_to: Optional[str] = None,
+) -> None:
+    """Envoie à l'usager la réponse rédigée depuis le backoffice."""
+    html = _render(
+        _CONTACT_REPONSE,
+        prenom_nom=f"{prenoms} {nom}",
+        motif=motif or "",
+        reponse=reponse,
+        message_initial=message_initial or "",
+        auteur=auteur or "",
+    )
+    await _send(
+        to=email,
+        subject=f"Réponse à votre message — PdoC",
+        html=html,
+        reply_to=reply_to or settings.ADMIN_EMAIL,
     )
 
 

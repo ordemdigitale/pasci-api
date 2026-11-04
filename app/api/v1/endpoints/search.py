@@ -65,6 +65,7 @@ async def global_search(
         select(Jobs)
         .where(
             Jobs.statut_publication == "publie",
+            Jobs.is_expired == False,  # noqa: E712 — offres expirées exclues du site
             or_(
                 Jobs.title.ilike(search_term),
                 Jobs.description.ilike(search_term)
@@ -252,7 +253,7 @@ async def search_osc(
 @search_router.get("/jobs")
 async def search_jobs(
     q: str = Query(..., min_length=2, description="Search query"),
-    active_only: bool = Query(False, description="Only search active jobs"),
+    active_only: bool = Query(True, description="N'afficher que les offres encore actives"),
     limit: int = Query(20, ge=1, le=100, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Number of results to skip"),
     db: AsyncSession = Depends(get_db)

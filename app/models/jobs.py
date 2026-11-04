@@ -48,6 +48,19 @@ class Jobs(SQLModel, table=True):
       if self.title and not self.slug:
         self.slug = slugify.slugify(self.title)
 
+    def is_expired_date_valide(self, nouvelle_date: Optional[datetime] = None) -> bool:
+      """La date d'expiration retenue est-elle encore dans le futur ?
+
+      Sert à refuser la réactivation d'une offre dont la date est dépassée :
+      elle serait aussitôt redésactivée par l'expiration automatique.
+      """
+      date_cible = nouvelle_date or self.expiration_date
+      if date_cible is None:
+        return True
+      if date_cible.tzinfo is None:
+        date_cible = date_cible.replace(tzinfo=timezone.utc)
+      return date_cible > datetime.now(timezone.utc)
+
     # Representation in admin/logs
     def __repr__(self) -> str:
       return f"<Poste: {self.title}>"

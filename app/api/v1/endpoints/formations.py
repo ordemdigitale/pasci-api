@@ -17,7 +17,7 @@ from typing import Optional, List
 
 from app.core.config import settings
 from app.database.session import get_db
-from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat, FormationModule, FormationLecon, FormationProgression, FormationAvis, CatalogueFormation
+from app.models.formation import Formation, FormationRubrique, FormationInscription, Certificat, FormationModule, FormationLecon, FormationProgression, FormationAvis, FormationTentative, CatalogueFormation
 from app.models.users import User
 from app.schemas.formation import (
     FormationCreate, FormationRead, FormationUpdate, FormationReadWithRelations,
@@ -29,7 +29,7 @@ from app.schemas.formation import (
     FormationAvisCreate, FormationAvisRead,
     CatalogueFormationRead,
 )
-from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
+from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user, get_current_superuser
 from app.services.cinetpay import cinetpay_service
 from app.services import formation_acces
 from app.services.email import (
@@ -50,6 +50,17 @@ class SoumettreTransactionBody(PydanticBaseModel):
 
 class RejeterPaiementBody(PydanticBaseModel):
     raison: Optional[str] = None
+
+
+class ReinitialiserPaiementsBody(PydanticBaseModel):
+    """Vidage de la liste des paiements à traiter (super administrateur).
+
+    portee = "en_attente" : inscriptions jamais payées (payment_status "pending")
+    portee = "tout"       : y compris les paiements soumis non encore validés
+    """
+
+    portee: str = "en_attente"
+    formation_id: Optional[int] = None
 
 
 formations_router = APIRouter()
@@ -1001,21 +1012,25 @@ async def supprimer_inscription(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
 ):
-    """Supprimer (désinscrire) un participant d'une formation (staff only)"""
+    """Supprimer (désinscrire) un participant d'une formation.
+
+    Une inscription liée à un paiement n'est supprimable que par le super
+    administrateur : c'est une pièce comptable, pas une simple désinscription.
+    """
     result = await db.execute(
         select(FormationInscription).where(FormationInscription.id == inscription_id)
     )
     inscription = result.scalar_one_or_none()
     if not inscription:
         raise HTTPException(status_code=404, detail="Inscription non trouvée.")
-    # Décrémenter le compteur de participants de la formation
-    formation_result = await db.execute(
-        select(Formation).where(Formation.id == inscription.formation_id)
-    )
-    formation = formation_result.scalar_one_or_none()
-    if formation and formation.current_participants > 0:
-        formation.current_participants -= 1
-    await db.delete(inscription)
+
+    if inscription.payment_status != "gratuite" and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul le super administrateur peut supprimer une inscription payante.",
+        )
+
+    await _supprimer_inscription(db, inscription)
     await db.commit()
 
 
@@ -1178,6 +1193,65 @@ async def rejeter_paiement_inscription(
         )
 
     return inscription
+
+
+async def _supprimer_inscription(db: AsyncSession, inscription: FormationInscription) -> None:
+    """Supprime une inscription et tout ce qui en dépend.
+
+    Les places occupées sont rendues à la formation lorsque le paiement avait
+    été confirmé, sinon le compteur de participants resterait faussé.
+    """
+    for modele in (Certificat, FormationAvis, FormationProgression, FormationTentative):
+        lignes = await db.execute(
+            select(modele).where(modele.inscription_id == inscription.id)
+        )
+        for ligne in lignes.scalars().all():
+            await db.delete(ligne)
+
+    if inscription.payment_status in ("confirmed", "gratuite"):
+        form_result = await db.execute(
+            select(Formation).where(Formation.id == inscription.formation_id)
+        )
+        formation = form_result.scalar_one_or_none()
+        if formation:
+            formation.current_participants = max(0, (formation.current_participants or 0) - 1)
+            if formation.max_participants and formation.current_participants < formation.max_participants:
+                formation.is_full = False
+
+    await db.delete(inscription)
+
+
+@formations_router.post("/inscriptions/reinitialiser", status_code=status.HTTP_200_OK)
+async def reinitialiser_paiements(
+    data: ReinitialiserPaiementsBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_superuser),
+):
+    """Vider la liste des paiements à traiter (super administrateur uniquement).
+
+    Les paiements confirmés ne sont jamais touchés : la réinitialisation ne
+    porte que sur la liste affichée dans le backoffice.
+    """
+    if data.portee not in ("en_attente", "tout"):
+        raise HTTPException(
+            status_code=400,
+            detail="Portée invalide. Utilisez 'en_attente' ou 'tout'.",
+        )
+
+    statuts = ["pending"] if data.portee == "en_attente" else ["pending", "soumis"]
+    query = select(FormationInscription).where(
+        FormationInscription.payment_status.in_(statuts)
+    )
+    if data.formation_id:
+        query = query.where(FormationInscription.formation_id == data.formation_id)
+
+    result = await db.execute(query)
+    inscriptions = result.scalars().all()
+    for inscription in inscriptions:
+        await _supprimer_inscription(db, inscription)
+    await db.commit()
+
+    return {"supprimees": len(inscriptions), "portee": data.portee}
 
 
 @formations_router.patch("/{formation_slug}", response_model=FormationReadWithRelations, status_code=status.HTTP_200_OK)
