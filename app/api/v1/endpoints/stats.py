@@ -11,6 +11,7 @@ from app.models.jobs import Jobs
 from app.models.key_stats import KeyStats
 from app.models.users import User
 from app.models.formation import Formation, FormationInscription
+from app.schemas.formation import CATEGORIES_OSC
 
 stats_router = APIRouter()
 
@@ -349,11 +350,12 @@ async def get_formation_stats(db: AsyncSession = Depends(get_db)) -> Dict[str, A
     total_inscrits_res = await db.execute(select(func.count(FormationInscription.id)))
     total_inscrits = total_inscrits_res.scalar_one()
 
-    # OSC distinctes ayant au moins un inscrit (via osc_id sur la formation)
+    # OSC formées : inscrits de la catégorie « Organisation de la Société Civile »
+    # (le même chiffre que la barre OSC de la répartition ci-dessous ; l'ancien
+    # calcul comptait les OSC organisatrices des formations, d'où « 1 »)
     osc_formees_res = await db.execute(
-        select(func.count(func.distinct(Formation.osc_id)))
-        .join(FormationInscription, FormationInscription.formation_id == Formation.id)
-        .where(Formation.osc_id.isnot(None))
+        select(func.count(FormationInscription.id))
+        .where(FormationInscription.categorie_acteur.in_(CATEGORIES_OSC))
     )
     total_osc_formees = osc_formees_res.scalar_one()
 

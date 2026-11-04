@@ -2,12 +2,13 @@
 """
 Formations/Training endpoints
 """
+import io
 import os
 import shutil
 import uuid
 import slugify
 from datetime import datetime, timezone
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Query, Response
 from sqlmodel import select, or_, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy import case
@@ -1631,23 +1632,84 @@ async def simuler_paiement_confirme(
     return inscription
 
 
-@formations_router.get("/{formation_slug}/inscriptions", response_model=List[FormationInscriptionRead])
-async def list_inscriptions(
-    formation_slug: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Liste des inscriptions (staff only)"""
+async def _inscrits_de(db: AsyncSession, formation_slug: str, current_user: User) -> tuple:
+    """Formation et ses inscriptions, pour le staff ou un rédacteur du CRASC de la formation."""
     result = await db.execute(select(Formation).where(Formation.slug == formation_slug))
     formation = result.scalar_one_or_none()
     if not formation:
         raise HTTPException(status_code=404, detail="Formation non trouvée.")
+    if not (current_user.is_staff or current_user.is_superuser) and formation.crasc_id != current_user.crasc_id:
+        raise HTTPException(status_code=403, detail="Vous ne voyez que les inscrits des formations de votre CRASC.")
     insc_result = await db.execute(
         select(FormationInscription)
         .where(FormationInscription.formation_id == formation.id)
         .order_by(FormationInscription.created_at.desc())
     )
-    return insc_result.scalars().all()
+    return formation, insc_result.scalars().all()
+
+
+@formations_router.get("/{formation_slug}/inscriptions", response_model=List[FormationInscriptionRead])
+async def list_inscriptions(
+    formation_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+):
+    """Liste des inscriptions (staff, ou rédacteur du CRASC de la formation)"""
+    _, inscriptions = await _inscrits_de(db, formation_slug, current_user)
+    return inscriptions
+
+
+STATUTS_PAIEMENT = {
+    "gratuite": "Gratuite", "pending": "À payer", "soumis": "En vérification",
+    "confirmed": "Payée", "failed": "Refusée",
+}
+
+
+@formations_router.get("/{formation_slug}/inscriptions/export")
+async def exporter_inscriptions(
+    formation_slug: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_crasc_or_staff),
+):
+    """Liste des inscrits au format Excel (.xlsx)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    formation, inscriptions = await _inscrits_de(db, formation_slug, current_user)
+    classeur = Workbook()
+    feuille = classeur.active
+    feuille.title = "Inscrits"
+    entetes = ["Nom", "Prénoms", "Email", "Téléphone", "Catégorie d'acteurs", "Date d'inscription",
+               "Paiement", "Montant (FCFA)", "Formation terminée", "Certificat"]
+    feuille.append(entetes)
+    for cellule in feuille[1]:
+        cellule.font = Font(bold=True)
+    for i in sorted(inscriptions, key=lambda x: x.created_at):
+        feuille.append([
+            i.participant_nom or i.participant_name,
+            i.participant_prenoms or "",
+            i.participant_email,
+            i.participant_phone or "",
+            i.categorie_acteur or "Non renseigné",
+            i.created_at.replace(tzinfo=None) if i.created_at else None,
+            STATUTS_PAIEMENT.get(i.payment_status, i.payment_status),
+            i.payment_amount,
+            "Oui" if i.is_completed else "Non",
+            "Oui" if i.certificate_issued else "Non",
+        ])
+    for colonne, largeur in zip("ABCDEFGHIJ", (20, 24, 32, 18, 34, 20, 16, 14, 18, 12)):
+        feuille.column_dimensions[colonne].width = largeur
+    for cellule in feuille["F"][1:]:
+        cellule.number_format = "DD/MM/YYYY HH:MM"
+
+    tampon = io.BytesIO()
+    classeur.save(tampon)
+    nom_fichier = f"inscrits-{formation.slug}.xlsx"
+    return Response(
+        content=tampon.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nom_fichier}"'},
+    )
 
 
 # ─────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ Pydantic schemas for Formation model
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 from app.core.config import settings
 
 
@@ -59,14 +59,39 @@ class FormationRubriqueUpdate(BaseModel):
 
 # ── Inscription ────────────────────────────────────────────────
 
+CATEGORIES_ACTEURS = (
+    "Organisation de la Société Civile OSC",
+    "Acteurs étatiques",
+    "Partenaires Techniques et Financiers PTF",
+    "Grand public",
+)
+# Catégories comptées comme « OSC formées » (« OSC » : anciennes inscriptions)
+CATEGORIES_OSC = ("Organisation de la Société Civile OSC", "OSC")
+
+
 class FormationInscriptionCreate(BaseModel):
-    participant_nom: str
-    participant_prenoms: str
-    participant_email: str
-    participant_phone: Optional[str] = None
-    categorie_acteur: Optional[str] = None
+    """Tous les champs sont obligatoires (retours PdoC)."""
+    participant_nom: str = Field(..., min_length=1)
+    participant_prenoms: str = Field(..., min_length=1)
+    participant_email: str = Field(..., min_length=3)
+    participant_phone: str = Field(..., min_length=8, description="Contact téléphonique")
+    categorie_acteur: str
     # Compat backward : si fourni directement
     participant_name: Optional[str] = None
+
+    @field_validator("participant_nom", "participant_prenoms", "participant_email", "participant_phone")
+    @classmethod
+    def _non_vide(cls, valeur: str) -> str:
+        if not valeur or not valeur.strip():
+            raise ValueError("Ce champ est obligatoire.")
+        return valeur.strip()
+
+    @field_validator("categorie_acteur")
+    @classmethod
+    def _categorie_connue(cls, valeur: str) -> str:
+        if valeur not in CATEGORIES_ACTEURS:
+            raise ValueError(f"Catégorie d'acteurs inconnue : {', '.join(CATEGORIES_ACTEURS)}.")
+        return valeur
 
 
 class FormationInscriptionRead(BaseModel):
