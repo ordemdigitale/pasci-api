@@ -2,13 +2,13 @@
 import os
 import uuid
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Literal, Optional, List
 
 import slugify
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Query
 from PIL import Image
 from sqlalchemy.orm import selectinload
-from sqlmodel import desc, select, or_
+from sqlmodel import desc, func, select, or_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
@@ -16,9 +16,9 @@ from app.database.session import get_db
 from app.schemas.crasc import (
     NewsRead,
     NewsReadDetail,
-    NewsUpdate, MaNewsRead
+    NewsUpdate, MaNewsRead, NewsAdminListe
 )
-from app.models.crasc import News
+from app.models.crasc import Crasc, News, Osc
 from app.models.users import User
 from app.services.email import send_actualite_rejetee
 from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
@@ -402,6 +402,84 @@ async def get_recent_news(
     news_list = result.scalars().all()
 
     return news_list
+
+
+@news_router.get("/compte")
+async def compter_news(
+    crasc_id: Optional[int] = Query(None),
+    osc_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Nombre d'actualités en ligne (publiées, non archivées) : compteurs du site, sans limite de page."""
+    query = select(func.count(News.id)).where(News.statut_publication == "publie", _active())
+    if crasc_id:
+        query = query.where(News.crasc_id == crasc_id)
+    if osc_id:
+        query = query.where(News.osc_id == osc_id)
+    return {"total": (await db.execute(query)).scalar_one()}
+
+
+@news_router.get("/admin/liste", response_model=NewsAdminListe)
+async def lister_news_admin(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None, description="Titre, texte, CRASC ou OSC"),
+    statut_publication: Optional[Literal["publie", "en_attente", "rejete"]] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_redacteur_or_staff),
+):
+    """
+    Liste paginée du back-office : toutes les actualités (publiées, en attente,
+    rejetées, archivées), les plus récentes d'abord. Un compte rattaché à un
+    CRASC ne voit que celles de son CRASC. Les compteurs portent sur toutes les
+    actualités visibles par le compte, pas seulement sur la page.
+    """
+    portee = []
+    if not current_user.is_superuser and current_user.crasc_id:
+        portee.append(News.crasc_id == current_user.crasc_id)
+
+    compteurs = (await db.execute(
+        select(
+            func.count(News.id),
+            func.count(News.id).filter(News.crasc_id.is_not(None)),
+            func.count(News.id).filter(News.osc_id.is_not(None)),
+            func.count(News.id).filter(News.created_at >= func.date_trunc("month", func.now())),
+            func.count(News.id).filter(News.statut_publication == "en_attente"),
+        ).where(*portee)
+    )).one()
+
+    filtres = list(portee)
+    if statut_publication:
+        filtres.append(News.statut_publication == statut_publication)
+    if search and search.strip():
+        motif = f"%{search.strip()}%"
+        filtres.append(or_(
+            News.title.ilike(motif),
+            News.content.ilike(motif),
+            News.crasc.has(Crasc.name.ilike(motif)),
+            News.osc.has(Osc.name.ilike(motif)),
+        ))
+    total = (await db.execute(select(func.count(News.id)).where(*filtres))).scalar_one()
+    items = (await db.execute(
+        select(News).where(*filtres)
+        .options(selectinload(News.crasc), selectinload(News.osc))
+        .order_by(News.created_at.desc(), News.id.desc())
+        .offset((page - 1) * size).limit(size)
+    )).scalars().all()
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": max(1, -(-total // size)),
+        "compteurs": {
+            "total": compteurs[0],
+            "crasc": compteurs[1],
+            "osc": compteurs[2],
+            "ce_mois": compteurs[3],
+            "en_attente": compteurs[4],
+        },
+    }
 
 
 @news_router.get("/{news_slug}", response_model=NewsReadDetail, status_code=status.HTTP_200_OK)

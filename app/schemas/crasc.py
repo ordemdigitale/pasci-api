@@ -481,6 +481,16 @@ class MaNewsRead(NewsReadDetail):
   """Actualité d'une OSC vue par l'OSC elle-même : avec son état de validation."""
   statut_publication: str
 
+
+class NewsAdminRead(NewsReadDetail):
+  """Actualité dans la liste du back-office : avec son état de validation."""
+  statut_publication: str
+
+
+class NewsAdminListe(PaginatedResponse[NewsAdminRead]):
+  """Page de la liste du back-office + compteurs sur toutes les actualités (pas seulement la page)."""
+  compteurs: Dict[str, int]
+
 class NewsUpdate(BaseModel):
   title: Optional[str] = None
   content: Optional[str] = None
