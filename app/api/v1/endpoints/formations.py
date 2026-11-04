@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Query
 from sqlmodel import select, or_, func
 from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy import case
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 
@@ -499,6 +500,28 @@ async def emettre_certificat(
     return certificat
 
 
+MODES_FORMATION = {"en_ligne", "presentiel", "hybride"}
+DOCUMENTS_DELIVRES = {"attestation", "certificat", "diplome", "neant"}
+MAX_EPINGLEES = 3
+
+
+def _verifier_fiche(mode: Optional[str], document_delivre: Optional[str]) -> None:
+    if mode and mode not in MODES_FORMATION:
+        raise HTTPException(status_code=422, detail="Mode invalide : en_ligne, presentiel ou hybride.")
+    if document_delivre and document_delivre not in DOCUMENTS_DELIVRES:
+        raise HTTPException(status_code=422, detail="Document délivré invalide : attestation, certificat, diplome ou neant.")
+
+
+async def _limiter_epinglees(db: AsyncSession, formation: Formation) -> None:
+    """Au plus MAX_EPINGLEES formations épinglées : la plus ancienne épinglée cède sa place."""
+    requete = select(Formation).where(Formation.is_pinned == True)  # noqa: E712
+    if formation.id:
+        requete = requete.where(Formation.id != formation.id)
+    autres = (await db.execute(requete.order_by(Formation.updated_at.desc()))).scalars().all()
+    for ancienne in autres[MAX_EPINGLEES - 1:]:
+        ancienne.is_pinned = False
+
+
 @formations_router.post("", response_model=FormationRead, status_code=status.HTTP_201_CREATED)
 async def create_formation(
     title: Optional[str] = Form(None),
@@ -518,6 +541,13 @@ async def create_formation(
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
     categorie: Optional[str] = Form(None),
+    lien_visio: Optional[str] = Form(None),
+    mode: Optional[str] = Form(None),
+    duree_heures: Optional[float] = Form(None),
+    document_delivre: Optional[str] = Form(None),
+    competences_requises: Optional[str] = Form(None),
+    chronogramme: Optional[str] = Form(None),
+    is_pinned: bool = Form(False),
     thumbnail: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_redacteur_or_staff),
@@ -550,6 +580,10 @@ async def create_formation(
             }
         )
     
+    _verifier_fiche(mode, document_delivre)
+    if not (current_user.is_staff or current_user.is_superuser):
+        is_pinned = False  # l'épinglage reste au staff
+
     # Parse IDs
     crasc_id_int = int(crasc_id) if crasc_id and crasc_id != "" else None
     osc_id_int = int(osc_id) if osc_id and osc_id != "" else None
@@ -630,9 +664,18 @@ async def create_formation(
             crasc_id=crasc_id_int,
             osc_id=osc_id_int,
             categorie=categorie,
+            lien_visio=lien_visio or None,
+            mode=mode or None,
+            duree_heures=duree_heures,
+            document_delivre=document_delivre or None,
+            competences_requises=competences_requises or None,
+            chronogramme=chronogramme or None,
+            is_pinned=is_pinned,
             thumbnail_path=saved_path,
             statut_publication=statut_pub,
         )
+        if is_pinned:
+            await _limiter_epinglees(db, formation)
         db.add(formation)
         await db.commit()
         await db.refresh(formation)
@@ -661,6 +704,7 @@ async def get_formations(
     crasc_id: Optional[int] = Query(None, description="Filtrer par CRASC"),
     osc_id: Optional[int] = Query(None, description="Filtrer par OSC"),
     rubrique_id: Optional[int] = Query(None, description="Filtrer par rubrique"),
+    mode: Optional[str] = Query(None, description="en_ligne | presentiel | hybride"),
     statut: Optional[str] = Query(
         None, description="a_venir | en_cours | terminees (terminée = cochée terminée ou date de fin passée)"
     ),
@@ -709,6 +753,9 @@ async def get_formations(
     if rubrique_id:
         query = query.where(Formation.rubrique_id == rubrique_id)
 
+    if mode:
+        query = query.where(Formation.mode == mode)
+
     # Une formation est terminée si elle est cochée « terminée » OU si sa date de
     # fin (à défaut, de début) est passée : le simple drapeau manuel laissait des
     # formations finies marquées « en cours » et invisibles dans « Terminé ».
@@ -722,8 +769,16 @@ async def get_formations(
     elif statut == "en_cours":
         query = query.where(~terminee, or_(Formation.start_date == None, Formation.start_date <= maintenant))  # noqa: E711
 
-    # Apply pagination and ordering (formations sans date en dernier)
-    query = query.offset(skip).limit(limit).order_by(Formation.start_date.desc().nulls_last())
+    # Ordre : épinglées d'abord, puis par date d'expiration (date limite
+    # d'inscription, à défaut date de début) de la plus proche à la plus
+    # lointaine ; les terminées ensuite, des plus récentes aux plus anciennes.
+    expiration = func.coalesce(Formation.registration_deadline, Formation.start_date)
+    query = query.offset(skip).limit(limit).order_by(
+        Formation.is_pinned.desc(),
+        case((terminee, 1), else_=0),
+        case((terminee, None), else_=expiration).asc().nulls_last(),
+        fin.desc().nulls_last(),
+    )
 
     result = await db.execute(query)
     formations = result.scalars().all()
@@ -812,7 +867,14 @@ async def get_formation_update_form(
     rubrique_id: str = Form(""),
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
-    categorie: Optional[str] = Form(None)
+    categorie: Optional[str] = Form(None),
+    lien_visio: Optional[str] = Form(None),
+    mode: Optional[str] = Form(None),
+    duree_heures: Optional[str] = Form(None),
+    document_delivre: Optional[str] = Form(None),
+    competences_requises: Optional[str] = Form(None),
+    chronogramme: Optional[str] = Form(None),
+    is_pinned: Optional[bool] = Form(None),
 ) -> FormationUpdate:
     """Parse form data into FormationUpdate"""
     # Only include fields that are actually provided
@@ -879,6 +941,22 @@ async def get_formation_update_form(
 
     if categorie is not None:
         update_dict["categorie"] = categorie if categorie != "" else None
+
+    # Fiche de la formation : une chaîne vide efface le champ
+    _verifier_fiche(mode, document_delivre)
+    for cle, valeur in (
+        ("lien_visio", lien_visio),
+        ("mode", mode),
+        ("document_delivre", document_delivre),
+        ("competences_requises", competences_requises),
+        ("chronogramme", chronogramme),
+    ):
+        if valeur is not None:
+            update_dict[cle] = valeur if valeur != "" else None
+    if duree_heures is not None:
+        update_dict["duree_heures"] = float(duree_heures.replace(",", ".")) if duree_heures.strip() else None
+    if is_pinned is not None:
+        update_dict["is_pinned"] = is_pinned
 
     return FormationUpdate(**update_dict)
 
@@ -1120,8 +1198,12 @@ async def update_formation(
 
     # Update other fields
     update_data = formation_update.model_dump(exclude_unset=True)
+    if is_redacteur_only:
+        update_data.pop("is_pinned", None)  # l'épinglage reste au staff
     for key, value in update_data.items():
         setattr(formation, key, value)
+    if update_data.get("is_pinned"):
+        await _limiter_epinglees(db, formation)
     if is_redacteur_only:
         formation.statut_publication = "en_attente"
         formation.is_published = False

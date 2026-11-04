@@ -86,6 +86,15 @@ class Formation(SQLModel, table=True):
     # Links and resources
     registration_link: Optional[str] = Field(None, max_length=500, description="Lien d'inscription")
     materials_link: Optional[str] = Field(None, max_length=500, description="Lien vers les supports de formation")
+    lien_visio: Optional[str] = Field(None, max_length=500, description="Lien de la séance en ligne (Zoom, Teams…)")
+
+    # Fiche de la formation (retours PdoC)
+    mode: Optional[str] = Field(default=None, max_length=20, description="en_ligne | presentiel | hybride")
+    duree_heures: Optional[float] = Field(default=None, ge=0, description="Durée totale en heures")
+    document_delivre: Optional[str] = Field(default=None, max_length=20, description="attestation | certificat | diplome | neant")
+    competences_requises: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    chronogramme: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Déroulé de la formation")
+    is_pinned: bool = Field(default=False, description="Épinglée en tête de la page Formations")
 
     # Relations
     rubrique_id: Optional[int] = Field(default=None, foreign_key="formation_rubrique.id", ondelete="SET NULL")

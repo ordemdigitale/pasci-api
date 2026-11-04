@@ -163,6 +163,13 @@ class FormationBase(BaseModel):
     price: Optional[float] = None
     rubrique_id: Optional[int] = None
     categorie: Optional[str] = None
+    lien_visio: Optional[str] = Field(None, max_length=500)
+    mode: Optional[str] = None
+    duree_heures: Optional[float] = Field(None, ge=0)
+    document_delivre: Optional[str] = None
+    competences_requises: Optional[str] = None
+    chronogramme: Optional[str] = None
+    is_pinned: bool = False
 
 
 class FormationCreate(FormationBase):
@@ -193,6 +200,13 @@ class FormationUpdate(BaseModel):
     crasc_id: Optional[int] = None
     osc_id: Optional[int] = None
     categorie: Optional[str] = None
+    lien_visio: Optional[str] = Field(None, max_length=500)
+    mode: Optional[str] = None
+    duree_heures: Optional[float] = Field(None, ge=0)
+    document_delivre: Optional[str] = None
+    competences_requises: Optional[str] = None
+    chronogramme: Optional[str] = None
+    is_pinned: Optional[bool] = None
 
 
 class FormationRead(FormationBase):
