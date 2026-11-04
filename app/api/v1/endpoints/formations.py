@@ -523,6 +523,19 @@ async def _limiter_epinglees(db: AsyncSession, formation: Formation) -> None:
         ancienne.is_pinned = False
 
 
+def _duree_heures(valeur: Optional[str]) -> Optional[float]:
+    """Durée saisie dans le formulaire (« 12 », « 2,5 ») ; vide = non précisée."""
+    if valeur is None or not valeur.strip():
+        return None
+    try:
+        duree = float(valeur.strip().replace(",", "."))
+    except ValueError:
+        duree = -1
+    if duree < 0:
+        raise HTTPException(status_code=422, detail="La durée doit être un nombre d'heures (ex. 12 ou 2,5).")
+    return duree
+
+
 @formations_router.post("", response_model=FormationRead, status_code=status.HTTP_201_CREATED)
 async def create_formation(
     title: Optional[str] = Form(None),
@@ -544,7 +557,7 @@ async def create_formation(
     categorie: Optional[str] = Form(None),
     lien_visio: Optional[str] = Form(None),
     mode: Optional[str] = Form(None),
-    duree_heures: Optional[float] = Form(None),
+    duree_heures: Optional[str] = Form(None, description="Heures ; vide = non précisée, virgule acceptée"),
     document_delivre: Optional[str] = Form(None),
     competences_requises: Optional[str] = Form(None),
     chronogramme: Optional[str] = Form(None),
@@ -650,6 +663,7 @@ async def create_formation(
         if rubrique_obj:
             categorie = rubrique_obj.name
 
+    duree = _duree_heures(duree_heures)
     try:
         formation = Formation(
             title=title.strip(),
@@ -671,7 +685,7 @@ async def create_formation(
             categorie=categorie,
             lien_visio=lien_visio or None,
             mode=mode or None,
-            duree_heures=duree_heures,
+            duree_heures=duree,
             document_delivre=document_delivre or None,
             competences_requises=competences_requises or None,
             chronogramme=chronogramme or None,
@@ -970,7 +984,7 @@ async def get_formation_update_form(
         if valeur is not None:
             update_dict[cle] = valeur if valeur != "" else None
     if duree_heures is not None:
-        update_dict["duree_heures"] = float(duree_heures.replace(",", ".")) if duree_heures.strip() else None
+        update_dict["duree_heures"] = _duree_heures(duree_heures)
     if is_pinned is not None:
         update_dict["is_pinned"] = is_pinned
     if tous_crasc is not None:
