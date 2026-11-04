@@ -16,11 +16,11 @@ from app.database.session import get_db
 from app.schemas.crasc import (
     NewsRead,
     NewsReadDetail,
-    NewsUpdate
+    NewsUpdate, MaNewsRead
 )
 from app.models.crasc import News
 from app.models.users import User
-from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
+from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
 
 news_router = APIRouter()
 
@@ -221,6 +221,71 @@ async def create_news(
                 }]
             }
         )
+
+
+async def _osc_du_compte(db: AsyncSession, user: User):
+    from app.models.crasc import Osc
+    if not user.osc_id:
+        raise HTTPException(status_code=403, detail="Réservé aux comptes rattachés à une OSC.")
+    osc = (await db.execute(select(Osc).where(Osc.id == user.osc_id))).scalars().first()
+    if not osc:
+        raise HTTPException(status_code=404, detail="OSC introuvable.")
+    return osc
+
+
+@news_router.post("/mon-osc", response_model=MaNewsRead, status_code=status.HTTP_201_CREATED)
+async def publier_mon_actualite(
+    title: Optional[str] = Form(None),
+    content: Optional[str] = Form(None),
+    thumbnail: Optional[UploadFile] = File(None),
+    date_expiration: str = Form("", description="AAAA-MM-JJ ; vide = jamais désactivée"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    « Publier mon actualité » : une OSC publie elle-même une actualité. Elle
+    est rattachée à l'OSC du compte et à son CRASC, et attend la validation
+    du CRASC (modération) avant d'être visible sur le site.
+    """
+    osc = await _osc_du_compte(db, current_user)
+    if not title or not title.strip():
+        raise HTTPException(status_code=422, detail="Le titre est requis.")
+    if not content or not content.strip():
+        raise HTTPException(status_code=422, detail="Le texte de l'actualité est requis.")
+    titre = title.strip()
+    if (await db.execute(select(News).where(News.title == titre))).scalars().first():
+        raise HTTPException(status_code=409, detail="Une actualité avec ce titre existe déjà.")
+
+    news = News(
+        title=titre,
+        content=content.strip(),
+        osc_id=osc.id,
+        crasc_id=osc.crasc_id,
+        date_expiration=_date_expiration(date_expiration),
+        thumbnail_path=validate_and_process_image(thumbnail) if thumbnail and thumbnail.filename else "default.png",
+        statut_publication="en_attente",
+    )
+    db.add(news)
+    await db.commit()
+    result = await db.execute(
+        select(News).where(News.id == news.id).options(selectinload(News.crasc), selectinload(News.osc))
+    )
+    return result.scalars().first()
+
+
+@news_router.get("/mon-osc", response_model=List[MaNewsRead])
+async def mes_actualites(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Actualités de l'OSC du compte, quel que soit leur état (en attente, publiée, refusée)."""
+    osc = await _osc_du_compte(db, current_user)
+    result = await db.execute(
+        select(News).where(News.osc_id == osc.id)
+        .options(selectinload(News.crasc), selectinload(News.osc))
+        .order_by(desc(News.created_at))
+    )
+    return result.scalars().all()
 
 
 @news_router.get("", response_model=List[NewsReadDetail], status_code=status.HTTP_200_OK)

@@ -326,6 +326,14 @@ class OscReadDetail(OscBase):
   type: Optional[OscTypeRead] = None
   crasc: Optional[CrascRead] = None
   news_items: Optional[List["NewsRead"]] = []
+
+  @field_validator("news_items", mode="before")
+  @classmethod
+  def _actualites_publiees(cls, valeur):
+    """Fiche publique : seulement les actualités validées (pas en attente ni refusées)."""
+    if not valeur:
+      return valeur
+    return [n for n in valeur if getattr(n, "statut_publication", "publie") == "publie"]
   poles: Optional[List[PoleMinimal]] = []
   class Config:
     from_attributes = True
@@ -467,6 +475,11 @@ class NewsReadDetail(NewsBase):
   osc: Optional[OscRead] = None
   class Config:
     from_attributes = True
+
+
+class MaNewsRead(NewsReadDetail):
+  """Actualité d'une OSC vue par l'OSC elle-même : avec son état de validation."""
+  statut_publication: str
 
 class NewsUpdate(BaseModel):
   title: Optional[str] = None
