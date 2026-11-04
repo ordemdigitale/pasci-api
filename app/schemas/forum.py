@@ -37,6 +37,8 @@ class PoleConcertationRead(PoleConcertationBase):
     nb_membres_actifs: Optional[int] = 0
     # [{"nom": "Gbêkê", "nb": 45}, ...] de la région la plus représentée à la moins représentée
     regions_effectifs: List[dict] = []
+    # [{"id": "...", "nom": "..."}] : experts qui animent le pôle
+    experts: List[dict] = []
 
     @computed_field
     @property
@@ -228,6 +230,7 @@ class ForumCommentaireUpdate(BaseModel):
 class ForumSujetDetail(ForumSujetRead):
     commentaires: List[ForumCommentaireRead] = []
     pieces_jointes: List["PieceJointeRead"] = []
+    experts: List[dict] = []
 
 
 # ──────────────── Synthèse d'une discussion ────────────────

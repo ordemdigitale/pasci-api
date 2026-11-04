@@ -1,4 +1,5 @@
 # app/models/user.py | User model definition
+import json
 from datetime import datetime
 import bcrypt as _bcrypt
 from sqlalchemy import Column, Text, DateTime
@@ -27,6 +28,10 @@ class User(SQLModel, table=True):
   is_staff: bool = Field(default=False)
   is_superuser: bool = Field(default=False)
   is_redacteur: bool = Field(default=False)
+
+  # Expert : anime les discussions des pôles listés (ids, JSON)
+  is_expert: bool = Field(default=False)
+  expert_poles: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
 
   # CRASC rattaché (pour les admin CRASC = is_staff)
   crasc_id: Optional[int] = Field(default=None, foreign_key="crasc.id", nullable=True)
@@ -71,6 +76,20 @@ class User(SQLModel, table=True):
   def full_name(self) -> str:
       """Return 'First Last' or empty string"""
       return f"{self.first_name or ''} {self.last_name or ''}".strip()
+
+  @property
+  def expert_pole_ids(self) -> list:
+      """Pôles animés par l'expert (vide pour les autres comptes)."""
+      if not self.is_expert or not self.expert_poles:
+          return []
+      try:
+          return [int(i) for i in json.loads(self.expert_poles)]
+      except (ValueError, TypeError):
+          return []
+
+  def anime_le_pole(self, pole_id: Optional[int]) -> bool:
+      """Vrai si le compte est expert de ce pôle."""
+      return pole_id is not None and pole_id in self.expert_pole_ids
 
   @property
   def is_authenticated(self) -> bool:

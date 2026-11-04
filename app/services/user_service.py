@@ -1,3 +1,4 @@
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from fastapi import HTTPException, status
@@ -79,6 +80,9 @@ class UserService:
 
      update_data = user_update.model_dump(exclude_unset=True)
      await UserService.verifier_email_libre(db, update_data.get("email"), user.id)
+     if "expert_pole_ids" in update_data:
+        ids = update_data.pop("expert_pole_ids") or []
+        user.expert_poles = json.dumps(sorted(set(ids))) if ids else None
      for field, value in update_data.items():
         setattr(user, field, value)
 

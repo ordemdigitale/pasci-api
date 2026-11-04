@@ -136,6 +136,8 @@ async def update_user_by_admin(
         # Strip privilege-escalation fields
         user_update.is_superuser = None
         user_update.is_staff = None
+        user_update.is_expert = None
+        user_update.expert_pole_ids = None
         # Ensure crasc_id cannot be changed to another CRASC
         if user_update.crasc_id is not None and user_update.crasc_id != current_user.crasc_id:
             raise HTTPException(status_code=403, detail="Vous ne pouvez pas assigner un autre CRASC.")

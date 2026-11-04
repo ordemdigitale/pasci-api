@@ -1,6 +1,6 @@
 # app/schemas/user.py | SQLModel schemas for User
 # schemas/user.py
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from uuid import UUID
@@ -54,6 +54,8 @@ class UserRead(BaseModel):
   is_staff: bool
   is_superuser: bool
   is_redacteur: bool
+  is_expert: bool = False
+  expert_pole_ids: List[int] = []
   crasc_id: Optional[int]
   osc_id: Optional[int] = None
   date_joined: datetime
@@ -94,6 +96,8 @@ class UserUpdateAdmin(BaseModel):
   is_staff: Optional[bool] = None
   is_superuser: Optional[bool] = None
   is_redacteur: Optional[bool] = None
+  is_expert: Optional[bool] = None
+  expert_pole_ids: Optional[List[int]] = None
   crasc_id: Optional[int] = None
   osc_id: Optional[int] = None
   avatar: Optional[str] = None

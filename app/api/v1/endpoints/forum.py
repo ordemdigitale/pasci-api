@@ -140,6 +140,7 @@ async def _pole_response(db: AsyncSession, pole: PoleConcertation) -> PoleConcer
     regions = _regions_avec_effectifs(pole)
     pole_data.regions_influence = _json_list([nom for nom, _ in regions])
     pole_data.regions_effectifs = [{"nom": nom, "nb": nb} for nom, nb in regions]
+    pole_data.experts = await _experts_du_pole(db, pole.id)
     return pole_data
 
 
@@ -165,8 +166,18 @@ def _is_sondage_closed(sondage: PoleSondage) -> bool:
     return sondage.status != "ouvert" or bool(closes_at and closes_at <= datetime.now(timezone.utc))
 
 
+def _peut_animer(user: User, pole_id: Optional[int]) -> bool:
+    """Staff, superuser ou expert du pôle : modère et anime ses discussions."""
+    return bool(user.is_superuser or user.is_staff or user.anime_le_pole(pole_id))
+
+
+async def _experts_du_pole(db: AsyncSession, pole_id: int) -> List[dict]:
+    experts = (await db.execute(select(User).where(User.is_expert == True, User.is_active == True))).scalars().all()  # noqa: E712
+    return [{"id": str(u.id), "nom": _nom_auteur(u)} for u in experts if u.anime_le_pole(pole_id)]
+
+
 def _user_can_access_pole(user: User, pole: PoleConcertation) -> bool:
-    if user.is_superuser or user.is_staff:
+    if _peut_animer(user, pole.id):
         return True
     if not user.osc_id:
         return False
@@ -923,6 +934,7 @@ async def get_sujet(
         **ForumSujetRead.model_validate(sujet).model_dump(),
         commentaires=commentaires_data,
         pieces_jointes=groupes.get("sujet", []),
+        experts=await _experts_du_pole(db, pole.id),
     )
 
 
@@ -934,14 +946,14 @@ async def update_sujet(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Modifier un sujet (auteur ou staff)"""
+    """Modifier un sujet (auteur, staff ou expert du pôle)"""
     sujet_result = await db.execute(
         select(ForumSujet).where(ForumSujet.slug == sujet_slug)
     )
     sujet = sujet_result.scalars().first()
     if not sujet:
         raise HTTPException(status_code=404, detail="Sujet non trouvé.")
-    if sujet.author_id != current_user.id and not current_user.is_staff:
+    if sujet.author_id != current_user.id and not _peut_animer(current_user, sujet.pole_id):
         raise HTTPException(status_code=403, detail="Action non autorisée.")
     for key, value in sujet_update.model_dump(exclude_unset=True).items():
         setattr(sujet, key, value)
@@ -957,14 +969,14 @@ async def delete_sujet(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Supprimer un sujet (auteur ou staff)"""
+    """Supprimer un sujet (auteur, staff ou expert du pôle)"""
     sujet_result = await db.execute(
         select(ForumSujet).where(ForumSujet.slug == sujet_slug)
     )
     sujet = sujet_result.scalar_one_or_none()
     if not sujet:
         raise HTTPException(status_code=404, detail="Sujet non trouvé.")
-    if sujet.author_id != current_user.id and not current_user.is_staff:
+    if sujet.author_id != current_user.id and not _peut_animer(current_user, sujet.pole_id):
         raise HTTPException(status_code=403, detail="Action non autorisée.")
     # Fichiers du sujet et de ses messages (les lignes partent en cascade)
     ids_commentaires = (await db.execute(
@@ -1056,21 +1068,21 @@ async def delete_commentaire(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Supprimer un commentaire (auteur ou staff)"""
+    """Supprimer un commentaire (auteur, staff ou expert du pôle)"""
     result = await db.execute(
         select(ForumCommentaire).where(ForumCommentaire.id == commentaire_id)
     )
     comment = result.scalar_one_or_none()
     if not comment:
         raise HTTPException(status_code=404, detail="Commentaire non trouvé.")
-    if comment.author_id != current_user.id and not current_user.is_staff:
-        raise HTTPException(status_code=403, detail="Action non autorisée.")
-
-    # Decrement count
     sujet_result = await db.execute(
         select(ForumSujet).where(ForumSujet.id == comment.sujet_id)
     )
     sujet = sujet_result.scalars().first()
+    if comment.author_id != current_user.id and not _peut_animer(current_user, sujet.pole_id if sujet else None):
+        raise HTTPException(status_code=403, detail="Action non autorisée.")
+
+    # Decrement count
     if sujet and sujet.comments_count > 0:
         sujet.comments_count -= 1
 
@@ -1091,6 +1103,8 @@ async def _sujet_pour_staff(db: AsyncSession, sujet_id: int, current_user: User)
     sujet = (await db.execute(select(ForumSujet).where(ForumSujet.id == sujet_id))).scalars().first()
     if not sujet:
         raise HTTPException(status_code=404, detail="Sujet non trouvé.")
+    if not _peut_animer(current_user, sujet.pole_id):
+        raise HTTPException(status_code=403, detail="Action non autorisée.")
     pole = (await db.execute(select(PoleConcertation).where(PoleConcertation.id == sujet.pole_id))).scalars().first()
     return sujet, pole
 
@@ -1099,10 +1113,10 @@ async def _sujet_pour_staff(db: AsyncSession, sujet_id: int, current_user: User)
 async def contributions_sujet(
     sujet_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Toutes les idées d'une discussion rassemblées pour la synthèse (staff) :
+    Toutes les idées d'une discussion rassemblées pour la synthèse (staff ou expert du pôle) :
     chaque contribution avec son auteur, son OSC, sa date et ses médias,
     les statistiques de participation et un brouillon de synthèse automatique.
     """
@@ -1155,10 +1169,10 @@ async def enregistrer_synthese(
     sujet_id: int,
     payload: SyntheseUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_staff_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Enregistre la synthèse d'une discussion et/ou la clôt (staff). Une
+    Enregistre la synthèse d'une discussion et/ou la clôt (staff ou expert du pôle). Une
     synthèse vide la retire ; rouvrir la discussion (est_clos=false) permet
     de nouveau les messages.
     """
