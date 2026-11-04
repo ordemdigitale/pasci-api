@@ -157,6 +157,10 @@ TYPES_PTF = [
   {"nom": "ONG internationales", "description": "Organisations non gouvernementales internationales"},
   {"nom": "Fondations", "description": "Fondations publiques ou privées"},
   {"nom": "Secteur privé", "description": "Entreprises et fondations d'entreprise"},
+  {"nom": "Associations", "description": "Associations nationales et internationales"},
+  {"nom": "Ministères", "description": "Ministères et services de l'État"},
+  {"nom": "Collectivités territoriales", "description": "Régions, districts, communes"},
+  {"nom": "Pays", "description": "États partenaires"},
   {"nom": "Autres", "description": "Autres partenaires techniques et financiers"},
 ]
 

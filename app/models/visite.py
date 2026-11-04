@@ -10,6 +10,9 @@ class Visite(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     path: str = Field(max_length=500, nullable=False)
     ip_hash: str = Field(max_length=64, nullable=False)   # SHA256 tronqué — pas de données perso
+    # Connexion (visite du site, close après 30 min d'inactivité) : identifiant
+    # anonyme tiré par le navigateur. Sans lui, la connexion est IP + jour.
+    session_id: Optional[str] = Field(default=None, max_length=64, nullable=True, index=True)
     date_visite: date = Field(sa_column=Column(Date, nullable=False))
 
     created_at: datetime = Field(

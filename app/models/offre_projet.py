@@ -24,7 +24,8 @@ class OffreProjet(SQLModel, table=True):
 
     # Informations de base
     domaine: str = Field(max_length=100, nullable=False, description="Domaine d'intervention")
-    zone: str = Field(max_length=100, nullable=False, description="Zone géographique")
+    # Une ou plusieurs zones d'exécution, séparées par des virgules
+    zone: str = Field(sa_column=Column(TEXT, nullable=False), description="Zones d'exécution")
     durée: str = Field(max_length=50, nullable=False, description="Durée du projet")
     budget: str = Field(max_length=100, nullable=False, description="Budget du projet")
     offre_url: Optional[str] = Field(default=None, nullable=True, max_length=500, description="Lien de l'offre")
