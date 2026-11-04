@@ -95,6 +95,8 @@ class Formation(SQLModel, table=True):
     competences_requises: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
     chronogramme: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True), description="Déroulé de la formation")
     is_pinned: bool = Field(default=False, description="Épinglée en tête de la page Formations")
+    # Formation commune à tous les CRASC : visible par chaque CRASC (admin et site)
+    tous_crasc: bool = Field(default=False)
 
     # Relations
     rubrique_id: Optional[int] = Field(default=None, foreign_key="formation_rubrique.id", ondelete="SET NULL")

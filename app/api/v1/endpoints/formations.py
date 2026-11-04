@@ -549,6 +549,7 @@ async def create_formation(
     competences_requises: Optional[str] = Form(None),
     chronogramme: Optional[str] = Form(None),
     is_pinned: bool = Form(False),
+    tous_crasc: bool = Form(False),
     thumbnail: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_redacteur_or_staff),
@@ -593,6 +594,9 @@ async def create_formation(
     # Rédacteur CRASC : forcer son propre CRASC
     if current_user.is_redacteur and not current_user.is_staff and not current_user.is_superuser:
         crasc_id_int = current_user.crasc_id
+        tous_crasc = False
+    if tous_crasc:
+        crasc_id_int = None  # commune à tous les CRASC
 
     # Parse dates
     start_date_parsed = datetime.fromisoformat(start_date) if start_date else None
@@ -672,6 +676,7 @@ async def create_formation(
             competences_requises=competences_requises or None,
             chronogramme=chronogramme or None,
             is_pinned=is_pinned,
+            tous_crasc=tous_crasc,
             thumbnail_path=saved_path,
             statut_publication=statut_pub,
         )
@@ -746,7 +751,8 @@ async def get_formations(
         )
 
     if crasc_id:
-        query = query.where(Formation.crasc_id == crasc_id)
+        # Les formations communes à tous les CRASC apparaissent dans chaque CRASC
+        query = query.where(or_(Formation.crasc_id == crasc_id, Formation.tous_crasc == True))  # noqa: E712
 
     if osc_id:
         query = query.where(Formation.osc_id == osc_id)
@@ -884,6 +890,7 @@ async def get_formation_update_form(
     competences_requises: Optional[str] = Form(None),
     chronogramme: Optional[str] = Form(None),
     is_pinned: Optional[bool] = Form(None),
+    tous_crasc: Optional[bool] = Form(None),
 ) -> FormationUpdate:
     """Parse form data into FormationUpdate"""
     # Only include fields that are actually provided
@@ -966,6 +973,10 @@ async def get_formation_update_form(
         update_dict["duree_heures"] = float(duree_heures.replace(",", ".")) if duree_heures.strip() else None
     if is_pinned is not None:
         update_dict["is_pinned"] = is_pinned
+    if tous_crasc is not None:
+        update_dict["tous_crasc"] = tous_crasc
+        if tous_crasc:
+            update_dict["crasc_id"] = None  # commune à tous les CRASC
 
     return FormationUpdate(**update_dict)
 
@@ -1209,6 +1220,9 @@ async def update_formation(
     update_data = formation_update.model_dump(exclude_unset=True)
     if is_redacteur_only:
         update_data.pop("is_pinned", None)  # l'épinglage reste au staff
+        update_data.pop("tous_crasc", None)  # une formation commune se décide au niveau du staff
+        if "crasc_id" in update_data and update_data["crasc_id"] is None:
+            update_data.pop("crasc_id")
     for key, value in update_data.items():
         setattr(formation, key, value)
     if update_data.get("is_pinned"):

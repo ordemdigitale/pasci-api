@@ -195,6 +195,7 @@ class FormationBase(BaseModel):
     competences_requises: Optional[str] = None
     chronogramme: Optional[str] = None
     is_pinned: bool = False
+    tous_crasc: bool = False
 
 
 class FormationCreate(FormationBase):
@@ -232,6 +233,7 @@ class FormationUpdate(BaseModel):
     competences_requises: Optional[str] = None
     chronogramme: Optional[str] = None
     is_pinned: Optional[bool] = None
+    tous_crasc: Optional[bool] = None
 
 
 class FormationRead(FormationBase):
