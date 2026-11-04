@@ -1,7 +1,7 @@
 # app/api/v1/endpoints/news.py | News endpoints
 import os
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 
 import slugify
@@ -114,6 +114,20 @@ def validate_and_process_image(file: UploadFile) -> str:
         )
 
 
+def _active():
+    """Actualité sans date d'expiration, ou dont la date n'est pas passée."""
+    return or_(News.date_expiration.is_(None), News.date_expiration >= date.today())
+
+
+def _date_expiration(valeur: Optional[str]) -> Optional[date]:
+    if not valeur or not valeur.strip():
+        return None
+    try:
+        return date.fromisoformat(valeur.strip()[:10])
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Date d'expiration invalide (format AAAA-MM-JJ).")
+
+
 @news_router.post("", response_model=NewsRead, status_code=status.HTTP_201_CREATED)
 async def create_news(
     title: Optional[str] = Form(None),
@@ -121,6 +135,7 @@ async def create_news(
     thumbnail: Optional[UploadFile] = File(None),
     crasc_id: str = Form(""),
     osc_id: str = Form(""),
+    date_expiration: str = Form("", description="AAAA-MM-JJ ; vide = jamais désactivée"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_redacteur_or_staff),
 ):
@@ -169,6 +184,7 @@ async def create_news(
         content=content,
         crasc_id=crasc_id_int,
         osc_id=osc_id_int,
+        date_expiration=_date_expiration(date_expiration),
         thumbnail_path=saved_path,
         statut_publication=statut,
     )
@@ -216,6 +232,7 @@ async def get_all_news(
     search: Optional[str] = Query(None, description="Rechercher dans titre/contenu"),
     sort_by: str = Query("created_at", description="Champ de tri (created_at, title)"),
     sort_order: str = Query("desc", description="Ordre de tri (asc, desc)"),
+    statut: str = Query("actives", description="actives (par défaut) | archives | toutes"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -234,6 +251,12 @@ async def get_all_news(
         selectinload(News.crasc),
         selectinload(News.osc)
     ).where(News.statut_publication == "publie")
+
+    # Désactivation automatique : les actualités expirées passent dans les archives
+    if statut == "archives":
+        query = query.where(~_active())
+    elif statut != "toutes":
+        query = query.where(_active())
 
     # Apply filters
     if crasc_id:
@@ -280,7 +303,7 @@ async def get_spotlight_news_per_crasc(db: AsyncSession = Depends(get_db)):
     query = (
         select(News)
         .distinct(News.crasc_id)
-        .where(News.crasc_id.is_not(None), News.statut_publication == "publie")
+        .where(News.crasc_id.is_not(None), News.statut_publication == "publie", _active())
         .options(selectinload(News.crasc), selectinload(News.osc))
         .order_by(News.crasc_id, News.id.desc())
     )
@@ -301,7 +324,7 @@ async def get_recent_news(
     """
     query = (
         select(News)
-        .where(News.statut_publication == "publie")
+        .where(News.statut_publication == "publie", _active())
         .options(selectinload(News.crasc), selectinload(News.osc))
         .order_by(desc(News.created_at))
         .limit(limit)
@@ -353,7 +376,8 @@ async def get_news_update_form(
     title: Optional[str] = Form(None),
     content: Optional[str] = Form(None),
     crasc_id: str = Form(""),
-    osc_id: str = Form("")
+    osc_id: str = Form(""),
+    date_expiration: Optional[str] = Form(None),
 ) -> NewsUpdate:
     """Parse form data into NewsUpdate"""
     # Only include fields that are actually provided
@@ -371,7 +395,11 @@ async def get_news_update_form(
     
     if osc_id and osc_id != "":
         update_dict["osc_id"] = int(osc_id)
-    
+
+    # Champ envoyé vide : l'actualité n'expire plus
+    if date_expiration is not None:
+        update_dict["date_expiration"] = _date_expiration(date_expiration)
+
     return NewsUpdate(**update_dict)
 
 

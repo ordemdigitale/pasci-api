@@ -1,7 +1,7 @@
 # models/crasc.py (Model name CRASC + related models)
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer, Table, UniqueConstraint, JSON
+from sqlalchemy import Column, Date, String, DateTime, func, TEXT, ForeignKey, Integer, Table, UniqueConstraint, JSON
 from sqlalchemy.event import listens_for
 from typing import Any, Dict, Optional, List
 import slugify, re
@@ -349,6 +349,9 @@ class News(SQLModel, table=True):
   slug: Optional[str] = Field(default=None, nullable=True, max_length=100, unique=True)
   # brouillon | en_attente | publie | rejete
   statut_publication: str = Field(default="publie", max_length=20)
+  # Désactivation automatique : après cette date, l'actualité quitte les
+  # listes publiques et passe dans les archives de l'OSC (vide = jamais)
+  date_expiration: Optional[date] = Field(default=None, sa_column=Column(Date, nullable=True))
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
     sa_column=Column(DateTime(timezone=True), server_default=func.now())

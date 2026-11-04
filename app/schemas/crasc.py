@@ -1,7 +1,7 @@
 from pydantic import BaseModel, computed_field, field_validator
 from app.services import osc_etiquettes
 from typing import Any, Dict, Optional, List, Generic, TypeVar, Literal
-from datetime import datetime
+from datetime import date, datetime
 from math import isnan
 from sqlmodel import Field
 from app.core.config import settings
@@ -439,6 +439,12 @@ class NewsBase(BaseModel):
   # IDs are optional in the base so they can be omitted in Create/Read if needed
   osc_id: Optional[int] = Field(default=None, foreign_key="osc.id")
   crasc_id: Optional[int] = Field(default=None, foreign_key="crascregion.id")
+  date_expiration: Optional[date] = None
+  @computed_field
+  @property
+  def est_archivee(self) -> bool:
+    """Date d'expiration passée : l'actualité est dans les archives de l'OSC."""
+    return bool(self.date_expiration and self.date_expiration < date.today())
   @computed_field
   @property
   def thumbnail_url(self) -> str:
@@ -467,6 +473,7 @@ class NewsUpdate(BaseModel):
   content: Optional[str] = None
   osc_id: Optional[int] = None
   crasc_id: Optional[int] = None
+  date_expiration: Optional[date] = None
 
 
 # CrascVideo Schemas
