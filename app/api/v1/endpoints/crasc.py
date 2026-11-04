@@ -1055,8 +1055,12 @@ async def get_all_osc(
     if sort_by not in TRI_OSC and sort_by not in TRIS_SPECIAUX:
         raise HTTPException(status_code=422, detail=f"Tri impossible sur « {sort_by} ».")
 
-    # Un admin CRASC ne voit que les OSCs de son CRASC
-    if current_user and current_user.is_staff and not current_user.is_superuser:
+    # Un admin CRASC (ou un rédacteur CRASC) ne voit que les OSCs de son CRASC
+    if current_user and not current_user.is_superuser and current_user.crasc_id and (
+        current_user.is_staff or current_user.is_redacteur
+    ):
+        filters.append(Osc.crasc_id == current_user.crasc_id)
+    elif current_user and current_user.is_staff and not current_user.is_superuser:
         filters.append(Osc.crasc_id == current_user.crasc_id)
     elif crasc_id:
         filters.append(Osc.crasc_id == crasc_id)
