@@ -1036,6 +1036,10 @@ async def get_all_osc(
     faitiere: Optional[bool] = Query(None, description="Organisations faîtières (réseau, fédération, plateforme, confédération)"),
     sort_by: str = Query("name", description="Champ du questionnaire, document_formalisation ou score_autoevaluation"),
     sort_order: Literal["asc", "desc"] = Query("asc"),
+    inclure_non_publiees: bool = Query(
+        False,
+        description="Back-office (rédaction) : inclure les OSC pas encore mises en ligne, pour les associer à un contenu",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_current_user),
 ):
@@ -1065,9 +1069,12 @@ async def get_all_osc(
     elif crasc_id:
         filters.append(Osc.crasc_id == crasc_id)
 
-    # Seules les OSCs publiées et visibles sont comptées (identique partout)
-    filters.append(Osc.is_visible == True)
-    filters.append(Osc.statut_publication == "publie")
+    # Seules les OSCs publiées et visibles sont comptées (identique partout),
+    # sauf pour associer une OSC à un contenu depuis le back-office
+    redaction = current_user and (current_user.is_superuser or current_user.is_staff or current_user.is_redacteur)
+    if not (inclure_non_publiees and redaction):
+        filters.append(Osc.is_visible == True)
+        filters.append(Osc.statut_publication == "publie")
 
     count_query = select(func.count()).select_from(Osc).where(*filters)
     total = (await db.execute(count_query)).scalar()

@@ -1216,3 +1216,92 @@ async def send_paiement_rejete(
         subject=f"Paiement non validé — {formation_title}",
         html=html,
     )
+
+
+# ── Actualité rejetée (au point focal communication) ──────────
+
+_ACTUALITE_REJETEE = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#dc2626;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">Actualité non validée</h2>
+            <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6;">
+              Bonjour,<br><br>
+              L'actualité <strong>« {{ titre | e }} »</strong>{% if osc %} de {{ osc | e }}{% endif %}
+              n'a pas été validée{% if crasc %} par le {{ crasc | e }}{% endif %}. Vous la trouverez ci-dessous
+              pour la corriger et la soumettre à nouveau.
+            </p>
+            {% if motif %}
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-bottom:24px;">
+              <tr><td style="padding:20px;">
+                <p style="margin:0 0 6px;font-size:12px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;">Motif</p>
+                <p style="margin:0;font-size:14px;color:#555;white-space:pre-wrap;">{{ motif | e }}</p>
+              </td></tr>
+            </table>
+            {% endif %}
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:24px;">
+              <tr><td style="padding:20px;">
+                <p style="margin:0 0 6px;font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;">Article rejeté</p>
+                <p style="margin:0 0 12px;font-size:16px;font-weight:700;color:#1a1a1a;">{{ titre | e }}</p>
+                <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;white-space:pre-wrap;">{{ contenu | e }}</p>
+              </td></tr>
+            </table>
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              Cet email a été envoyé à {{ destinataire | e }}.<br>
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+def _html_en_texte(contenu: str) -> str:
+    """Texte brut d'un contenu de l'éditeur (HTML) : paragraphes et sauts de ligne conservés."""
+    import html as _html
+    import re
+    texte = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", "", contenu)
+    texte = re.sub(r"(?i)<br\s*/?>", "\n", texte)
+    texte = re.sub(r"(?i)</li>", "\n", texte)
+    texte = re.sub(r"(?i)</(p|div|ul|ol|h[1-6]|blockquote)>", "\n\n", texte)
+    texte = re.sub(r"(?i)<li[^>]*>", "• ", texte)
+    texte = re.sub(r"<[^>]+>", "", texte)
+    texte = _html.unescape(texte).replace("\xa0", " ")
+    return re.sub(r"\n{3,}", "\n\n", texte).strip()
+
+
+async def send_actualite_rejetee(
+    *,
+    destinataire: str,
+    titre: str,
+    contenu: str,
+    motif: Optional[str] = None,
+    crasc: Optional[str] = None,
+    osc: Optional[str] = None,
+) -> None:
+    html = _render(
+        _ACTUALITE_REJETEE,
+        destinataire=destinataire,
+        titre=titre,
+        contenu=_html_en_texte(contenu),
+        motif=motif or "",
+        crasc=crasc,
+        osc=osc,
+    )
+    await _send(to=destinataire, subject=f"Actualité non validée — {titre}", html=html)

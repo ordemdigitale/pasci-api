@@ -1,5 +1,6 @@
 # models/crasc.py (Model name CRASC + related models)
 from datetime import date, datetime, timezone
+from uuid import UUID
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, Date, String, DateTime, func, TEXT, ForeignKey, Integer, Table, UniqueConstraint, JSON
 from sqlalchemy.event import listens_for
@@ -341,6 +342,9 @@ class News(SQLModel, table=True):
   
   crasc_id: Optional[int] = Field(default=None, nullable=True, foreign_key="crasc.id", ondelete="SET NULL")
   crasc: Optional[Crasc] = Relationship(back_populates="news_items")
+
+  # Rédacteur de l'actualité (point focal communication) : reçoit l'article s'il est rejeté
+  auteur_id: Optional[UUID] = Field(default=None, nullable=True, foreign_key="user.id", ondelete="SET NULL")
 
   # Many-to-Many relationship with Tags
   tags: List["Tag"] = Relationship(back_populates="news_items", link_model=NewsTag)

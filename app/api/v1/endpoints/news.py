@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Optional, List
 
 import slugify
-from fastapi import APIRouter, HTTPException, status, UploadFile, Depends, File, Form, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Query
 from PIL import Image
 from sqlalchemy.orm import selectinload
 from sqlmodel import desc, select, or_
@@ -20,6 +20,7 @@ from app.schemas.crasc import (
 )
 from app.models.crasc import News
 from app.models.users import User
+from app.services.email import send_actualite_rejetee
 from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
 
 news_router = APIRouter()
@@ -187,6 +188,7 @@ async def create_news(
         date_expiration=_date_expiration(date_expiration),
         thumbnail_path=saved_path,
         statut_publication=statut,
+        auteur_id=current_user.id,
     )
 
     # Check for duplicate title
@@ -264,6 +266,7 @@ async def publier_mon_actualite(
         date_expiration=_date_expiration(date_expiration),
         thumbnail_path=validate_and_process_image(thumbnail) if thumbnail and thumbnail.filename else "default.png",
         statut_publication="en_attente",
+        auteur_id=current_user.id,
     )
     db.add(news)
     await db.commit()
@@ -520,6 +523,7 @@ async def update_news(
         setattr(news, key, value)
     if is_redacteur_only:
         news.statut_publication = "en_attente"
+        news.auteur_id = news.auteur_id or current_user.id
 
     # Update slug if title changed
     if "title" in update_data:
@@ -559,14 +563,38 @@ async def list_news_en_attente(
     return result.scalars().all()
 
 
+async def _destinataires_rejet(db: AsyncSession, news: News) -> List[str]:
+    """
+    Point focal communication à prévenir d'un rejet : l'auteur de l'actualité ;
+    pour les actualités antérieures (sans auteur), les rédacteurs du CRASC,
+    à défaut le compte de l'OSC.
+    """
+    if news.auteur_id:
+        auteur = await db.get(User, news.auteur_id)
+        if auteur and auteur.email and auteur.is_active:
+            return [auteur.email]
+    for condition in (
+        (User.crasc_id == news.crasc_id) & (User.is_redacteur == True) if news.crasc_id else None,
+        User.osc_id == news.osc_id if news.osc_id else None,
+    ):
+        if condition is None:
+            continue
+        emails = (await db.execute(select(User.email).where(condition, User.is_active == True))).scalars().all()
+        if emails:
+            return sorted(set(emails))
+    return []
+
+
 @news_router.patch("/{news_slug}/valider", response_model=NewsReadDetail)
 async def valider_news(
     news_slug: str,
+    background_tasks: BackgroundTasks,
     action: str = Query(..., description="publie ou rejete"),
+    motif: Optional[str] = Query(None, max_length=1000, description="Motif du rejet, transmis au rédacteur"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
 ):
-    """Approuver ou rejeter une actualité (staff only)."""
+    """Approuver ou rejeter une actualité (staff only). Un rejet est envoyé par email au rédacteur."""
     if action not in ("publie", "rejete"):
         raise HTTPException(status_code=400, detail="Action invalide. Utilisez 'publie' ou 'rejete'.")
     result = await db.execute(
@@ -575,10 +603,24 @@ async def valider_news(
     news = result.scalar_one_or_none()
     if not news:
         raise HTTPException(status_code=404, detail="Actualité non trouvée.")
+    # Un admin CRASC ne modère que les actualités de son CRASC
+    if not current_user.is_superuser and news.crasc_id != current_user.crasc_id:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez modérer que les actualités de votre CRASC.")
     news.statut_publication = action
     news.updated_at = datetime.now()
     await db.commit()
     await db.refresh(news)
+    if action == "rejete":
+        for email in await _destinataires_rejet(db, news):
+            background_tasks.add_task(
+                send_actualite_rejetee,
+                destinataire=email,
+                titre=news.title,
+                contenu=news.content or "",
+                motif=(motif or "").strip() or None,
+                crasc=news.crasc.name if news.crasc else None,
+                osc=news.osc.name if news.osc else None,
+            )
     return news
 
 
