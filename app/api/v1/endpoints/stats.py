@@ -11,7 +11,7 @@ from app.models.jobs import Jobs
 from app.models.key_stats import KeyStats
 from app.models.users import User
 from app.models.formation import Formation, FormationInscription
-from app.schemas.formation import CATEGORIES_OSC
+from app.schemas.formation import CATEGORIES_ACTEURS, CATEGORIES_OSC
 
 stats_router = APIRouter()
 
@@ -359,30 +359,30 @@ async def get_formation_stats(db: AsyncSession = Depends(get_db)) -> Dict[str, A
     )
     total_osc_formees = osc_formees_res.scalar_one()
 
-    # Répartition des inscrits par catégorie d'acteurs
-    cat_query = (
+    # Répartition des inscrits par public formé : les 4 catégories d'acteurs,
+    # toujours affichées (même à 0). Les anciennes inscriptions « OSC » comptent
+    # avec les OSC ; celles d'avant le champ obligatoire (sans catégorie) ne
+    # figurent pas dans la répartition (« Non renseigné » retiré à la demande PdoC).
+    cat_result = await db.execute(
         select(
             FormationInscription.categorie_acteur.label("categorie"),
             func.count(FormationInscription.id).label("total"),
         )
+        .where(FormationInscription.categorie_acteur.is_not(None))
         .group_by(FormationInscription.categorie_acteur)
-        .order_by(desc("total"))
     )
-    cat_result = await db.execute(cat_query)
-    cat_rows = cat_result.all()
-
-    par_categorie = [
-        {
-            "categorie": row.categorie or "Non renseigné",
-            "total": row.total,
-        }
-        for row in cat_rows
-    ]
+    totaux = {categorie: 0 for categorie in CATEGORIES_ACTEURS}
+    for row in cat_result.all():
+        categorie = CATEGORIES_ACTEURS[0] if row.categorie in CATEGORIES_OSC else row.categorie
+        if categorie in totaux:
+            totaux[categorie] += row.total
+    par_categorie = [{"categorie": c, "total": t} for c, t in totaux.items()]
 
     return {
         "total_formations": total_formations,
         "total_inscrits": total_inscrits,
         "total_osc_formees": total_osc_formees,
+        "total_grand_public_forme": totaux["Grand public"],
         "par_categorie_acteur": par_categorie,
     }
 
