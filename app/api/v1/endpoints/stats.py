@@ -3,11 +3,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel import select, func, desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.database.session import get_db
 from app.models.crasc import Crasc, Region, Osc, OscType, News
 from app.models.jobs import Jobs
+from app.models.adhesion import DemandeAdhesion
+from app.models.documentation import Documentation
+from app.core.auth import get_current_staff_user
 from app.models.key_stats import KeyStats
 from app.models.users import User
 from app.models.formation import Formation, FormationInscription
@@ -413,3 +416,96 @@ async def get_key_stats_summary(
             for stat in key_stats
         ]
     }
+
+
+# ── Tableau de bord du back-office : compteurs et activités récentes ──
+
+def _date_utc(valeur: Optional[datetime]) -> Optional[datetime]:
+    """Dates avec ou sans fuseau (selon les tables) rendues comparables."""
+    if valeur is None:
+        return None
+    return valeur if valeur.tzinfo else valeur.replace(tzinfo=timezone.utc)
+
+
+@stats_router.get("/back-office")
+async def get_back_office_stats(
+    limite: int = Query(8, ge=1, le=50, description="Nombre d'activités récentes"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+) -> Dict[str, Any]:
+    """
+    Compteurs et activités récentes réels du tableau de bord (staff). Un admin
+    CRASC ne voit que ce qui concerne son CRASC (OSC, actualités, demandes
+    d'adhésion, formations).
+    """
+    crasc = None
+    if not current_user.is_superuser and current_user.crasc_id:
+        crasc = await db.get(Crasc, current_user.crasc_id)
+
+    def portee(colonne_crasc):
+        return [colonne_crasc == crasc.id] if crasc else []
+
+    adhesions_portee = [DemandeAdhesion.crasc_nom.ilike(f"%{crasc.name}%")] if crasc else []
+
+    async def compter(*conditions) -> int:
+        return (await db.execute(select(func.count()).where(*conditions))).scalar_one()
+
+    compteurs = {
+        "actualites_publiees": await compter(News.statut_publication == "publie", *portee(News.crasc_id)),
+        "actualites_en_attente": await compter(News.statut_publication == "en_attente", *portee(News.crasc_id)),
+        "adhesions_en_attente": await compter(DemandeAdhesion.statut == "en_attente", *adhesions_portee),
+        "adhesions_total": await compter(DemandeAdhesion.id.is_not(None), *adhesions_portee),
+        "offres_emploi_actives": await compter(Jobs.is_expired == False, Jobs.statut_publication == "publie"),
+    }
+
+    activites: List[Dict[str, Any]] = []
+
+    def ajouter(type_, titre, detail, date, lien):
+        if date:
+            activites.append({"type": type_, "titre": titre, "detail": detail, "date": _date_utc(date), "lien": lien})
+
+    for o in (await db.execute(
+        select(Osc).where(*portee(Osc.crasc_id)).order_by(desc(Osc.created_at)).limit(limite)
+    )).scalars():
+        ajouter("osc", "Nouvelle OSC enregistrée", f"{o.name} a été ajoutée", o.created_at,
+                f"/admin/gestion-des-crasc/osc/{o.slug}" if o.slug else "/admin/gestion-des-crasc/osc")
+
+    for d in (await db.execute(
+        select(DemandeAdhesion).where(*adhesions_portee).order_by(desc(DemandeAdhesion.created_at)).limit(limite)
+    )).scalars():
+        ajouter("adhesion", "Demande d'adhésion", d.nom_organisation, d.created_at, "/admin/demandes-adhesion")
+
+    for n in (await db.execute(
+        select(News).where(News.statut_publication.in_(("publie", "en_attente")), *portee(News.crasc_id))
+        .order_by(desc(News.created_at)).limit(limite)
+    )).scalars():
+        en_attente = n.statut_publication == "en_attente"
+        ajouter("actualite", "Actualité à valider" if en_attente else "Actualité publiée", n.title, n.created_at,
+                "/admin/moderation" if en_attente else f"/admin/gestion-des-actualites/{n.slug}/modifier")
+
+    for f in (await db.execute(
+        select(Formation).where(*portee(Formation.crasc_id)).order_by(desc(Formation.created_at)).limit(limite)
+    )).scalars():
+        ajouter("formation", "Formation ajoutée", f.title, f.created_at, f"/admin/formations/{f.slug}/modifier")
+
+    if not crasc:
+        for j in (await db.execute(
+            select(Jobs).where(Jobs.statut_publication == "publie").order_by(desc(Jobs.created_at)).limit(limite)
+        )).scalars():
+            ajouter("emploi", "Offre d'emploi publiée", f"{j.title} - {j.employer}", j.publication_date or j.created_at,
+                    f"/admin/emplois/{j.slug}/modifier" if j.slug else "/admin/emplois")
+
+        for u in (await db.execute(
+            select(User).order_by(desc(User.date_joined)).limit(limite)
+        )).scalars():
+            ajouter("utilisateur", "Nouvel utilisateur", f"{u.full_name or u.email} a créé un compte", u.date_joined,
+                    "/admin/utilisateurs")
+
+        for r in (await db.execute(
+            select(Documentation).order_by(desc(Documentation.created_at)).limit(limite)
+        )).scalars():
+            ajouter("ressource", "Ressource ajoutée", r.title, r.created_at,
+                    f"/admin/ressources/{r.slug}/modifier" if r.slug else "/admin/ressources")
+
+    activites.sort(key=lambda a: a["date"], reverse=True)
+    return {"compteurs": compteurs, "activites": activites[:limite]}
