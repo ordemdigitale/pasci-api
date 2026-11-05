@@ -29,7 +29,7 @@ _INSCRIPTION_GRATUITE = """
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <!-- Body -->
@@ -74,7 +74,7 @@ _INSCRIPTION_GRATUITE = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -96,7 +96,7 @@ _PAIEMENT_CONFIRME = """
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -333,7 +333,7 @@ _MERCI_DON = """
         <tr>
           <td style="background:#2A591D;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <!-- Body -->
@@ -382,7 +382,7 @@ _MERCI_DON = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ donor_email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -406,7 +406,7 @@ _RESET_PASSWORD = """
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <!-- Body -->
@@ -437,7 +437,7 @@ _RESET_PASSWORD = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ user_email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -485,7 +485,7 @@ _CONTACT_ACCUSE = """
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -511,7 +511,7 @@ _CONTACT_ACCUSE = """
             </p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -683,7 +683,7 @@ _CONTACT_REPONSE = """
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -707,7 +707,7 @@ _CONTACT_REPONSE = """
 
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               {% if auteur %}Réponse envoyée par {{ auteur }} — équipe PdoC.<br>{% endif %}
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -793,7 +793,7 @@ _CRASC_CONTACT_NOTIF = """
             <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#374151;">Message :</p>
             <p style="margin:0 0 24px;font-size:14px;color:#555;background:#f9fafb;border-left:3px solid #2A591D;padding:12px 16px;border-radius:4px;line-height:1.7;white-space:pre-wrap;">{{ message }}</p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -815,7 +815,7 @@ _CRASC_CONTACT_ACCUSE = """
         <tr>
           <td style="background:#2A591D;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -835,7 +835,7 @@ _CRASC_CONTACT_ACCUSE = """
             </table>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -927,7 +927,7 @@ _WELCOME_OSC = """
         <tr>
           <td style="background:#2a591d;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -972,7 +972,7 @@ _WELCOME_OSC = """
             </p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ user_email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -1023,7 +1023,7 @@ _INSTRUCTIONS_PAIEMENT_MANUEL = """
         <tr>
           <td style="background:#E05017;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -1070,7 +1070,7 @@ _INSTRUCTIONS_PAIEMENT_MANUEL = """
             </p>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -1120,7 +1120,7 @@ _INSTRUCTIONS_DON_MANUEL = """
         <tr>
           <td style="background:#2a591d;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.80);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -1159,7 +1159,7 @@ _INSTRUCTIONS_DON_MANUEL = """
             </table>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ donor_email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -1255,7 +1255,7 @@ _PAIEMENT_REJETE = """
         <tr>
           <td style="background:#dc2626;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -1287,7 +1287,7 @@ _PAIEMENT_REJETE = """
             </table>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ participant_email }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
@@ -1336,7 +1336,7 @@ _ACTUALITE_REJETEE = """
         <tr>
           <td style="background:#dc2626;padding:32px 40px;text-align:center;">
             <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile Ivoirienne</p>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
           </td>
         </tr>
         <tr>
@@ -1365,7 +1365,7 @@ _ACTUALITE_REJETEE = """
             </table>
             <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
               Cet email a été envoyé à {{ destinataire | e }}.<br>
-              © {{ year }} PdoC — Plateforme Digitale de la Société Civile Ivoirienne
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
             </p>
           </td>
         </tr>
