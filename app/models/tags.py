@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 import slugify
+from app.models.slug import generer_slug
 
 
 class NewsTag(SQLModel, table=True):
@@ -38,4 +39,4 @@ class Tag(SQLModel, table=True):
     def __init__(self, **data):
         super().__init__(**data)
         if not self.slug and self.name:
-            self.slug = slugify.slugify(self.name)
+            self.slug = generer_slug(self.name, 120)

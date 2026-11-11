@@ -1,6 +1,7 @@
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 import slugify
+from app.models.slug import generer_slug
 
 # Parent model
 class Team(SQLModel, table=True):
@@ -18,7 +19,7 @@ class Team(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)
 
 # Child model
 class Hero(SQLModel, table=True):
@@ -38,4 +39,4 @@ class Hero(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)

@@ -4,6 +4,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer
 from typing import Optional
 import slugify
+from app.models.slug import generer_slug
 
 
 class Documentation(SQLModel, table=True):
@@ -85,7 +86,7 @@ class Documentation(SQLModel, table=True):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.title and not self.slug:
-            self.slug = slugify.slugify(self.title)
+            self.slug = generer_slug(self.title, 100)
     
     # Representation in admin/logs
     def __repr__(self) -> str:

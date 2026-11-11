@@ -6,6 +6,7 @@ from sqlalchemy import Column, String, DateTime, func, TEXT, Integer
 from typing import Optional, TYPE_CHECKING
 from uuid import uuid4, UUID
 import slugify
+from app.models.slug import generer_slug
 
 if TYPE_CHECKING:
     from app.models.ptf import Ptf
@@ -79,7 +80,7 @@ class OffreProjet(SQLModel, table=True):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.nom and not self.slug:
-            self.slug = slugify.slugify(self.nom)
+            self.slug = generer_slug(self.nom, 100)
 
     # Representation in admin/logs
     def __repr__(self) -> str:

@@ -6,6 +6,7 @@ import slugify as python_slugify
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_
+from sqlalchemy.exc import DBAPIError
 from sqlmodel import select, desc
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import List, Optional
@@ -315,6 +316,29 @@ async def _envoyer_identifiants(credentials: Optional[OscCredentials]) -> None:
         logger.exception("Envoi des identifiants échoué pour l'OSC %s", credentials.osc_id)
 
 
+def _message_champ_trop_long(exc: Exception, data) -> Optional[str]:
+    """Nomme le champ dont la valeur dépasse la taille autorisée.
+
+    PostgreSQL signale « value too long for type character varying(n) » sans
+    préciser la colonne : on retrouve le champ en comparant les longueurs
+    saisies aux tailles déclarées sur le modèle.
+    """
+    if "value too long" not in str(exc).lower():
+        return None
+
+    valeurs = data.model_dump() if hasattr(data, "model_dump") else {}
+    for colonne in DemandeAdhesion.__table__.columns:
+        taille = getattr(colonne.type, "length", None)
+        valeur = valeurs.get(colonne.name)
+        if taille and isinstance(valeur, str) and len(valeur) > taille:
+            libelle = colonne.name.replace("_", " ")
+            return (
+                f"Le champ « {libelle} » est trop long : {len(valeur)} caractères "
+                f"pour un maximum de {taille}."
+            )
+    return None
+
+
 @adhesion_router.post("",response_model=DemandeAdhesionRead, status_code=status.HTTP_201_CREATED)
 async def create_demande(request: Request, db: AsyncSession = Depends(get_db)):
     """Soumettre une nouvelle demande d'adhésion"""
@@ -327,7 +351,18 @@ async def create_demande(request: Request, db: AsyncSession = Depends(get_db)):
         )
     demande = DemandeAdhesion(**data.model_dump())
     db.add(demande)
-    await db.commit()
+    try:
+        await db.commit()
+    except DBAPIError as exc:
+        # Une valeur trop longue pour sa colonne renvoyait une erreur 500 sans
+        # indication : le formulaire affichait « une erreur est survenue » et
+        # l'OSC n'avait aucun moyen de savoir quel champ raccourcir.
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=_message_champ_trop_long(exc, data) or
+            "Enregistrement impossible : vérifiez les informations saisies.",
+        )
     await db.refresh(demande)
     return demande
 

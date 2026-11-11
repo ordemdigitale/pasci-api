@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, List
 import slugify, re
 from app.models.tags import NewsTag
 from sqlmodel import SQLModel as _SM
+from app.models.slug import generer_slug
 
 
 # ─── Table de liaison OSC ↔ Pôle de concertation (many-to-many) ───
@@ -69,7 +70,7 @@ class Crasc(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)
 
   # Representation dans admin/logs
   def __repr__(self) -> str:
@@ -98,7 +99,7 @@ class Region(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)
 
   # Representation dans admin/logs
   def __repr__(self) -> str:
@@ -128,7 +129,7 @@ class OscType(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)
   
   # Representation dans admin/logs
   def __repr__(self) -> str:
@@ -140,7 +141,7 @@ class Osc(SQLModel, table=True):
     Represente une OSC (Organisation de la Société Civile) dans la base de données.
   """
   name: str = Field(index=True, unique=True)
-  sigle: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Sigle ou abréviation")
+  sigle: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Sigle ou abréviation")
   # TEXT et non varchar(500) : la description saisie dans la demande
   # d'adhésion est un TEXT libre et dépassait la limite (jusqu'à 5000 car.),
   # ce qui faisait échouer la création de l'OSC à l'approbation.
@@ -168,9 +169,9 @@ class Osc(SQLModel, table=True):
   contact_osc: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Contact de l'OSC")
   contact_1: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Contact 1")
   contact_2: Optional[str] = Field(default=None, nullable=True, max_length=100, description="Contact 2")
-  region_nom: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Région déclarée")
-  departement: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Département")
-  sous_prefecture: Optional[str] = Field(default=None, nullable=True, max_length=150, description="Sous-préfecture")
+  region_nom: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Région déclarée")
+  departement: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Département")
+  sous_prefecture: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Sous-préfecture")
   ville: Optional[str] = Field(default=None, nullable=True, max_length=200, description="Ville de l'OSC")
   origine_organisation: Optional[str] = Field(default=None, nullable=True, max_length=50, description="Lieu de naissance de l'organisation")
 
@@ -300,7 +301,7 @@ class Osc(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)
 
   # Representation in admin/logs
   def __repr__(self) -> str:
@@ -369,7 +370,7 @@ class News(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.title and not self.slug:
-      self.slug = slugify.slugify(self.title)
+      self.slug = generer_slug(self.title, 100)
 
   # Representation in admin/logs
   def __repr__(self) -> str:

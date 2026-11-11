@@ -8,6 +8,7 @@ from sqlalchemy import Column, String, DateTime, func, TEXT
 from typing import Optional, List
 from uuid import UUID, uuid4
 import slugify
+from app.models.slug import generer_slug
 
 
 class FormationRubrique(SQLModel, table=True):
@@ -33,7 +34,7 @@ class FormationRubrique(SQLModel, table=True):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.name and not self.slug:
-            self.slug = slugify.slugify(self.name)
+            self.slug = generer_slug(self.name, 150)
 
     def __repr__(self) -> str:
         return f"<FormationRubrique: {self.name}>"
@@ -126,7 +127,7 @@ class Formation(SQLModel, table=True):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.title and not self.slug:
-            self.slug = slugify.slugify(self.title)
+            self.slug = generer_slug(self.title, 250)
         # Auto-set is_full based on capacity
         if self.max_participants and self.current_participants >= self.max_participants:
             self.is_full = True

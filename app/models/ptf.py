@@ -6,6 +6,7 @@ from sqlalchemy import Column, String, DateTime, func, TEXT, ForeignKey, Integer
 from sqlalchemy.event import listens_for
 from typing import Optional, List
 import slugify
+from app.models.slug import generer_slug
 
 
 class Ptf(SQLModel, table=True):
@@ -57,7 +58,7 @@ class Ptf(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)
 
   # Representation in admin/logs
   def __repr__(self) -> str:
@@ -81,4 +82,4 @@ class Projet(SQLModel, table=True):
   def __init__(self, **kwargs):
     super().__init__(**kwargs)
     if self.name and not self.slug:
-      self.slug = slugify.slugify(self.name)
+      self.slug = generer_slug(self.name, 100)

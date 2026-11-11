@@ -20,9 +20,19 @@ def _hash_ip(ip: str) -> str:
 
 
 def _get_client_ip(request: Request) -> str:
+    """Adresse du visiteur derrière le proxy.
+
+    Sans en-tête transmis par le proxy, toutes les visites portent l'adresse
+    de nginx (127.0.0.1) : c'est pourquoi le comptage par IP ne distinguait
+    presque aucun visiteur. On lit les deux en-têtes usuels avant de retomber
+    sur l'adresse de la connexion.
+    """
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
     return request.client.host if request.client else "unknown"
 
 

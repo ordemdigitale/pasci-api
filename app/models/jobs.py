@@ -5,6 +5,7 @@ from sqlalchemy import Column, String, DateTime, func, TEXT
 from typing import Optional
 from uuid import uuid4, UUID
 import slugify
+from app.models.slug import generer_slug
 
 class Jobs(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
@@ -46,7 +47,7 @@ class Jobs(SQLModel, table=True):
     def __init__(self, **kwargs):
       super().__init__(**kwargs)
       if self.title and not self.slug:
-        self.slug = slugify.slugify(self.title)
+        self.slug = generer_slug(self.title, 100)
 
     def is_expired_date_valide(self, nouvelle_date: Optional[datetime] = None) -> bool:
       """La date d'expiration retenue est-elle encore dans le futur ?
