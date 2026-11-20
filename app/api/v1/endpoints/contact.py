@@ -24,6 +24,7 @@ from app.services.email import (
     send_contact_reponse,
 )
 from app.core.auth import get_current_staff_user, get_current_superuser
+from app.services.journal import journaliser
 
 contact_router = APIRouter()
 
@@ -210,6 +211,12 @@ async def repondre_contact(
     msg.statut = "traite"
     await db.commit()
     await db.refresh(reponse)
+
+    await journaliser(
+        db, current_user, action="contact_reponse",
+        cible_type="contact", cible_id=str(msg.id),
+        cible_libelle=f"{msg.prenoms} {msg.nom}", details=msg.motif,
+    )
 
     background_tasks.add_task(
         send_contact_reponse,

@@ -10,6 +10,7 @@ from app.models.jobs import Jobs
 from app.models.users import User
 from app.schemas.jobs import JobsCreate, JobsRead, JobsUpdate
 from app.core.auth import get_current_staff_user, get_current_redacteur_or_staff, get_optional_current_user
+from app.services.journal import journaliser
 import slugify
 
 jobs_router = APIRouter()
@@ -118,6 +119,11 @@ async def valider_job(
     job.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(job)
+    await journaliser(
+        db, current_user,
+        action="offre_publiee" if action == "publie" else "offre_rejetee",
+        cible_type="offre_emploi", cible_id=str(job.id), cible_libelle=job.title,
+    )
     return job
 
 
@@ -186,6 +192,10 @@ async def desactiver_job(
     job.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(job)
+    await journaliser(
+        db, current_user, action="offre_desactivee",
+        cible_type="offre_emploi", cible_id=str(job.id), cible_libelle=job.title,
+    )
     return job
 
 
@@ -214,6 +224,11 @@ async def activer_job(
     job.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(job)
+    await journaliser(
+        db, current_user, action="offre_activee",
+        cible_type="offre_emploi", cible_id=str(job.id), cible_libelle=job.title,
+        details=f"Nouvelle date limite : {expiration_date:%d/%m/%Y}" if expiration_date else None,
+    )
     return job
 
 
@@ -227,6 +242,12 @@ async def delete_job(
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offre d'emploi non trouvé.")
+    titre = job.title
+    job_id = str(job.id)
     await db.delete(job)
     await db.commit()
+    await journaliser(
+        db, current_user, action="offre_supprimee",
+        cible_type="offre_emploi", cible_id=job_id, cible_libelle=titre,
+    )
     return None

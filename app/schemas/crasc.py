@@ -480,11 +480,16 @@ class NewsReadDetail(NewsBase):
 class MaNewsRead(NewsReadDetail):
   """Actualité d'une OSC vue par l'OSC elle-même : avec son état de validation."""
   statut_publication: str
+  # Motifs cochés lors d'un rejet, pour que l'OSC sache quoi corriger
+  motifs_rejet: Optional[str] = None
+  motif_rejet_detail: Optional[str] = None
 
 
 class NewsAdminRead(NewsReadDetail):
   """Actualité dans la liste du back-office : avec son état de validation."""
   statut_publication: str
+  motifs_rejet: Optional[str] = None
+  motif_rejet_detail: Optional[str] = None
 
 
 class NewsAdminListe(PaginatedResponse[NewsAdminRead]):

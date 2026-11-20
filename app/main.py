@@ -43,6 +43,8 @@ from app.api.v1.endpoints.numeros_utiles import numeros_utiles_router
 from app.api.v1.endpoints.contact import contact_router
 from app.api.v1.endpoints.faq import faq_router
 from app.api.v1.endpoints.notifications import notifications_router
+from app.api.v1.endpoints.journal import journal_router
+from app.api.v1.endpoints.messages import messages_router
 from app.admin.config import create_admin_panel
 
 # Configure logging
@@ -128,6 +130,8 @@ app.include_router(numeros_utiles_router, prefix="/api/v1/numeros-utiles", tags=
 app.include_router(contact_router, prefix="/api/v1/contact", tags=["contact"])
 app.include_router(faq_router, prefix="/api/v1/faq", tags=["faq"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(journal_router, prefix="/api/v1/journal", tags=["journal"])
+app.include_router(messages_router, prefix="/api/v1/messages", tags=["messages"])
 
 @app.get("/")
 async def root():

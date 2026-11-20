@@ -21,6 +21,8 @@ from app.schemas.crasc import (
 from app.models.crasc import Crasc, News, Osc
 from app.models.users import User
 from app.services.email import send_actualite_rejetee
+from app.services.journal import journaliser
+from pydantic import BaseModel as PydanticBaseModel
 from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user
 
 news_router = APIRouter()
@@ -482,6 +484,40 @@ async def lister_news_admin(
     }
 
 
+class MotifRejetRead(PydanticBaseModel):
+    code: str
+    libelle: str
+
+
+MOTIFS_REJET_ACTUALITE = {
+    "consentement": "Absence de fiche de consentement",
+    "politique": "Article à caractère politique",
+    "donnees_sensibles": "Données sensibles",
+    "donnees_incoherentes": "Données incohérentes",
+    "source_verification": "Absence de source de vérification",
+    "autre": "Autre",
+}
+
+
+def _libelles_motifs(codes: List[str], detail: Optional[str] = None) -> List[str]:
+    """Libellés lisibles des motifs cochés, la précision suivant « Autre »."""
+    libelles = []
+    for code in codes:
+        libelle = MOTIFS_REJET_ACTUALITE.get(code)
+        if not libelle:
+            continue
+        if code == "autre" and detail:
+            libelle = f"{libelle} : {detail.strip()}"
+        libelles.append(libelle)
+    return libelles
+
+
+@news_router.get("/motifs-rejet", response_model=List[MotifRejetRead])
+async def lister_motifs_rejet():
+    """Motifs de rejet proposés au point focal lors de la modération."""
+    return [MotifRejetRead(code=code, libelle=libelle) for code, libelle in MOTIFS_REJET_ACTUALITE.items()]
+
+
 @news_router.get("/{news_slug}", response_model=NewsReadDetail, status_code=status.HTTP_200_OK)
 async def get_single_news(
     news_slug: str,
@@ -641,6 +677,7 @@ async def list_news_en_attente(
     return result.scalars().all()
 
 
+# Motifs de rejet d'un article, cochés par le point focal lors de la modération
 async def _destinataires_rejet(db: AsyncSession, news: News) -> List[str]:
     """
     Point focal communication à prévenir d'un rejet : l'auteur de l'actualité ;
@@ -668,13 +705,25 @@ async def valider_news(
     news_slug: str,
     background_tasks: BackgroundTasks,
     action: str = Query(..., description="publie ou rejete"),
-    motif: Optional[str] = Query(None, max_length=1000, description="Motif du rejet, transmis au rédacteur"),
+    motif: Optional[str] = Query(None, max_length=1000, description="Précision libre du motif de rejet"),
+    motifs: Optional[str] = Query(
+        None,
+        max_length=500,
+        description="Codes des motifs cochés, séparés par des virgules (voir GET /news/motifs-rejet)",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_staff_user),
 ):
     """Approuver ou rejeter une actualité (staff only). Un rejet est envoyé par email au rédacteur."""
     if action not in ("publie", "rejete"):
         raise HTTPException(status_code=400, detail="Action invalide. Utilisez 'publie' ou 'rejete'.")
+
+    codes = [c.strip() for c in (motifs or "").split(",") if c.strip()]
+    inconnus = [c for c in codes if c not in MOTIFS_REJET_ACTUALITE]
+    if inconnus:
+        raise HTTPException(status_code=400, detail=f"Motif de rejet inconnu : {', '.join(inconnus)}")
+    if action == "rejete" and not codes and not (motif or "").strip():
+        raise HTTPException(status_code=400, detail="Indiquez au moins un motif de rejet.")
     result = await db.execute(
         select(News).where(News.slug == news_slug).options(selectinload(News.crasc), selectinload(News.osc))
     )
@@ -686,9 +735,28 @@ async def valider_news(
         raise HTTPException(status_code=403, detail="Vous ne pouvez modérer que les actualités de votre CRASC.")
     news.statut_publication = action
     news.updated_at = datetime.now()
+    if action == "rejete":
+        news.motifs_rejet = ",".join(codes) or None
+        news.motif_rejet_detail = (motif or "").strip() or None
+    else:
+        # Un article republié ne doit pas conserver les motifs de son rejet
+        news.motifs_rejet = None
+        news.motif_rejet_detail = None
     await db.commit()
     await db.refresh(news)
+
+    await journaliser(
+        db,
+        current_user,
+        action="actualite_publiee" if action == "publie" else "actualite_rejetee",
+        cible_type="actualite",
+        cible_id=str(news.id),
+        cible_libelle=news.title,
+        details=" · ".join(_libelles_motifs(codes, news.motif_rejet_detail)) or news.motif_rejet_detail,
+    )
+
     if action == "rejete":
+        libelles = _libelles_motifs(codes, news.motif_rejet_detail)
         for email in await _destinataires_rejet(db, news):
             background_tasks.add_task(
                 send_actualite_rejetee,
@@ -696,6 +764,7 @@ async def valider_news(
                 titre=news.title,
                 contenu=news.content or "",
                 motif=(motif or "").strip() or None,
+                motifs=libelles,
                 crasc=news.crasc.name if news.crasc else None,
                 osc=news.osc.name if news.osc else None,
             )

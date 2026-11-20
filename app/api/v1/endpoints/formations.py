@@ -32,6 +32,7 @@ from app.schemas.formation import (
 from app.core.auth import get_current_user, get_current_staff_user, get_current_redacteur_or_staff, get_current_redacteur_crasc_or_staff, get_optional_current_user, get_current_superuser
 from app.services.cinetpay import cinetpay_service
 from app.services import formation_acces
+from app.services.journal import journaliser
 from app.services.email import (
     send_inscription_confirmation,
     send_paiement_confirme,
@@ -1030,8 +1031,16 @@ async def supprimer_inscription(
             detail="Seul le super administrateur peut supprimer une inscription payante.",
         )
 
+    participant = inscription.participant_name
+    inscription_id_str = str(inscription.id)
+    statut = inscription.payment_status
     await _supprimer_inscription(db, inscription)
     await db.commit()
+    await journaliser(
+        db, current_user, action="inscription_supprimee",
+        cible_type="inscription", cible_id=inscription_id_str,
+        cible_libelle=participant, details=f"Statut du paiement : {statut}",
+    )
 
 
 @formations_router.patch("/inscriptions/{inscription_id}/completer", response_model=FormationInscriptionRead)
@@ -1142,6 +1151,13 @@ async def valider_paiement_inscription(
     await db.commit()
     await db.refresh(inscription)
 
+    await journaliser(
+        db, current_user, action="paiement_valide",
+        cible_type="inscription", cible_id=str(inscription.id),
+        cible_libelle=f"{inscription.participant_name} — {formation.title if formation else ''}".strip(" —"),
+        details=f"{inscription.payment_amount or 0:.0f} FCFA · {inscription.payment_transaction_id or 'sans référence'}",
+    )
+
     if formation:
         payment_date_str = inscription.payment_date.strftime("%d/%m/%Y à %H:%M") if inscription.payment_date else None
         background_tasks.add_task(
@@ -1177,6 +1193,13 @@ async def rejeter_paiement_inscription(
     inscription.payment_status = "failed"
     await db.commit()
     await db.refresh(inscription)
+
+    await journaliser(
+        db, current_user, action="paiement_rejete",
+        cible_type="inscription", cible_id=str(inscription.id),
+        cible_libelle=inscription.participant_name,
+        details=(data.raison or "").strip() or None,
+    )
 
     form_result = await db.execute(
         select(Formation).where(Formation.id == inscription.formation_id)
@@ -1250,6 +1273,12 @@ async def reinitialiser_paiements(
     for inscription in inscriptions:
         await _supprimer_inscription(db, inscription)
     await db.commit()
+
+    await journaliser(
+        db, current_user, action="paiements_reinitialises",
+        cible_type="paiement",
+        details=f"{len(inscriptions)} inscription(s) supprimée(s) · portée « {data.portee} »",
+    )
 
     return {"supprimees": len(inscriptions), "portee": data.portee}
 

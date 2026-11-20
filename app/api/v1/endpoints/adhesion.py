@@ -19,6 +19,7 @@ from app.core.auth import get_current_staff_user
 from app.services.email import send_welcome_osc
 from app.services.rattachement import rattacher_osc as _rattacher_osc
 from app.services.recherche import contient
+from app.services.journal import journaliser
 from app.services.osc_etiquettes import filtre_categorie, filtre_faitiere
 from app.services.file_uploads import save_formalisation_file, save_supporting_document
 from app.schemas.adhesion import (
@@ -618,6 +619,15 @@ async def update_demande(
             )
         await _envoyer_identifiants(credentials)
 
+    if data.statut and data.statut != previous_statut:
+        await journaliser(
+            db, current_user,
+            action="adhesion_approuvee" if data.statut == "approuvee" else "adhesion_rejetee",
+            cible_type="adhesion", cible_id=str(demande.id),
+            cible_libelle=demande.nom_organisation,
+            details=f"Statut précédent : {previous_statut}",
+        )
+
     response_data = demande.__dict__.copy()
     response_data["credentials"] = credentials
     return DemandeAdhesionReadWithCredentials(**{
@@ -636,5 +646,11 @@ async def delete_demande(
     demande = result.scalar_one_or_none()
     if not demande:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Demande non trouvée.")
+    nom = demande.nom_organisation
+    demande_id_str = str(demande.id)
     await db.delete(demande)
     await db.commit()
+    await journaliser(
+        db, current_user, action="adhesion_supprimee",
+        cible_type="adhesion", cible_id=demande_id_str, cible_libelle=nom,
+    )

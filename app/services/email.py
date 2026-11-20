@@ -747,6 +747,77 @@ async def send_contact_reponse(
     )
 
 
+
+# ── Message groupé envoyé depuis le back-office ───────────────────────────────
+
+_MESSAGE_GROUPE = """
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#E05017;padding:32px 40px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">PdoC</h1>
+            <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Plateforme Digitale de la Société Civile</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 12px;color:#1a1a1a;font-size:20px;">{{ objet | e }}</h2>
+            {% if nom_destinataire %}
+            <p style="margin:0 0 18px;color:#555;font-size:15px;">Bonjour <strong>{{ nom_destinataire | e }}</strong>,</p>
+            {% endif %}
+
+            <div style="margin:0 0 28px;font-size:15px;color:#333;line-height:1.7;white-space:pre-wrap;">{{ message | e }}</div>
+
+            {% if lien %}
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+              <tr><td style="background:#E05017;border-radius:6px;">
+                <a href="{{ lien }}" style="display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">
+                  En savoir plus →
+                </a>
+              </td></tr>
+            </table>
+            {% endif %}
+
+            <p style="margin:0;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px;">
+              {% if auteur %}Message envoyé par {{ auteur | e }} — équipe PdoC.<br>{% endif %}
+              © {{ year }} PdoC — Plateforme Digitale de la Société Civile
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
+"""
+
+
+async def send_message_groupe(
+    *,
+    destinataire: str,
+    objet: str,
+    message: str,
+    nom_destinataire: Optional[str] = None,
+    lien: Optional[str] = None,
+    auteur: Optional[str] = None,
+) -> None:
+    """Message adressé à une sélection d'OSC ou de PTF depuis le back-office."""
+    html = _render(
+        _MESSAGE_GROUPE,
+        objet=objet,
+        message=message,
+        nom_destinataire=nom_destinataire or "",
+        lien=lien or "",
+        auteur=auteur or "",
+    )
+    await _send(to=destinataire, subject=objet, html=html, reply_to=settings.ADMIN_EMAIL)
+
+
 _CRASC_CONTACT_NOTIF = """
 <!DOCTYPE html>
 <html lang="fr">
@@ -1348,11 +1419,17 @@ _ACTUALITE_REJETEE = """
               n'a pas été validée{% if crasc %} par le {{ crasc | e }}{% endif %}. Vous la trouverez ci-dessous
               pour la corriger et la soumettre à nouveau.
             </p>
-            {% if motif %}
+            {% if motifs or motif %}
             <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-bottom:24px;">
               <tr><td style="padding:20px;">
-                <p style="margin:0 0 6px;font-size:12px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;">Motif</p>
+                <p style="margin:0 0 6px;font-size:12px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;">{% if motifs and motifs|length > 1 %}Motifs du rejet{% else %}Motif du rejet{% endif %}</p>
+                {% if motifs %}
+                <ul style="margin:0;padding-left:18px;font-size:14px;color:#555;line-height:1.7;">
+                  {% for libelle in motifs %}<li>{{ libelle | e }}</li>{% endfor %}
+                </ul>
+                {% elif motif %}
                 <p style="margin:0;font-size:14px;color:#555;white-space:pre-wrap;">{{ motif | e }}</p>
+                {% endif %}
               </td></tr>
             </table>
             {% endif %}
@@ -1397,15 +1474,18 @@ async def send_actualite_rejetee(
     titre: str,
     contenu: str,
     motif: Optional[str] = None,
+    motifs: Optional[list] = None,
     crasc: Optional[str] = None,
     osc: Optional[str] = None,
 ) -> None:
+    """`motifs` : libellés des cases cochées par le point focal lors du rejet."""
     html = _render(
         _ACTUALITE_REJETEE,
         destinataire=destinataire,
         titre=titre,
         contenu=_html_en_texte(contenu),
         motif=motif or "",
+        motifs=motifs or [],
         crasc=crasc,
         osc=osc,
     )

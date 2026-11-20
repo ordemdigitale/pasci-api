@@ -357,6 +357,10 @@ class News(SQLModel, table=True):
   # Désactivation automatique : après cette date, l'actualité quitte les
   # listes publiques et passe dans les archives de l'OSC (vide = jamais)
   date_expiration: Optional[date] = Field(default=None, sa_column=Column(Date, nullable=True))
+  # Motifs de rejet cochés par le point focal (codes séparés par des virgules,
+  # voir MOTIFS_REJET_ACTUALITE) et précision libre du motif « autre ».
+  motifs_rejet: Optional[str] = Field(default=None, nullable=True, max_length=500)
+  motif_rejet_detail: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
   created_at: datetime = Field(
     default_factory=lambda: datetime.now(timezone.utc),
     sa_column=Column(DateTime(timezone=True), server_default=func.now())

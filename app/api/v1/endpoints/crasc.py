@@ -1,6 +1,7 @@
-import json, os, re, shutil, uuid, slugify, secrets
+import io, json, os, re, shutil, uuid, slugify, secrets
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Request, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status, UploadFile, Depends, File, Form, Request, Query, Response
+from openpyxl.utils import get_column_letter
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import selectinload, joinedload
 from sqlmodel import desc, select, func
@@ -11,6 +12,7 @@ from app.core.config import settings
 from app.core.auth import (
     get_current_user,
     get_current_superuser,
+    get_current_staff_user,
     get_current_staff_or_superuser,
     get_current_redacteur_crasc_or_staff,
     get_optional_current_user,
@@ -59,6 +61,7 @@ from app.services.file_uploads import save_formalisation_file, save_supporting_d
 from app.services.rattachement import rattacher_osc
 from app.services.osc_autoevaluation import BAREME, COULEUR_HEX, TRANCHES_COULEUR, expression_score_sql
 from app.services.recherche import contient, egal, normaliser
+from app.services.journal import journaliser
 from app.services.osc_etiquettes import CATEGORIE_SYNONYMES, TERMES_FAITIERE, filtre_categorie, filtre_faitiere
 
 
@@ -949,12 +952,15 @@ def _filtres_osc_annuaire(
     domaine_activite, categorie, type_document_formalisation, has_document_formalisation,
     existence_siege, manuel_procedures, plan_action, rapports_annuels,
     adhesion_crasc_statut, niveau_regroupement, niveau_couverture,
-    annee_creation, score_min, score_max, faitiere=None,
+    annee_creation, score_min, score_max, faitiere=None, pole_id=None,
 ) -> list:
     """Construit la liste des conditions SQL communes au comptage et à la page."""
     filters = []
     if type_id:
         filters.append(Osc.type_id == type_id)
+    if pole_id:
+        # Pôle de concertation : table de liaison osc_pole
+        filters.append(Osc.poles.any(PoleConcertation.id == pole_id))
     if region_id:
         filters.append(Osc.region_id == region_id)
     if search and search.strip():
@@ -1034,6 +1040,7 @@ async def get_all_osc(
     score_min: Optional[int] = Query(None, ge=0, le=20),
     score_max: Optional[int] = Query(None, ge=0, le=20),
     faitiere: Optional[bool] = Query(None, description="Organisations faîtières (réseau, fédération, plateforme, confédération)"),
+    pole_id: Optional[int] = Query(None, description="Pôle de concertation auquel l'OSC est rattachée"),
     sort_by: str = Query("name", description="Champ du questionnaire, document_formalisation ou score_autoevaluation"),
     sort_order: Literal["asc", "desc"] = Query("asc"),
     inclure_non_publiees: bool = Query(
@@ -1054,7 +1061,7 @@ async def get_all_osc(
         adhesion_crasc_statut=adhesion_crasc_statut,
         niveau_regroupement=niveau_regroupement, niveau_couverture=niveau_couverture,
         annee_creation=annee_creation, score_min=score_min, score_max=score_max,
-        faitiere=faitiere,
+        faitiere=faitiere, pole_id=pole_id,
     )
     if sort_by not in TRI_OSC and sort_by not in TRIS_SPECIAUX:
         raise HTTPException(status_code=422, detail=f"Tri impossible sur « {sort_by} ».")
@@ -1101,6 +1108,191 @@ async def get_all_osc(
     items = result.scalars().all()
 
     return PaginatedResponse(items=items, total=total, page=page, size=size, pages=-(-total // size))
+
+
+# Colonnes de l'export : (en-tête, extracteur, largeur)
+def _valeur_poles(osc) -> str:
+    return " · ".join(sorted(p.name for p in (osc.poles or []))) if osc.poles else ""
+
+
+def _oui_non(valeur) -> str:
+    return "" if valeur is None else ("Oui" if valeur else "Non")
+
+
+COLONNES_EXPORT_OSC = [
+    ("Nom de l'organisation", lambda o: o.name, 42),
+    ("Sigle", lambda o: o.sigle, 16),
+    ("Type d'OSC", lambda o: o.type.name if o.type else "", 26),
+    ("CRASC", lambda o: o.crasc.name if o.crasc else "", 18),
+    ("Pôles de concertation", _valeur_poles, 34),
+    ("Catégorie", lambda o: o.categorie, 24),
+    ("Niveau de regroupement", lambda o: o.niveau_regroupement, 20),
+    ("Région", lambda o: o.region_nom, 20),
+    ("Département", lambda o: o.departement, 20),
+    ("Sous-préfecture", lambda o: o.sous_prefecture, 20),
+    ("Ville", lambda o: o.ville, 18),
+    ("Email", lambda o: o.email, 30),
+    ("Téléphone", lambda o: o.phone, 18),
+    ("Contact président", lambda o: o.contact_president, 18),
+    ("Contact OSC", lambda o: o.contact_osc, 18),
+    ("Site web", lambda o: o.website, 28),
+    ("Date de création", lambda o: o.date_creation, 16),
+    ("N° récépissé", lambda o: o.numero_recepisse, 20),
+    ("Document de formalisation", lambda o: o.type_document_formalisation, 24),
+    ("Justificatif fourni", lambda o: _oui_non(bool(o.document_formalisation_path)), 16),
+    ("Domaine prioritaire", lambda o: o.domaine_prioritaire, 28),
+    ("Domaine 2", lambda o: o.domaine_prioritaire_2, 24),
+    ("Domaine 3", lambda o: o.domaine_prioritaire_3, 24),
+    ("Zone de couverture", lambda o: o.zone_couverture, 22),
+    ("Niveau de couverture", lambda o: o.niveau_couverture, 20),
+    ("Siège", lambda o: _oui_non(o.existence_siege), 10),
+    ("Manuel de procédures", lambda o: _oui_non(o.manuel_procedures), 18),
+    ("Plan d'action", lambda o: _oui_non(o.plan_action), 14),
+    ("Rapports annuels", lambda o: _oui_non(o.rapports_annuels), 16),
+    ("Adhésion CRASC", lambda o: o.adhesion_crasc_statut, 16),
+    ("Nombre de membres", lambda o: o.nb_membres, 16),
+    ("Dont femmes", lambda o: o.nb_femmes_membres, 12),
+    ("Dont hommes", lambda o: o.nb_hommes_membres, 12),
+    ("Dont jeunes", lambda o: o.nb_membres_jeunes, 12),
+    ("Dont en situation de handicap", lambda o: o.nb_membres_handicap, 16),
+    ("Membres du bureau exécutif", lambda o: o.nb_membres_be, 16),
+    ("Personnes engagées", lambda o: o.nb_personnes_engagees, 16),
+    ("CDI", lambda o: o.nb_cdi, 8),
+    ("CDD", lambda o: o.nb_cdd, 8),
+    ("Bénéficiaires", lambda o: o.nb_beneficiaires, 14),
+    ("Activités réalisées", lambda o: o.nb_activites, 14),
+    ("Dernière activité", lambda o: o.date_derniere_activite, 16),
+    ("Budget annuel (FCFA)", lambda o: o.budget_annuel, 18),
+    ("Types de financement", lambda o: o.type_financement, 26),
+    ("Président(e)", lambda o: o.nom_president, 24),
+    ("Sexe du président", lambda o: o.sexe_president, 14),
+    ("Publiée", lambda o: _oui_non(o.statut_publication == "publie" and o.is_visible), 10),
+]
+
+
+@crasc_router.get("/osc/export")
+async def exporter_osc(
+    type_id: Optional[int] = Query(None),
+    crasc_id: Optional[int] = Query(None),
+    region_id: Optional[int] = Query(None),
+    pole_id: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
+    region_nom: Optional[str] = Query(None),
+    departement: Optional[str] = Query(None),
+    sous_prefecture: Optional[str] = Query(None),
+    domaine_activite: Optional[str] = Query(None),
+    categorie: Optional[str] = Query(None),
+    type_document_formalisation: Optional[str] = Query(None),
+    has_document_formalisation: Optional[bool] = Query(None),
+    existence_siege: Optional[bool] = Query(None),
+    manuel_procedures: Optional[bool] = Query(None),
+    plan_action: Optional[bool] = Query(None),
+    rapports_annuels: Optional[bool] = Query(None),
+    adhesion_crasc_statut: Optional[Literal["oui", "non", "en_cours"]] = Query(None),
+    niveau_regroupement: Optional[str] = Query(None),
+    niveau_couverture: Optional[str] = Query(None),
+    annee_creation: Optional[str] = Query(None),
+    score_min: Optional[int] = Query(None, ge=0, le=20),
+    score_max: Optional[int] = Query(None, ge=0, le=20),
+    faitiere: Optional[bool] = Query(None),
+    inclure_non_publiees: bool = Query(
+        True,
+        description="Inclure les fiches pas encore mises en ligne (export de la base complète)",
+    ),
+    sort_by: str = Query("name"),
+    sort_order: Literal["asc", "desc"] = Query("asc"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Annuaire des OSC au format Excel, avec les filtres et le tri de la liste.
+
+    Les mêmes critères que la page de consultation sont acceptés : le fichier
+    exporté correspond exactement à ce que l'administrateur a sous les yeux.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    filters = _filtres_osc_annuaire(
+        type_id=type_id, region_id=region_id, search=search,
+        region_nom=region_nom, departement=departement, sous_prefecture=sous_prefecture,
+        domaine_activite=domaine_activite, categorie=categorie,
+        type_document_formalisation=type_document_formalisation,
+        has_document_formalisation=has_document_formalisation,
+        existence_siege=existence_siege, manuel_procedures=manuel_procedures,
+        plan_action=plan_action, rapports_annuels=rapports_annuels,
+        adhesion_crasc_statut=adhesion_crasc_statut,
+        niveau_regroupement=niveau_regroupement, niveau_couverture=niveau_couverture,
+        annee_creation=annee_creation, score_min=score_min, score_max=score_max,
+        faitiere=faitiere, pole_id=pole_id,
+    )
+    if sort_by not in TRI_OSC and sort_by not in TRIS_SPECIAUX:
+        raise HTTPException(status_code=422, detail=f"Tri impossible sur « {sort_by} ».")
+
+    # Un admin CRASC n'exporte que les OSC de son CRASC
+    if not current_user.is_superuser and current_user.crasc_id:
+        filters.append(Osc.crasc_id == current_user.crasc_id)
+    elif crasc_id:
+        filters.append(Osc.crasc_id == crasc_id)
+
+    # Par défaut l'export couvre toute la base ; décocher l'option le restreint
+    # à ce que le public voit, comme la liste de consultation.
+    if not inclure_non_publiees:
+        filters.append(Osc.is_visible == True)  # noqa: E712
+        filters.append(Osc.statut_publication == "publie")
+
+    query = select(Osc).options(
+        selectinload(Osc.type), selectinload(Osc.crasc), selectinload(Osc.poles)
+    ).where(*filters)
+
+    descendant = sort_order == "desc"
+    if sort_by == "document_formalisation":
+        sans_justificatif = Osc.document_formalisation_path.is_(None)
+        colonne_tri = sans_justificatif.desc() if descendant else sans_justificatif.asc()
+    elif sort_by == "score_autoevaluation":
+        score = expression_score_sql(Osc)
+        colonne_tri = score.desc() if descendant else score.asc()
+    else:
+        colonne = TRI_OSC[sort_by]
+        colonne_tri = colonne.desc().nulls_last() if descendant else colonne.asc().nulls_last()
+
+    result = await db.execute(query.order_by(colonne_tri, Osc.name.asc()))
+    oscs = result.scalars().unique().all()
+
+    classeur = Workbook()
+    feuille = classeur.active
+    feuille.title = "Annuaire des OSC"
+    feuille.append([entete for entete, _, _ in COLONNES_EXPORT_OSC])
+    entete_fond = PatternFill("solid", fgColor="E05017")
+    for cellule in feuille[1]:
+        cellule.font = Font(bold=True, color="FFFFFF")
+        cellule.fill = entete_fond
+        cellule.alignment = Alignment(vertical="center", wrap_text=True)
+    feuille.row_dimensions[1].height = 30
+
+    for osc in oscs:
+        feuille.append([extraire(osc) for _, extraire, _ in COLONNES_EXPORT_OSC])
+
+    for index, (_, _, largeur) in enumerate(COLONNES_EXPORT_OSC, start=1):
+        feuille.column_dimensions[get_column_letter(index)].width = largeur
+    # En-têtes figées : la lecture d'un fichier de plusieurs milliers de lignes
+    # devient impossible si les titres de colonnes défilent.
+    feuille.freeze_panes = "A2"
+    feuille.auto_filter.ref = feuille.dimensions
+
+    tampon = io.BytesIO()
+    classeur.save(tampon)
+
+    await journaliser(
+        db, current_user, action="export_osc", cible_type="osc",
+        details=f"{len(oscs)} OSC exportée(s)",
+    )
+
+    horodatage = datetime.now().strftime("%Y%m%d-%H%M")
+    return Response(
+        content=tampon.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="annuaire-osc-{horodatage}.xlsx"'},
+    )
 
 
 @crasc_router.get("/osc/filtres", status_code=status.HTTP_200_OK)
