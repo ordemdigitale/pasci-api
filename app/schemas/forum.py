@@ -1,7 +1,7 @@
 # app/schemas/forum.py | Schemas for forum feature
 from datetime import datetime
 from typing import Literal, Optional, List
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 from uuid import UUID
 import json
 
@@ -260,3 +260,60 @@ class ContributionsSujetRead(BaseModel):
     nb_osc: int
     mots_cles: List[str]
     brouillon: str
+
+
+# ─────────────────────────────────────────────────────
+# TASK FORCES (groupes d'OSC de l'espace collaboratif)
+# ─────────────────────────────────────────────────────
+
+class TaskForceOscMembre(BaseModel):
+    """OSC membre d'une task force."""
+
+    id: int
+    name: str
+    slug: Optional[str] = None
+    sigle: Optional[str] = None
+    region_nom: Optional[str] = None
+    email: Optional[str] = None
+    chef_de_file: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class TaskForceOscBase(BaseModel):
+    nom: str = Field(min_length=1, max_length=200)
+    thematique: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = None
+    pole_id: Optional[int] = None
+    ordre: int = 0
+    actif: bool = True
+
+
+class TaskForceOscCreate(TaskForceOscBase):
+    # OSC membres, par identifiant d'annuaire
+    osc_ids: List[int] = []
+    chef_de_file_id: Optional[int] = None
+
+
+class TaskForceOscUpdate(BaseModel):
+    nom: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    thematique: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = None
+    pole_id: Optional[int] = None
+    ordre: Optional[int] = None
+    actif: Optional[bool] = None
+    osc_ids: Optional[List[int]] = None
+    chef_de_file_id: Optional[int] = None
+
+
+class TaskForceOscRead(TaskForceOscBase):
+    id: int
+    slug: Optional[str] = None
+    pole_nom: Optional[str] = None
+    nb_membres: int = 0
+    membres: List[TaskForceOscMembre] = []
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

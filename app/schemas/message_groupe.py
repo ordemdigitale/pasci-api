@@ -10,8 +10,9 @@ class CriteresDestinataires(BaseModel):
 
     Les critères portant sur les OSC se combinent entre eux (ET) : « CRASC Nord »
     + « Organisation de femmes » vise les OdF du CRASC Nord. À l'intérieur d'un
-    critère, les valeurs se cumulent (OU). Les task forces visent les PTF
-    membres et s'ajoutent (OU) à la sélection d'OSC.
+    critère, les valeurs se cumulent (OU). Les task forces de l'espace
+    collaboratif sont des groupes d'OSC et comptent parmi ces critères. La
+    sélection de PTF est indépendante et s'ajoute (OU) au résultat.
     """
 
     crasc_ids: List[int] = []
@@ -19,9 +20,13 @@ class CriteresDestinataires(BaseModel):
     categories: List[str] = []
     regions: List[str] = []
     pole_ids: List[int] = []
+    # Task forces de l'espace collaboratif : groupes d'OSC
     task_force_ids: List[int] = []
+    # Partenaires techniques et financiers, par catégorie (bailleurs, agences…)
+    ptf_categories: List[str] = []
     # Garde-fou : viser toute la plateforme doit être explicite
     toutes_les_osc: bool = False
+    tous_les_ptf: bool = False
 
 
 class DestinataireApercu(BaseModel):
@@ -78,3 +83,4 @@ class CriteresDisponibles(BaseModel):
     regions: List[OptionCritere] = []
     poles: List[OptionCritere] = []
     task_forces: List[OptionCritere] = []
+    categories_ptf: List[OptionCritere] = []

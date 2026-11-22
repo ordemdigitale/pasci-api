@@ -11,11 +11,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.auth import get_current_staff_user
 from app.database.session import get_db
 from app.models.crasc import Crasc, Osc, OscType, Region
-from app.models.forum import PoleConcertation
+from app.models.forum import PoleConcertation, TaskForceOsc, task_force_osc_membre
 from app.models.message_groupe import MessageGroupe
 from app.models.notification import Notification
 from app.models.ptf import Ptf
-from app.models.task_force import TaskForce, TaskForcePtf
 from app.models.users import User
 from app.schemas.message_groupe import (
     ApercuDestinataires,
@@ -41,7 +40,7 @@ def _criteres_renseignes(criteres: CriteresDestinataires) -> bool:
     return bool(
         criteres.crasc_ids or criteres.type_osc_ids or criteres.categories
         or criteres.regions or criteres.pole_ids or criteres.task_force_ids
-        or criteres.toutes_les_osc
+        or criteres.toutes_les_osc or criteres.ptf_categories or criteres.tous_les_ptf
     )
 
 
@@ -50,6 +49,7 @@ async def _oscs_ciblees(db: AsyncSession, criteres: CriteresDestinataires) -> Li
     vise_osc = bool(
         criteres.toutes_les_osc or criteres.crasc_ids or criteres.type_osc_ids
         or criteres.categories or criteres.regions or criteres.pole_ids
+        or criteres.task_force_ids
     )
     if not vise_osc:
         return []
@@ -65,6 +65,12 @@ async def _oscs_ciblees(db: AsyncSession, criteres: CriteresDestinataires) -> Li
         conditions.append(or_(*[egal(Osc.region_nom, r) for r in criteres.regions]))
     if criteres.pole_ids:
         conditions.append(Osc.poles.any(PoleConcertation.id.in_(criteres.pole_ids)))
+    if criteres.task_force_ids:
+        # Task forces de l'espace collaboratif : groupes d'OSC
+        membres = select(task_force_osc_membre.c.osc_id).where(
+            task_force_osc_membre.c.task_force_id.in_(criteres.task_force_ids)
+        )
+        conditions.append(Osc.id.in_(membres))
 
     result = await db.execute(
         select(Osc).options(selectinload(Osc.poles)).where(*conditions).order_by(Osc.name)
@@ -73,15 +79,13 @@ async def _oscs_ciblees(db: AsyncSession, criteres: CriteresDestinataires) -> Li
 
 
 async def _ptfs_ciblees(db: AsyncSession, criteres: CriteresDestinataires) -> List[Ptf]:
-    """PTF membres des task forces sélectionnées."""
-    if not criteres.task_force_ids:
+    """Partenaires techniques et financiers visés, par catégorie."""
+    if not (criteres.ptf_categories or criteres.tous_les_ptf):
         return []
-    result = await db.execute(
-        select(Ptf)
-        .join(TaskForcePtf, TaskForcePtf.ptf_id == Ptf.id)
-        .where(TaskForcePtf.task_force_id.in_(criteres.task_force_ids))
-        .order_by(Ptf.name)
-    )
+    requete = select(Ptf).order_by(Ptf.name)
+    if not criteres.tous_les_ptf:
+        requete = requete.where(or_(*[egal(Ptf.categorie, c) for c in criteres.ptf_categories]))
+    result = await db.execute(requete)
     return list(result.scalars().unique().all())
 
 
@@ -153,7 +157,9 @@ async def criteres_disponibles(
     crascs = (await db.execute(select(Crasc).order_by(Crasc.name))).scalars().all()
     types = (await db.execute(select(OscType).order_by(OscType.name))).scalars().all()
     poles = (await db.execute(select(PoleConcertation).order_by(PoleConcertation.name))).scalars().all()
-    task_forces = (await db.execute(select(TaskForce).where(TaskForce.actif == True).order_by(TaskForce.nom))).scalars().all()  # noqa: E712
+    task_forces = (await db.execute(
+        select(TaskForceOsc).where(TaskForceOsc.actif == True).order_by(TaskForceOsc.ordre, TaskForceOsc.nom)  # noqa: E712
+    )).scalars().unique().all()
     regions = (await db.execute(select(Region).order_by(Region.name))).scalars().all()
 
     categories = []
@@ -168,13 +174,34 @@ async def criteres_disponibles(
             select(func.count(Osc.id)).where(*publiees, Osc.poles.any(PoleConcertation.id == pole_id))
         )).scalar_one()
 
+    async def nb_osc_task_force(tf_id: int) -> int:
+        membres = select(task_force_osc_membre.c.osc_id).where(
+            task_force_osc_membre.c.task_force_id == tf_id
+        )
+        return (await db.execute(
+            select(func.count(Osc.id)).where(*publiees, Osc.id.in_(membres))
+        )).scalar_one()
+
+    # PTF regroupés par catégorie (bailleurs, agences, ONG internationales…)
+    ptf_par_categorie = await db.execute(
+        select(Ptf.categorie, func.count(Ptf.id)).group_by(Ptf.categorie)
+    )
+    categories_ptf = [
+        OptionCritere(valeur=cat, libelle=cat, nombre=nb)
+        for cat, nb in ptf_par_categorie.all() if cat
+    ]
+
     return CriteresDisponibles(
         crasc=[OptionCritere(valeur=str(c.id), libelle=c.name, nombre=par_crasc.get(c.id, 0)) for c in crascs],
         types_osc=[OptionCritere(valeur=str(t.id), libelle=t.name, nombre=par_type.get(t.id, 0)) for t in types],
         categories=categories,
         regions=[OptionCritere(valeur=r.name, libelle=r.name, nombre=par_region.get(r.name, 0)) for r in regions],
         poles=[OptionCritere(valeur=str(p.id), libelle=p.name, nombre=await nb_osc_pole(p.id)) for p in poles],
-        task_forces=[OptionCritere(valeur=str(tf.id), libelle=tf.nom) for tf in task_forces],
+        task_forces=[
+            OptionCritere(valeur=str(tf.id), libelle=tf.nom, nombre=await nb_osc_task_force(tf.id))
+            for tf in task_forces
+        ],
+        categories_ptf=sorted(categories_ptf, key=lambda o: o.libelle),
     )
 
 

@@ -37,6 +37,10 @@ LIBELLES_ACTIONS = {
     "paiement_rejete": "Paiement rejeté",
     "inscription_supprimee": "Inscription supprimée",
     "paiements_reinitialises": "Liste des paiements réinitialisée",
+    # Espace collaboratif
+    "task_force_creee": "Task force créée",
+    "task_force_modifiee": "Task force modifiée",
+    "task_force_supprimee": "Task force supprimée",
     # Contact et messages
     "contact_reponse": "Réponse à un message de contact",
     "message_groupe_envoye": "Message groupé envoyé",

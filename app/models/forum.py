@@ -1,13 +1,23 @@
 # app/models/forum.py | Forum models: PoleConcertation, ForumSujet, ForumCommentaire
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, DateTime, TEXT, UniqueConstraint, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Table, TEXT, UniqueConstraint, func
 from typing import Optional, List, TYPE_CHECKING
 from uuid import UUID
 import slugify as slugify_lib
 
 if TYPE_CHECKING:
     from app.models.crasc import Osc
+
+
+# ─── Table de liaison OSC ↔ Task force (espace collaboratif) ───
+task_force_osc_membre = Table(
+    "task_force_osc_membre",
+    SQLModel.metadata,
+    Column("task_force_id", Integer, ForeignKey("task_force_osc.id", ondelete="CASCADE"), primary_key=True),
+    Column("osc_id", Integer, ForeignKey("osc.id", ondelete="CASCADE"), primary_key=True),
+    Column("chef_de_file", Boolean, nullable=False, server_default="false"),
+)
 
 
 class PoleConcertation(SQLModel, table=True):
@@ -56,6 +66,45 @@ class PoleConcertation(SQLModel, table=True):
 
     def __repr__(self) -> str:
         return f"<PoleConcertation: {self.name}>"
+
+
+
+class TaskForceOsc(SQLModel, table=True):
+    """Task force de l'espace collaboratif : groupe d'OSC réunies sur une thématique.
+
+    À ne pas confondre avec `TaskForce` (app/models/task_force.py), qui regroupe
+    des PTF et alimente l'annuaire des partenaires. Ici les membres sont des OSC
+    de l'annuaire, et le groupe vit dans le forum.
+    """
+
+    __tablename__ = "task_force_osc"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    nom: str = Field(nullable=False, max_length=200, unique=True)
+    slug: Optional[str] = Field(default=None, nullable=True, max_length=200, unique=True, index=True)
+    thematique: Optional[str] = Field(default=None, max_length=200)
+    description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    # Pôle de rattachement éventuel : une task force naît souvent d'un pôle
+    pole_id: Optional[int] = Field(default=None, foreign_key="pole_concertation.id", ondelete="SET NULL")
+    ordre: int = Field(default=0)
+    actif: bool = Field(default=True)
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), server_onupdate=func.now()),
+    )
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.nom and not self.slug:
+            self.slug = slugify_lib.slugify(self.nom)[:195]
+
+    def __repr__(self) -> str:
+        return f"<TaskForceOsc: {self.nom}>"
 
 
 class PoleSondage(SQLModel, table=True):

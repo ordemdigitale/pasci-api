@@ -4,7 +4,7 @@ import os, uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from sqlmodel import select, desc, func
-from sqlalchemy import or_, update as sa_update, delete as sa_delete, insert as sa_insert
+from sqlalchemy import or_, text, update as sa_update, delete as sa_delete, insert as sa_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Union
@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.database.session import get_db
 from app.models.forum import (
     PoleConcertation,
+    TaskForceOsc,
+    task_force_osc_membre,
     PoleSondage,
     PoleSondageOption,
     PoleSondageVote,
@@ -26,6 +28,8 @@ from app.models.adhesion import DemandeAdhesion
 from app.models.crasc import Osc, osc_pole_link
 from app.models.users import User
 from app.services.rattachement import normaliser, vider_cache
+from app.services.journal import journaliser
+from app.models.slug import generer_slug
 from app.services import forum_medias
 from app.services.forum_synthese import brouillon as brouillon_synthese, mots_cles
 from app.schemas.forum import (
@@ -35,6 +39,7 @@ from app.schemas.forum import (
     ForumSujetCreate, ForumSujetRead, ForumSujetUpdate, ForumSujetDetail,
     ForumCommentaireCreate, ForumCommentaireRead,
     PieceJointeRead, SyntheseUpdate, ContributionRead, ContributionsSujetRead,
+    TaskForceOscCreate, TaskForceOscMembre, TaskForceOscRead, TaskForceOscUpdate,
 )
 from app.core.auth import get_current_user, get_current_staff_user, get_current_superuser, get_optional_current_user
 
@@ -251,6 +256,188 @@ async def _get_sondage_by_id(db: AsyncSession, sondage_id: int) -> Optional[Pole
         .where(PoleSondage.id == sondage_id)
     )
     return result.scalars().first()
+
+
+# ─────────────────────────────────────────────────────
+# TASK FORCES (groupes d'OSC de l'espace collaboratif)
+# ─────────────────────────────────────────────────────
+
+async def _membres_task_force(db: AsyncSession, task_force_id: int) -> List[TaskForceOscMembre]:
+    """OSC membres d'une task force, lues via la table de liaison.
+
+    Lecture explicite plutôt qu'une relation : en session asynchrone, un
+    chargement paresseux déclenché hors requête lève MissingGreenlet.
+    """
+    result = await db.execute(
+        select(Osc, task_force_osc_membre.c.chef_de_file)
+        .join(task_force_osc_membre, task_force_osc_membre.c.osc_id == Osc.id)
+        .where(task_force_osc_membre.c.task_force_id == task_force_id)
+        .order_by(task_force_osc_membre.c.chef_de_file.desc(), Osc.name)
+    )
+    return [
+        TaskForceOscMembre(
+            id=osc.id, name=osc.name, slug=osc.slug, sigle=osc.sigle,
+            region_nom=osc.region_nom, email=osc.email, chef_de_file=bool(chef),
+        )
+        for osc, chef in result.all()
+    ]
+
+
+async def _task_force_response(db: AsyncSession, tf: TaskForceOsc) -> TaskForceOscRead:
+    """Task force avec ses OSC membres et le chef de file éventuel."""
+    membres = await _membres_task_force(db, tf.id)
+    pole_nom = None
+    if tf.pole_id:
+        pole = await db.get(PoleConcertation, tf.pole_id)
+        pole_nom = pole.name if pole else None
+
+    return TaskForceOscRead(
+        id=tf.id, nom=tf.nom, slug=tf.slug, thematique=tf.thematique,
+        description=tf.description, pole_id=tf.pole_id, pole_nom=pole_nom,
+        ordre=tf.ordre, actif=tf.actif, nb_membres=len(membres),
+        membres=membres, created_at=tf.created_at,
+    )
+
+
+async def _definir_membres(
+    db: AsyncSession, task_force_id: int, osc_ids: List[int], chef_de_file_id: Optional[int]
+) -> None:
+    """Remplace la composition d'une task force (et désigne le chef de file)."""
+    await db.execute(
+        sa_delete(task_force_osc_membre).where(
+            task_force_osc_membre.c.task_force_id == task_force_id
+        )
+    )
+    ids_valides = []
+    if osc_ids:
+        result = await db.execute(select(Osc.id).where(Osc.id.in_(osc_ids)))
+        ids_valides = list(result.scalars().all())
+    if ids_valides:
+        await db.execute(
+            sa_insert(task_force_osc_membre),
+            [
+                {
+                    "task_force_id": task_force_id,
+                    "osc_id": osc_id,
+                    "chef_de_file": osc_id == chef_de_file_id,
+                }
+                for osc_id in ids_valides
+            ],
+        )
+
+
+@forum_router.get("/task-forces", response_model=List[TaskForceOscRead])
+async def lister_task_forces(
+    include_inactive: bool = Query(False, description="Inclure les task forces désactivées (back-office)"),
+    pole_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user),
+):
+    """Task forces de l'espace collaboratif, avec leurs OSC membres (public)."""
+    if include_inactive and not (current_user and (current_user.is_staff or current_user.is_superuser)):
+        raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs.")
+
+    requete = select(TaskForceOsc).order_by(TaskForceOsc.ordre, TaskForceOsc.nom)
+    if not include_inactive:
+        requete = requete.where(TaskForceOsc.actif == True)  # noqa: E712
+    if pole_id:
+        requete = requete.where(TaskForceOsc.pole_id == pole_id)
+
+    result = await db.execute(requete)
+    return [await _task_force_response(db, tf) for tf in result.scalars().all()]
+
+
+@forum_router.get("/task-forces/{slug}", response_model=TaskForceOscRead)
+async def detail_task_force(slug: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(TaskForceOsc).where(TaskForceOsc.slug == slug))
+    tf = result.scalars().first()
+    if not tf:
+        raise HTTPException(status_code=404, detail="Task force non trouvée.")
+    return await _task_force_response(db, tf)
+
+
+@forum_router.post("/task-forces", response_model=TaskForceOscRead, status_code=status.HTTP_201_CREATED)
+async def creer_task_force(
+    data: TaskForceOscCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Créer une task force et lui rattacher des OSC (staff only)."""
+    existe = await db.execute(select(TaskForceOsc).where(func.lower(TaskForceOsc.nom) == data.nom.strip().lower()))
+    if existe.scalars().first():
+        raise HTTPException(status_code=409, detail="Une task force porte déjà ce nom.")
+
+    tf = TaskForceOsc(
+        nom=data.nom.strip(), thematique=data.thematique, description=data.description,
+        pole_id=data.pole_id, ordre=data.ordre, actif=data.actif,
+    )
+    db.add(tf)
+    await db.flush()
+    await _definir_membres(db, tf.id, data.osc_ids, data.chef_de_file_id)
+    await db.commit()
+    await db.refresh(tf)
+
+    await journaliser(
+        db, current_user, action="task_force_creee", cible_type="task_force",
+        cible_id=str(tf.id), cible_libelle=tf.nom,
+        details=f"{len(data.osc_ids)} OSC membre(s)",
+    )
+    return await _task_force_response(db, tf)
+
+
+@forum_router.patch("/task-forces/{task_force_id}", response_model=TaskForceOscRead)
+async def modifier_task_force(
+    task_force_id: int,
+    data: TaskForceOscUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Modifier une task force ou la composition de ses membres (staff only)."""
+    tf = await db.get(TaskForceOsc, task_force_id)
+    if not tf:
+        raise HTTPException(status_code=404, detail="Task force non trouvée.")
+
+    champs = data.model_dump(exclude_unset=True, exclude={"osc_ids", "chef_de_file_id"})
+    for cle, valeur in champs.items():
+        setattr(tf, cle, valeur)
+    if "nom" in champs and champs["nom"]:
+        tf.slug = generer_slug(champs["nom"], 200)
+
+    if data.osc_ids is not None:
+        await _definir_membres(db, tf.id, data.osc_ids, data.chef_de_file_id)
+    elif data.chef_de_file_id is not None:
+        membres_actuels = [m.id for m in await _membres_task_force(db, tf.id)]
+        await _definir_membres(db, tf.id, membres_actuels, data.chef_de_file_id)
+
+    tf.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(tf)
+
+    await journaliser(
+        db, current_user, action="task_force_modifiee", cible_type="task_force",
+        cible_id=str(tf.id), cible_libelle=tf.nom,
+    )
+    return await _task_force_response(db, tf)
+
+
+@forum_router.delete("/task-forces/{task_force_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def supprimer_task_force(
+    task_force_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Supprimer une task force (staff only). Les OSC membres ne sont pas touchées."""
+    tf = await db.get(TaskForceOsc, task_force_id)
+    if not tf:
+        raise HTTPException(status_code=404, detail="Task force non trouvée.")
+    nom, tf_id = tf.nom, str(tf.id)
+    await db.delete(tf)
+    await db.commit()
+    await journaliser(
+        db, current_user, action="task_force_supprimee", cible_type="task_force",
+        cible_id=tf_id, cible_libelle=nom,
+    )
+    return None
 
 
 # ─────────────────────────────────────────────────────
