@@ -1107,7 +1107,10 @@ async def get_all_osc(
     result = await db.execute(query)
     items = result.scalars().all()
 
-    return PaginatedResponse(items=items, total=total, page=page, size=size, pages=-(-total // size))
+    return PaginatedResponse(
+        items=[_sans_contact_president(osc, current_user) for osc in items],
+        total=total, page=page, size=size, pages=-(-total // size),
+    )
 
 
 # Colonnes de l'export : (en-tête, extracteur, largeur)
@@ -1355,6 +1358,27 @@ async def get_my_osc(
     return osc
 
 
+def _sans_contact_president(osc, current_user: Optional[User]) -> OscReadDetail:
+    """Fiche OSC destinée au public, sans le contact personnel du président.
+
+    Retour PdoC : seuls les contacts de l'organisation (email, téléphone,
+    contact OSC) sont publics. Le contact du/de la président(e) reste visible
+    au back-office et au compte de l'OSC elle-même.
+    """
+    fiche = OscReadDetail.model_validate(osc)
+    autorise = bool(
+        current_user
+        and (
+            current_user.is_staff
+            or current_user.is_superuser
+            or current_user.osc_id == osc.id
+        )
+    )
+    if autorise:
+        return fiche
+    return fiche.model_copy(update={"contact_president": None})
+
+
 @crasc_router.get("/osc/{osc_slug}", response_model=OscReadDetail, status_code=status.HTTP_200_OK)
 async def get_osc_by_slug(
     osc_slug: str,
@@ -1373,7 +1397,7 @@ async def get_osc_by_slug(
         raise HTTPException(status_code=404, detail="OSC non trouvée")
     if current_user and current_user.is_staff and not current_user.is_superuser:
         check_crasc_ownership(current_user, osc.crasc_id)
-    return osc
+    return _sans_contact_president(osc, current_user)
 
 
 async def get_osc_update_form(
