@@ -84,6 +84,9 @@ class TaskForceOsc(SQLModel, table=True):
     slug: Optional[str] = Field(default=None, nullable=True, max_length=200, unique=True, index=True)
     thematique: Optional[str] = Field(default=None, max_length=200)
     description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    # Zone couverte : Nord, Sud, Est, Ouest, Centre (vide pour une task force
+    # qui ne suit pas le découpage régional)
+    zone: Optional[str] = Field(default=None, max_length=50, index=True)
     # Pôle de rattachement éventuel : une task force naît souvent d'un pôle
     pole_id: Optional[int] = Field(default=None, foreign_key="pole_concertation.id", ondelete="SET NULL")
     ordre: int = Field(default=0)
@@ -105,6 +108,80 @@ class TaskForceOsc(SQLModel, table=True):
 
     def __repr__(self) -> str:
         return f"<TaskForceOsc: {self.nom}>"
+
+
+
+class TaskForceMembre(SQLModel, table=True):
+    """Personne siégeant dans une task force, au nom d'une OSC.
+
+    Le membre est une personne physique (titre, fonction, contact) rattachée à
+    une OSC de l'annuaire : la zone CRASC est celle de l'OSC. Les coordonnateurs
+    des task forces régionales composent la task force nationale.
+    """
+
+    __tablename__ = "task_force_membre"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_force_id: int = Field(foreign_key="task_force_osc.id", ondelete="CASCADE", index=True)
+    osc_id: Optional[int] = Field(default=None, foreign_key="osc.id", ondelete="SET NULL", index=True)
+
+    titre: Optional[str] = Field(default=None, max_length=100)
+    nom: str = Field(max_length=200, nullable=False)
+    fonction: Optional[str] = Field(default=None, max_length=200)
+    contact: Optional[str] = Field(default=None, max_length=100)
+    email: Optional[str] = Field(default=None, max_length=255)
+    # Zone CRASC : reprise de l'OSC, modifiable pour un membre sans OSC
+    zone_crasc: Optional[str] = Field(default=None, max_length=100)
+    # Groupes thématiques (GT), séparés par des virgules
+    groupes_thematiques: Optional[str] = Field(default=None, max_length=500)
+    # Rôle saisi librement (1, 2, 3, « rapporteur »…)
+    role: Optional[str] = Field(default=None, max_length=100)
+    # Coordonnateur : siège d'office à la task force nationale
+    est_coordonnateur: bool = Field(default=False, index=True)
+    ordre: int = Field(default=0)
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now()),
+    )
+
+    def __repr__(self) -> str:
+        return f"<TaskForceMembre: {self.nom}>"
+
+
+class TaskForceDocument(SQLModel, table=True):
+    """Document de l'espace documentaire d'une task force.
+
+    Rangé dans l'arborescence PdoC (catégorie + sous-catégorie). Le fichier est
+    hébergé sur la plateforme ; `task_force_id` vide désigne un document commun
+    à toutes les task forces (niveau national).
+    """
+
+    __tablename__ = "task_force_document"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_force_id: Optional[int] = Field(
+        default=None, foreign_key="task_force_osc.id", ondelete="CASCADE", index=True
+    )
+    categorie: str = Field(max_length=100, nullable=False, index=True)
+    sous_categorie: Optional[str] = Field(default=None, max_length=150, index=True)
+
+    titre: str = Field(max_length=300, nullable=False)
+    description: Optional[str] = Field(default=None, sa_column=Column(TEXT, nullable=True))
+    fichier_path: Optional[str] = Field(default=None, max_length=2048)
+    fichier_nom: Optional[str] = Field(default=None, max_length=300)
+    taille_octets: Optional[int] = Field(default=None)
+
+    auteur_id: Optional[UUID] = Field(default=None, foreign_key="user.id", ondelete="SET NULL")
+    auteur_nom: Optional[str] = Field(default=None, max_length=255)
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), index=True),
+    )
+
+    def __repr__(self) -> str:
+        return f"<TaskForceDocument: {self.titre}>"
 
 
 class PoleSondage(SQLModel, table=True):

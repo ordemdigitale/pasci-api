@@ -16,6 +16,8 @@ from app.database.session import get_db
 from app.models.forum import (
     PoleConcertation,
     TaskForceOsc,
+    TaskForceMembre,
+    TaskForceDocument,
     task_force_osc_membre,
     PoleSondage,
     PoleSondageOption,
@@ -25,10 +27,16 @@ from app.models.forum import (
     ForumPieceJointe,
 )
 from app.models.adhesion import DemandeAdhesion
-from app.models.crasc import Osc, osc_pole_link
+from app.models.crasc import Crasc, Osc, osc_pole_link
 from app.models.users import User
 from app.services.rattachement import normaliser, vider_cache
 from app.services.journal import journaliser
+from app.services.file_uploads import save_supporting_document
+from app.services.task_force import (
+    arborescence as arborescence_task_force,
+    categorie_valide,
+    sous_categorie_valide,
+)
 from app.models.slug import generer_slug
 from app.services import forum_medias
 from app.services.forum_synthese import brouillon as brouillon_synthese, mots_cles
@@ -40,6 +48,8 @@ from app.schemas.forum import (
     ForumCommentaireCreate, ForumCommentaireRead,
     PieceJointeRead, SyntheseUpdate, ContributionRead, ContributionsSujetRead,
     TaskForceOscCreate, TaskForceOscMembre, TaskForceOscRead, TaskForceOscUpdate,
+    TaskForceMembreCreate, TaskForceMembreRead, TaskForceMembreUpdate,
+    TaskForceDocumentRead, ArborescenceCategorie,
 )
 from app.core.auth import get_current_user, get_current_staff_user, get_current_superuser, get_optional_current_user
 
@@ -291,10 +301,18 @@ async def _task_force_response(db: AsyncSession, tf: TaskForceOsc) -> TaskForceO
         pole = await db.get(PoleConcertation, tf.pole_id)
         pole_nom = pole.name if pole else None
 
+    nb_personnes = (await db.execute(
+        select(func.count(TaskForceMembre.id)).where(TaskForceMembre.task_force_id == tf.id)
+    )).scalar_one()
+    nb_documents = (await db.execute(
+        select(func.count(TaskForceDocument.id)).where(TaskForceDocument.task_force_id == tf.id)
+    )).scalar_one()
+
     return TaskForceOscRead(
-        id=tf.id, nom=tf.nom, slug=tf.slug, thematique=tf.thematique,
+        id=tf.id, nom=tf.nom, slug=tf.slug, thematique=tf.thematique, zone=tf.zone,
         description=tf.description, pole_id=tf.pole_id, pole_nom=pole_nom,
         ordre=tf.ordre, actif=tf.actif, nb_membres=len(membres),
+        nb_personnes=nb_personnes, nb_documents=nb_documents,
         membres=membres, created_at=tf.created_at,
     )
 
@@ -347,6 +365,172 @@ async def lister_task_forces(
     return [await _task_force_response(db, tf) for tf in result.scalars().all()]
 
 
+# ── Espace documentaire PdoC ─────────────────────────────────────────────
+
+def _document_read(doc: TaskForceDocument, task_force_nom: Optional[str] = None) -> TaskForceDocumentRead:
+    return TaskForceDocumentRead(
+        id=doc.id, task_force_id=doc.task_force_id, task_force_nom=task_force_nom,
+        categorie=doc.categorie, sous_categorie=doc.sous_categorie,
+        titre=doc.titre, description=doc.description,
+        fichier_url=f"{settings.API_BASE_URL}/static/{doc.fichier_path}" if doc.fichier_path else None,
+        fichier_nom=doc.fichier_nom, taille_octets=doc.taille_octets,
+        auteur_nom=doc.auteur_nom, created_at=doc.created_at,
+    )
+
+
+@forum_router.get("/task-forces/documents/arborescence", response_model=List[ArborescenceCategorie])
+async def arborescence_documents(
+    task_force_id: Optional[int] = Query(None, description="Compter les documents de cette task force"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Arborescence de l'espace documentaire, avec le nombre de documents déposés."""
+    conditions = []
+    if task_force_id:
+        conditions.append(TaskForceDocument.task_force_id == task_force_id)
+    result = await db.execute(
+        select(TaskForceDocument.categorie, func.count(TaskForceDocument.id))
+        .where(*conditions)
+        .group_by(TaskForceDocument.categorie)
+    )
+    compteurs = dict(result.all())
+    return [
+        ArborescenceCategorie(
+            categorie=entree["categorie"],
+            sous_categories=entree["sous_categories"],
+            nb_documents=compteurs.get(entree["categorie"], 0),
+        )
+        for entree in arborescence_task_force()
+    ]
+
+
+@forum_router.get("/task-forces/documents", response_model=List[TaskForceDocumentRead])
+async def lister_documents(
+    task_force_id: Optional[int] = Query(None),
+    categorie: Optional[str] = Query(None),
+    sous_categorie: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """Documents déposés, du plus récent au plus ancien."""
+    conditions = []
+    if task_force_id:
+        conditions.append(TaskForceDocument.task_force_id == task_force_id)
+    if categorie:
+        conditions.append(TaskForceDocument.categorie == categorie)
+    if sous_categorie:
+        conditions.append(TaskForceDocument.sous_categorie == sous_categorie)
+    if search and search.strip():
+        motif = f"%{search.strip()}%"
+        conditions.append(or_(
+            TaskForceDocument.titre.ilike(motif),
+            TaskForceDocument.description.ilike(motif),
+        ))
+
+    result = await db.execute(
+        select(TaskForceDocument, TaskForceOsc.nom)
+        .join(TaskForceOsc, TaskForceOsc.id == TaskForceDocument.task_force_id, isouter=True)
+        .where(*conditions)
+        .order_by(desc(TaskForceDocument.created_at))
+        .limit(limit)
+    )
+    return [_document_read(doc, nom) for doc, nom in result.all()]
+
+
+@forum_router.post(
+    "/task-forces/documents",
+    response_model=TaskForceDocumentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def deposer_document(
+    titre: str = Form(...),
+    categorie: str = Form(...),
+    sous_categorie: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    task_force_id: Optional[int] = Form(None),
+    fichier: Optional[UploadFile] = File(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Déposer un document dans l'espace documentaire (staff only)."""
+    if not categorie_valide(categorie):
+        raise HTTPException(status_code=422, detail=f"Catégorie inconnue : {categorie}")
+    if not sous_categorie_valide(categorie, sous_categorie):
+        raise HTTPException(
+            status_code=422,
+            detail=f"« {sous_categorie} » n'appartient pas à la catégorie « {categorie} ».",
+        )
+    if task_force_id and not await db.get(TaskForceOsc, task_force_id):
+        raise HTTPException(status_code=404, detail="Task force non trouvée.")
+
+    chemin = nom_fichier = None
+    taille = None
+    if fichier and fichier.filename:
+        chemin = save_supporting_document(fichier, "fichier", relative_dir="task-forces")
+        nom_fichier = fichier.filename[:300]
+        try:
+            taille = os.path.getsize(os.path.join(settings.UPLOAD_DIR, chemin))
+        except OSError:
+            taille = None
+
+    doc = TaskForceDocument(
+        task_force_id=task_force_id, categorie=categorie, sous_categorie=sous_categorie or None,
+        titre=titre.strip(), description=(description or "").strip() or None,
+        fichier_path=chemin, fichier_nom=nom_fichier, taille_octets=taille,
+        auteur_id=current_user.id,
+        auteur_nom=current_user.full_name or current_user.username or current_user.email,
+    )
+    db.add(doc)
+    await db.commit()
+    await db.refresh(doc)
+
+    await journaliser(
+        db, current_user, action="task_force_document_depose", cible_type="task_force",
+        cible_id=str(task_force_id) if task_force_id else None, cible_libelle=doc.titre,
+        details=f"{categorie}{' · ' + sous_categorie if sous_categorie else ''}",
+    )
+    return _document_read(doc)
+
+
+@forum_router.delete("/task-forces/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def supprimer_document(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    doc = await db.get(TaskForceDocument, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document non trouvé.")
+    titre = doc.titre
+    if doc.fichier_path:
+        chemin = os.path.join(settings.UPLOAD_DIR, doc.fichier_path)
+        if os.path.exists(chemin):
+            os.remove(chemin)
+    await db.delete(doc)
+    await db.commit()
+    await journaliser(
+        db, current_user, action="task_force_document_supprime", cible_type="task_force",
+        cible_libelle=titre,
+    )
+    return None
+
+
+@forum_router.get("/task-forces/nationale/membres", response_model=List[TaskForceMembreRead])
+async def membres_task_force_nationale(db: AsyncSession = Depends(get_db)):
+    """Task force nationale : composée des coordonnateurs des task forces régionales.
+
+    Groupe virtuel — il n'est pas stocké : sa composition se déduit des membres
+    marqués coordonnateur dans chaque task force active.
+    """
+    result = await db.execute(
+        select(TaskForceMembre, TaskForceOsc.nom)
+        .join(TaskForceOsc, TaskForceOsc.id == TaskForceMembre.task_force_id)
+        .where(TaskForceMembre.est_coordonnateur == True, TaskForceOsc.actif == True)  # noqa: E712
+        .order_by(TaskForceOsc.ordre, TaskForceOsc.nom, TaskForceMembre.ordre, TaskForceMembre.nom)
+    )
+    return [await _membre_read(db, membre, nom_tf) for membre, nom_tf in result.all()]
+
+
 @forum_router.get("/task-forces/{slug}", response_model=TaskForceOscRead)
 async def detail_task_force(slug: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(TaskForceOsc).where(TaskForceOsc.slug == slug))
@@ -368,8 +552,9 @@ async def creer_task_force(
         raise HTTPException(status_code=409, detail="Une task force porte déjà ce nom.")
 
     tf = TaskForceOsc(
-        nom=data.nom.strip(), thematique=data.thematique, description=data.description,
-        pole_id=data.pole_id, ordre=data.ordre, actif=data.actif,
+        nom=data.nom.strip(), thematique=data.thematique, zone=data.zone,
+        description=data.description, pole_id=data.pole_id, ordre=data.ordre,
+        actif=data.actif,
     )
     db.add(tf)
     await db.flush()
@@ -436,6 +621,118 @@ async def supprimer_task_force(
     await journaliser(
         db, current_user, action="task_force_supprimee", cible_type="task_force",
         cible_id=tf_id, cible_libelle=nom,
+    )
+    return None
+
+
+# ── Membres d'une task force ─────────────────────────────────────────────
+
+async def _membre_read(db: AsyncSession, membre: TaskForceMembre, task_force_nom: Optional[str] = None) -> TaskForceMembreRead:
+    osc_nom = osc_slug = None
+    if membre.osc_id:
+        osc = await db.get(Osc, membre.osc_id)
+        if osc:
+            osc_nom, osc_slug = osc.name, osc.slug
+    return TaskForceMembreRead(
+        id=membre.id, task_force_id=membre.task_force_id, osc_id=membre.osc_id,
+        titre=membre.titre, nom=membre.nom, fonction=membre.fonction,
+        contact=membre.contact, email=membre.email, zone_crasc=membre.zone_crasc,
+        groupes_thematiques=membre.groupes_thematiques, role=membre.role,
+        est_coordonnateur=membre.est_coordonnateur, ordre=membre.ordre,
+        osc_nom=osc_nom, osc_slug=osc_slug, task_force_nom=task_force_nom,
+        created_at=membre.created_at,
+    )
+
+
+async def _zone_crasc_de_losc(db: AsyncSession, osc_id: Optional[int]) -> Optional[str]:
+    """Zone CRASC déduite de l'OSC représentée."""
+    if not osc_id:
+        return None
+    osc = await db.get(Osc, osc_id)
+    if not osc or not osc.crasc_id:
+        return None
+    crasc = await db.get(Crasc, osc.crasc_id)
+    return crasc.name if crasc else None
+
+
+@forum_router.get("/task-forces/{task_force_id}/membres", response_model=List[TaskForceMembreRead])
+async def lister_membres(task_force_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(TaskForceMembre)
+        .where(TaskForceMembre.task_force_id == task_force_id)
+        .order_by(
+            TaskForceMembre.est_coordonnateur.desc(), TaskForceMembre.ordre, TaskForceMembre.nom
+        )
+    )
+    return [await _membre_read(db, m) for m in result.scalars().all()]
+
+
+@forum_router.post(
+    "/task-forces/{task_force_id}/membres",
+    response_model=TaskForceMembreRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def ajouter_membre(
+    task_force_id: int,
+    data: TaskForceMembreCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    """Ajouter une personne à une task force (staff only)."""
+    tf = await db.get(TaskForceOsc, task_force_id)
+    if not tf:
+        raise HTTPException(status_code=404, detail="Task force non trouvée.")
+
+    membre = TaskForceMembre(task_force_id=task_force_id, **data.model_dump())
+    if not membre.zone_crasc:
+        membre.zone_crasc = await _zone_crasc_de_losc(db, membre.osc_id)
+    db.add(membre)
+    await db.commit()
+    await db.refresh(membre)
+
+    await journaliser(
+        db, current_user, action="task_force_membre_ajoute", cible_type="task_force",
+        cible_id=str(task_force_id), cible_libelle=tf.nom,
+        details=f"{membre.nom}{' (coordonnateur)' if membre.est_coordonnateur else ''}",
+    )
+    return await _membre_read(db, membre)
+
+
+@forum_router.patch("/task-forces/membres/{membre_id}", response_model=TaskForceMembreRead)
+async def modifier_membre(
+    membre_id: int,
+    data: TaskForceMembreUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    membre = await db.get(TaskForceMembre, membre_id)
+    if not membre:
+        raise HTTPException(status_code=404, detail="Membre non trouvé.")
+    champs = data.model_dump(exclude_unset=True)
+    for cle, valeur in champs.items():
+        setattr(membre, cle, valeur)
+    if "osc_id" in champs and not champs.get("zone_crasc"):
+        membre.zone_crasc = await _zone_crasc_de_losc(db, membre.osc_id)
+    await db.commit()
+    await db.refresh(membre)
+    return await _membre_read(db, membre)
+
+
+@forum_router.delete("/task-forces/membres/{membre_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def supprimer_membre(
+    membre_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_staff_user),
+):
+    membre = await db.get(TaskForceMembre, membre_id)
+    if not membre:
+        raise HTTPException(status_code=404, detail="Membre non trouvé.")
+    nom, tf_id = membre.nom, membre.task_force_id
+    await db.delete(membre)
+    await db.commit()
+    await journaliser(
+        db, current_user, action="task_force_membre_retire", cible_type="task_force",
+        cible_id=str(tf_id), cible_libelle=nom,
     )
     return None
 

@@ -284,6 +284,8 @@ class TaskForceOscMembre(BaseModel):
 class TaskForceOscBase(BaseModel):
     nom: str = Field(min_length=1, max_length=200)
     thematique: Optional[str] = Field(default=None, max_length=200)
+    # Nord, Sud, Est, Ouest, Centre (vide hors découpage régional)
+    zone: Optional[str] = Field(default=None, max_length=50)
     description: Optional[str] = None
     pole_id: Optional[int] = None
     ordre: int = 0
@@ -299,6 +301,7 @@ class TaskForceOscCreate(TaskForceOscBase):
 class TaskForceOscUpdate(BaseModel):
     nom: Optional[str] = Field(default=None, min_length=1, max_length=200)
     thematique: Optional[str] = Field(default=None, max_length=200)
+    zone: Optional[str] = Field(default=None, max_length=50)
     description: Optional[str] = None
     pole_id: Optional[int] = None
     ordre: Optional[int] = None
@@ -312,8 +315,83 @@ class TaskForceOscRead(TaskForceOscBase):
     slug: Optional[str] = None
     pole_nom: Optional[str] = None
     nb_membres: int = 0
+    # Personnes siégeant dans la task force (lucarne « Membres »)
+    nb_personnes: int = 0
+    nb_documents: int = 0
     membres: List[TaskForceOscMembre] = []
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class TaskForceMembreBase(BaseModel):
+    """Personne siégeant dans une task force au nom d'une OSC."""
+
+    osc_id: Optional[int] = None
+    titre: Optional[str] = Field(default=None, max_length=100)
+    nom: str = Field(min_length=1, max_length=200)
+    fonction: Optional[str] = Field(default=None, max_length=200)
+    contact: Optional[str] = Field(default=None, max_length=100)
+    email: Optional[str] = Field(default=None, max_length=255)
+    zone_crasc: Optional[str] = Field(default=None, max_length=100)
+    # Groupes thématiques, séparés par des virgules
+    groupes_thematiques: Optional[str] = Field(default=None, max_length=500)
+    role: Optional[str] = Field(default=None, max_length=100)
+    est_coordonnateur: bool = False
+    ordre: int = 0
+
+
+class TaskForceMembreCreate(TaskForceMembreBase):
+    pass
+
+
+class TaskForceMembreUpdate(BaseModel):
+    osc_id: Optional[int] = None
+    titre: Optional[str] = None
+    nom: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    fonction: Optional[str] = None
+    contact: Optional[str] = None
+    email: Optional[str] = None
+    zone_crasc: Optional[str] = None
+    groupes_thematiques: Optional[str] = None
+    role: Optional[str] = None
+    est_coordonnateur: Optional[bool] = None
+    ordre: Optional[int] = None
+
+
+class TaskForceMembreRead(TaskForceMembreBase):
+    id: int
+    task_force_id: int
+    osc_nom: Optional[str] = None
+    osc_slug: Optional[str] = None
+    # Renseigné pour la task force nationale : d'où vient le coordonnateur
+    task_force_nom: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TaskForceDocumentRead(BaseModel):
+    id: int
+    task_force_id: Optional[int] = None
+    task_force_nom: Optional[str] = None
+    categorie: str
+    sous_categorie: Optional[str] = None
+    titre: str
+    description: Optional[str] = None
+    fichier_url: Optional[str] = None
+    fichier_nom: Optional[str] = None
+    taille_octets: Optional[int] = None
+    auteur_nom: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ArborescenceCategorie(BaseModel):
+    categorie: str
+    sous_categories: List[str] = []
+    nb_documents: int = 0
